@@ -1,33 +1,40 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { Shield, Package, Star, Truck, ArrowRight, Search, ShoppingCart } from "lucide-react"
-import { useBranding } from "@/contexts/branding-context"
-import { isYouTubeUrl, getYouTubeEmbedUrl } from "@/lib/youtube-utils"
+import { Shield, Package, Star, Truck, ArrowRight, ShoppingCart, Heart, GitCompare } from "lucide-react"
 import { BannerSlider } from "@/components/ecommerce/banner-slider"
 import { EcommerceLayout } from "@/components/ecommerce/layout"
 import { CustomerAuthProvider } from "@/contexts/customer-auth-context"
+import { HeroSlider } from "@/components/ecommerce/hero-slider"
+import { useToast } from "@/contexts/toast-context"
+import { useWishlist } from "@/contexts/wishlist-context"
+import { useCompare } from "@/contexts/compare-context"
+import { useCustomerAuth } from "@/contexts/customer-auth-context"
+import { RegisterServiceWorker } from "@/components/pwa/register-service-worker"
+import { InstallPrompt } from "@/components/pwa/install-prompt"
+import { EcommercePromoBanner } from "@/components/ecommerce/promo-banner";
 
-interface Product {
-  id: string;
-  name: string;
-  description: string | null;
-  price: number;
-  originalPrice?: number;
-  currency: string;
-  sku: string | null;
-  images: string[];
+type Product = {
+  id: string
+  name: string
+  description: string | null
+  price: number
+  originalPrice?: number
+  currency: string
+  sku: string | null
+  images: string[]
   category: {
-    id: string;
-    name: string;
-  };
-  inStock: boolean;
-  stockQuantity: number;
-  lowStock: boolean;
+    id: string
+    name: string
+  }
+  inStock: boolean
+  stockQuantity: number
+  lowStock: boolean
+  discountPercent?: number
 }
 
 interface Category {
@@ -35,19 +42,44 @@ interface Category {
   name: string;
   description: string | null;
   productCount: number;
+  tileImageUrl: string | null;
+  marketingTagline: string | null;
 }
 
-export default function Home() {
+function ShopHomePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [isShopDomain, setIsShopDomain] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([])
+  const [dealProducts, setDealProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState("")
   const [banners, setBanners] = useState<any[]>([])
-  const { branding } = useBranding()
+  const { success: toastSuccess, error: toastError } = useToast()
+  const { addItem: addWishlistItem, isInWishlist } = useWishlist()
+  const {
+    addItem: addCompareItem,
+    isInCompare,
+    maxItems: maxCompareItems,
+  } = useCompare()
+  const { refreshCartCount } = useCustomerAuth()
+  const [addingToCart, setAddingToCart] = useState<string | null>(null)
+  const heroSlides = useMemo(() => {
+    if (!banners || banners.length === 0) return []
+
+    return banners.map((banner, index) => ({
+      id: banner.id || `banner-${index}`,
+      eyebrow: banner.tagline || "Exclusive Offers",
+      heading: banner.title || "Unbeatable Prices Everyday",
+      subheading: banner.subtitle,
+      description: banner.description || banner.linkText,
+      ctaText: banner.linkText || "Shop Now",
+      ctaLink: banner.link || "/shop",
+      image: banner.image || null,
+      accentColor: banner.accentColor,
+    }))
+  }, [banners])
 
   useEffect(() => {
     // Set mounted on client side only
@@ -83,6 +115,7 @@ export default function Home() {
       fetchFeaturedProducts()
       fetchCategories()
       fetchBanners()
+      fetchDeals()
     }
   }, [session, status, router])
 
@@ -136,12 +169,99 @@ export default function Home() {
     }
   }
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (searchTerm.trim()) {
-      router.push(`/shop?search=${encodeURIComponent(searchTerm)}`)
-    } else {
-      router.push("/shop")
+  const fetchDeals = async () => {
+    try {
+      const response = await fetch("/api/public/shop/deals?limit=6")
+      if (response.ok) {
+        const data = await response.json()
+        setDealProducts(data.deals || [])
+      }
+    } catch (error) {
+      console.error("Failed to fetch deals:", error)
+      setDealProducts([])
+    }
+  }
+
+  const handleAddToWishlist = (product: Product) => {
+    const alreadyInWishlist = isInWishlist(product.id)
+
+    addWishlistItem({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      currency: product.currency,
+      image: product.images?.[0] ?? null,
+      sku: product.sku ?? undefined,
+    })
+
+    toastSuccess(
+      alreadyInWishlist ? "Already in wishlist" : "Added to wishlist",
+      alreadyInWishlist
+        ? `${product.name} is already saved for later`
+        : `${product.name} saved for later`
+    )
+  }
+
+  const handleAddToCompare = (product: Product) => {
+    const result = addCompareItem({
+      id: product.id,
+      name: product.name,
+      price: product.price,
+      currency: product.currency,
+      image: product.images?.[0] ?? null,
+      sku: product.sku ?? undefined,
+      categoryName: product.category?.name ?? null,
+      inStock: product.inStock,
+      stockQuantity: product.stockQuantity,
+    })
+
+    if (result.added) {
+      toastSuccess("Added to compare", `${product.name} ready for comparison`)
+      return
+    }
+
+    if (result.reason === "duplicate") {
+      toastSuccess("Already in compare", `${product.name} is already on your comparison board`)
+      return
+    }
+
+    if (result.reason === "limit") {
+      toastError(
+        "Compare limit reached",
+        `You can compare up to ${maxCompareItems} products at a time.`
+      )
+    }
+  }
+
+  const handleAddToCart = async (product: Product) => {
+    if (addingToCart === product.id) return
+
+    try {
+      setAddingToCart(product.id)
+      const response = await fetch("/api/public/shop/cart", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ productId: product.id, quantity: 1 }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || "Unable to add to cart")
+      }
+
+      toastSuccess("Added to cart", `${product.name} is in your bag`)
+      await refreshCartCount()
+    } catch (error) {
+      console.error("Failed to add product to cart", error)
+      toastError(
+        "Could not add to cart",
+        error instanceof Error ? error.message : undefined
+      )
+    } finally {
+      setAddingToCart(null)
     }
   }
 
@@ -167,153 +287,223 @@ export default function Home() {
       </div>
     )
   }
-
   // Show ecommerce homepage on shop domain
   if (isShopDomain) {
     return (
-      <CustomerAuthProvider>
         <EcommerceLayout>
+        <RegisterServiceWorker />
+        <InstallPrompt />
 
         {/* Hero Section */}
-        <section className="relative text-white overflow-hidden w-full" style={{ minHeight: '800px' }}>
-          {/* Video Background */}
-          {branding.heroVideo ? (
-            <div className="absolute inset-0 w-full h-full" style={{ width: '100%', height: '100%' }}>
-              {isYouTubeUrl(branding.heroVideo) ? (
-                // YouTube embed - fills entire hero section
-                <div className="absolute inset-0 w-full h-full overflow-hidden" style={{ width: '100%', height: '100%' }}>
-                  <iframe
-                    src={getYouTubeEmbedUrl(branding.heroVideo) || ''}
-                    className="absolute pointer-events-none"
-                    allow="autoplay"
-                    allowFullScreen
-                    style={{
-                      pointerEvents: 'none',
-                      top: '50%',
-                      left: '50%',
-                      width: '100vw',
-                      height: '56.25vw', // 16:9 aspect ratio
-                      minHeight: '100%',
-                      minWidth: '177.77vh', // 16:9 aspect ratio
-                      transform: 'translate(-50%, -50%) scale(1.2)',
-                      transformOrigin: 'center center',
-                    }}
-                  />
-                </div>
-              ) : (
-                // Regular video file - fills entire hero section
-                <video
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  className="absolute inset-0 w-full h-full"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    objectPosition: 'center center',
-                  }}
-                >
-                  <source src={branding.heroVideo} type="video/mp4" />
-                  Your browser does not support the video tag.
-                </video>
-              )}
-              {/* Overlay for better text readability */}
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-900/70 via-blue-800/60 to-indigo-900/70 z-10"></div>
-            </div>
-          ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800"></div>
-          )}
-          
-          <div className="relative z-20 w-full mx-auto px-4 md:px-8 lg:px-12 py-24 md:py-40 lg:py-48">
-            <div className="max-w-6xl mx-auto text-center">
-              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6">
-                Welcome to The POOLSHOP
-              </h1>
-              <p className="text-xl md:text-2xl lg:text-3xl mb-8 text-blue-100">
-                Everything Swimming Pool and more...
-              </p>
-              <p className="text-lg md:text-xl mb-10 text-blue-200">
-                Your one-stop shop for premium pool products, accessories, and expert solutions
-              </p>
+        <HeroSlider slides={heroSlides} />
 
-              {/* Search Bar */}
-              <form onSubmit={handleSearch} className="max-w-2xl mx-auto mb-10">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search for products..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 text-gray-900 rounded-lg shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-300 text-lg"
-                  />
-                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-6 w-6 text-gray-400" />
-                  <button
-                    type="submit"
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition font-medium"
-                  >
-                    Search
-                  </button>
-                </div>
-              </form>
-
-              {/* CTA Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 justify-center mt-10">
-                <Link
-                  href="/shop"
-                  className="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-blue-50 transition shadow-lg flex items-center justify-center"
-                >
-                  Browse All Products
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
-                <Link
-                  href="/shop?category=all"
-                  className="bg-blue-500 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-400 transition border-2 border-white"
-                >
-                  View Categories
-                </Link>
-              </div>
-            </div>
-          </div>
-          
-          {/* Bottom Wave - Subtle transition (optional decorative element) */}
-          {/* Uncomment below to show the wave decoration */}
-          {/* <div className="absolute bottom-0 left-0 right-0 z-10" style={{ pointerEvents: 'none' }}>
-            <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto" preserveAspectRatio="none">
-              <path d="M0 120L60 105C120 90 240 60 360 45C480 30 600 30 720 37.5C840 45 960 60 1080 67.5C1200 75 1320 75 1380 75L1440 75V120H1380C1320 120 1200 120 1080 120C960 120 840 120 720 120C600 120 480 120 360 120C240 120 120 120 60 120H0Z" fill="white" opacity="0.8"/>
-            </svg>
-          </div> */}
-        </section>
-
-        {/* Features Section */}
-        <section className="py-12 bg-gray-50">
+        {/* Key Value Props */}
+        <section className="pt-10">
           <div className="container mx-auto px-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="text-center">
-                <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Truck className="h-8 w-8 text-blue-600" />
+            <div className="flex flex-col gap-3 rounded-3xl border border-gray-100 bg-white/80 p-5 shadow-sm backdrop-blur md:flex-row md:items-stretch md:gap-4">
+              <div className="flex flex-1 items-start gap-3 rounded-2xl bg-white px-5 py-4 shadow-sm">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600">
+                  <Truck className="h-5 w-5" />
                 </div>
-                <h3 className="text-xl font-semibold mb-2">Free Delivery</h3>
-                <p className="text-gray-600">Free delivery on orders over ₵500</p>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Same Day Delivery</h3>
+                  <p className="text-xs text-gray-600">Fast delivery on COD orders within Greater Accra</p>
+                </div>
               </div>
-              <div className="text-center">
-                <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Shield className="h-8 w-8 text-blue-600" />
+              <div className="flex flex-1 items-start gap-3 rounded-2xl bg-white px-5 py-4 shadow-sm">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600">
+                  <Package className="h-5 w-5" />
+            </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Free Shipping</h3>
+                  <p className="text-xs text-gray-600">Accra, Tema &amp; Kumasi on orders above ₵50</p>
                 </div>
-                <h3 className="text-xl font-semibold mb-2">Secure Checkout</h3>
-                <p className="text-gray-600">Safe and secure payment processing</p>
               </div>
-              <div className="text-center">
-                <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Package className="h-8 w-8 text-blue-600" />
+              <div className="flex flex-1 items-start gap-3 rounded-2xl bg-white px-5 py-4 shadow-sm">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600">
+                  <Star className="h-5 w-5" />
                 </div>
-                <h3 className="text-xl font-semibold mb-2">Quality Guaranteed</h3>
-                <p className="text-gray-600">Authentic products guaranteed</p>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Standard Delivery</h3>
+                  <p className="text-xs text-gray-600">Within 48-72 hrs of order confirmation nationwide</p>
+                </div>
+              </div>
+              <div className="flex flex-1 items-start gap-3 rounded-2xl bg-white px-5 py-4 shadow-sm">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-600">
+                  <Shield className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Safe &amp; Secure Payments</h3>
+                  <p className="text-xs text-gray-600">Cash on delivery, MoMo, card &amp; bank transfer options</p>
+                </div>
               </div>
             </div>
           </div>
         </section>
+
+        {/* Best Deals Section */}
+        {dealProducts.length > 0 && (
+          <section className="py-12">
+            <div className="container mx-auto px-4">
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
+                <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 via-emerald-500 to-emerald-700 p-10 text-white shadow-lg">
+                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
+                    Today’s Special Deal
+                  </span>
+                  <h3 className="mt-4 text-3xl font-bold leading-tight lg:text-4xl">
+                    Healthy & Fresh
+                    <br />
+                    Vegetables
+                  </h3>
+                  <p className="mt-3 max-w-sm text-sm text-emerald-50">
+                    Save up to 50% on seasonal produce, curated for your pool parties and weekend getaways. Bundle fresh picks with accessories and get free delivery.
+                  </p>
+                  <Link
+                    href="/shop?sort=deals"
+                    className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-semibold text-emerald-600 hover:bg-emerald-50"
+                  >
+                    Explore Deals
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  <div className="pointer-events-none absolute -bottom-6 right-4 flex h-32 w-32 items-center justify-center rounded-full bg-white/20">
+                    <span className="text-lg font-bold">Save 50%</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <h2 className="text-3xl font-bold text-gray-900">Best Deals</h2>
+                      <p className="text-sm text-gray-600">
+                        Deep discounts on poolside essentials—grab them before they’re gone.
+                      </p>
+                    </div>
+                    <Link
+                      href="/shop?sort=deals"
+                      className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700"
+                    >
+                      View all deals
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    {dealProducts.map((product) => {
+                      const wishlisted = isInWishlist(product.id)
+                      const inCompare = isInCompare(product.id)
+
+                      return (
+                      <div
+                        key={product.id}
+                          className="group relative flex flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl hover:ring-2 hover:ring-[#23185c] hover:ring-offset-2"
+                      >
+                        <Link href={`/shop/products/${product.id}`} className="relative block">
+                          {product.images && product.images.length > 0 ? (
+                            <img
+                              src={product.images[0]}
+                              alt={product.name}
+                                className="h-40 w-full object-cover transition duration-300 group-hover:scale-105"
+                            />
+                          ) : (
+                            <div className="flex h-48 w-full items-center justify-center bg-gray-100 text-gray-400">
+                              <Package className="h-10 w-10" />
+                            </div>
+                          )}
+                            <div className="absolute right-3 top-3 flex flex-col gap-2">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.preventDefault()
+                                  handleAddToWishlist(product)
+                                }}
+                                aria-pressed={wishlisted}
+                                className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${
+                                  wishlisted
+                                    ? "border-[#23185c] bg-[#23185c] text-white"
+                                    : "border-white/50 bg-white/90 text-[#23185c] hover:bg-white"
+                                }`}
+                              >
+                                <Heart
+                                  className="h-4 w-4"
+                                  strokeWidth={wishlisted ? 0 : 2}
+                                  fill={wishlisted ? "currentColor" : "none"}
+                                />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.preventDefault()
+                                  handleAddToCompare(product)
+                                }}
+                                aria-pressed={inCompare}
+                                className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${
+                                  inCompare
+                                    ? "border-[#23185c] bg-[#23185c]/10 text-[#23185c]"
+                                    : "border-white/50 bg-white/90 text-[#23185c] hover:bg-white"
+                                }`}
+                              >
+                                <GitCompare className="h-4 w-4" />
+                              </button>
+                            </div>
+                          {product.discountPercent && product.discountPercent > 0 && (
+                            <span className="absolute left-4 top-4 rounded-full bg-red-500 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
+                              {product.discountPercent}% Off
+                            </span>
+                          )}
+                        </Link>
+
+                        <div className="flex flex-1 flex-col px-4 py-4">
+                          <Link href={`/shop/products/${product.id}`}>
+                            <h3 className="text-sm font-semibold text-gray-900 transition group-hover:text-blue-600">
+                              {product.name}
+                            </h3>
+                          </Link>
+
+                          <div className="mt-3 flex items-baseline gap-2">
+                            <span className="text-base font-bold text-gray-900">
+                              {formatPrice(product.price, product.currency)}
+                            </span>
+                            {product.originalPrice && (
+                              <span className="text-sm text-gray-400 line-through">
+                                {formatPrice(product.originalPrice, product.currency)}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
+                            <span>{product.category?.name ?? "Deals"}</span>
+                            {product.stockQuantity > 0 ? (
+                              <span>
+                                {product.stockQuantity <= 5
+                                  ? `Only ${product.stockQuantity} left`
+                                  : `${product.stockQuantity} in stock`}
+                              </span>
+                            ) : (
+                              <span className="text-red-500">Out of stock</span>
+                            )}
+                          </div>
+
+                            <div className="mt-4">
+                            <button
+                              type="button"
+                              disabled={addingToCart === product.id || !product.inStock}
+                              onClick={() => handleAddToCart(product)}
+                                className="inline-flex w-full items-center justify-center rounded-full bg-[#23185c] p-3 text-sm font-semibold text-white transition hover:bg-[#1c1448] group-hover:ring-2 group-hover:ring-[#23185c] group-hover:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-300"
+                              aria-label="Add to cart"
+                            >
+                              <ShoppingCart className="h-4 w-4" />
+                            </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Categories & Banners Section */}
         <section className="py-16 bg-white">
@@ -336,14 +526,35 @@ export default function Home() {
                       <Link
                         key={category.id}
                         href={`/shop?category=${category.id}`}
-                        className="group bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 hover:shadow-lg transition-all hover:scale-105"
+                        className="group relative block aspect-[3/2] overflow-hidden rounded-3xl border border-transparent shadow-sm transition hover:-translate-y-1 hover:border-white/60 hover:shadow-xl"
                       >
-                        <div className="text-center">
-                          <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-blue-700 transition">
-                            <Package className="h-8 w-8 text-white" />
+                        {category.tileImageUrl ? (
+                          <img
+                            src={category.tileImageUrl}
+                            alt={category.name}
+                            className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 bg-gradient-to-br from-[#23185c] to-blue-500" />
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/25 to-transparent" />
+                        {!category.tileImageUrl && (
+                          <div className="absolute left-5 top-5 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white">
+                            <Package className="h-5 w-5" />
                           </div>
-                          <h3 className="font-semibold text-gray-900 mb-1">{category.name}</h3>
-                          <p className="text-sm text-gray-600">{category.productCount} products</p>
+                        )}
+                        <div className="relative flex h-full flex-col items-end justify-end p-5 text-right">
+                          {category.marketingTagline ? (
+                            <p className="mb-2 text-xs font-medium uppercase tracking-[0.2em] text-white/70">
+                              {category.marketingTagline}
+                            </p>
+                          ) : null}
+                          <h3 className="text-lg font-semibold text-white">
+                            {category.name}
+                          </h3>
+                          <p className="text-xs text-white/70">
+                            {category.productCount} {category.productCount === 1 ? "product" : "products"}
+                          </p>
                         </div>
                       </Link>
                     ))}
@@ -414,25 +625,66 @@ export default function Home() {
                   ))}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                  {featuredProducts.map((product) => (
-                    <Link
+                <div className="grid grid-cols-2 gap-6 sm:grid-cols-2 md:grid-cols-4">
+                  {featuredProducts.map((product) => {
+                    const wishlisted = isInWishlist(product.id)
+                    const inCompare = isInCompare(product.id)
+
+                    return (
+                      <div
                       key={product.id}
-                      href={`/shop/products/${product.id}`}
-                      className="bg-white rounded-lg shadow hover:shadow-lg transition group"
+                        className="group relative flex flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl hover:ring-2 hover:ring-[#23185c] hover:ring-offset-2"
                     >
-                      <div className="relative">
+                        <Link href={`/shop/products/${product.id}`} className="relative block">
                         {product.images && product.images.length > 0 ? (
                           <img
                             src={product.images[0]}
                             alt={product.name}
-                            className="w-full h-48 object-cover rounded-t-lg group-hover:scale-105 transition-transform duration-300"
+                              className="h-48 w-full object-cover transition duration-300 group-hover:scale-105"
                           />
                         ) : (
-                          <div className="w-full h-48 bg-gray-200 rounded-t-lg flex items-center justify-center">
+                            <div className="flex h-48 w-full items-center justify-center bg-gray-100 text-gray-400">
                             <Package className="h-12 w-12 text-gray-400" />
                           </div>
                         )}
+
+                          <div className="absolute right-3 top-3 flex flex-col gap-2">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.preventDefault()
+                                handleAddToWishlist(product)
+                              }}
+                              aria-pressed={wishlisted}
+                              className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${
+                                wishlisted
+                                  ? "border-[#23185c] bg-[#23185c] text-white"
+                                  : "border-white/50 bg-white/90 text-[#23185c] hover:bg-white"
+                              }`}
+                            >
+                              <Heart
+                                className="h-4 w-4"
+                                strokeWidth={wishlisted ? 0 : 2}
+                                fill={wishlisted ? "currentColor" : "none"}
+                              />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.preventDefault()
+                                handleAddToCompare(product)
+                              }}
+                              aria-pressed={inCompare}
+                              className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${
+                                inCompare
+                                  ? "border-[#23185c] bg-[#23185c]/10 text-[#23185c]"
+                                  : "border-white/50 bg-white/90 text-[#23185c] hover:bg-white"
+                              }`}
+                            >
+                              <GitCompare className="h-4 w-4" />
+                            </button>
+                          </div>
+
                         {product.lowStock && (
                           <span className="absolute top-2 left-2 bg-orange-500 text-white text-xs px-2 py-1 rounded">
                             Low Stock
@@ -448,13 +700,15 @@ export default function Home() {
                             Sale
                           </span>
                         )}
-                      </div>
+                        </Link>
 
-                      <div className="p-4">
-                        <h3 className="font-medium text-gray-900 mb-2 group-hover:text-blue-600 transition line-clamp-2">
+                        <div className="flex flex-1 flex-col px-5 py-5">
+                          <Link href={`/shop/products/${product.id}`}>
+                            <h3 className="text-sm font-semibold text-gray-900 transition group-hover:text-blue-600">
                           {product.name}
                         </h3>
-                        <div className="flex items-center justify-between">
+                          </Link>
+                          <div className="mt-3 flex items-center justify-between">
                           <div>
                             <span className="text-lg font-bold text-gray-900">
                               {formatPrice(product.price, product.currency)}
@@ -466,9 +720,24 @@ export default function Home() {
                             )}
                           </div>
                         </div>
+                          <div className="mt-4">
+                          <button
+                            type="button"
+                            disabled={addingToCart === product.id || !product.inStock}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              handleAddToCart(product)
+                            }}
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#23185c] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#1c1448] group-hover:ring-2 group-hover:ring-[#23185c] group-hover:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-300"
+                          >
+                            <ShoppingCart className="h-4 w-4" />
+                            {addingToCart === product.id ? "Adding..." : "Add to Cart"}
+                          </button>
+                          </div>
+                        </div>
                       </div>
-                    </Link>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
@@ -485,26 +754,12 @@ export default function Home() {
           </section>
         )}
 
-        {/* CTA Section */}
-        <section className="py-16 bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
-          <div className="container mx-auto px-4 text-center">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Ready to Dive In?
-            </h2>
-            <p className="text-xl mb-8 text-blue-100">
-              Browse our complete catalog of pool products and accessories
-            </p>
-            <Link
-              href="/shop"
-              className="inline-flex items-center bg-white text-blue-600 px-8 py-4 rounded-lg font-semibold hover:bg-blue-50 transition shadow-lg text-lg"
-            >
-              Start Shopping
-              <ArrowRight className="ml-2 h-6 w-6" />
-            </Link>
-          </div>
+        {/* Promotional Strip */}
+        <section className="py-12">
+          <EcommercePromoBanner />
         </section>
+
       </EcommerceLayout>
-      </CustomerAuthProvider>
     )
   }
 
@@ -560,5 +815,13 @@ export default function Home() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function Home() {
+  return (
+    <CustomerAuthProvider>
+      <ShopHomePage />
+    </CustomerAuthProvider>
   )
 }

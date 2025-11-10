@@ -27,7 +27,14 @@ export async function GET() {
             'chat_button_image',
             'email_template_header',
             'email_template_footer',
-            'ecommerce_hero_video'
+            'ecommerce_hero_video',
+            'newsletter_popup_image',
+            'newsletter_popup_headline',
+            'newsletter_popup_description',
+            'newsletter_popup_success_message',
+            'footer_logo',
+            'chat_popup_message',
+            'chat_popup_image'
           ]
         }
       }
@@ -46,7 +53,14 @@ export async function GET() {
       chatButtonImage: settings.find(s => s.key === 'chat_button_image')?.value || '',
       emailTemplateHeader: settings.find(s => s.key === 'email_template_header')?.value || '',
       emailTemplateFooter: settings.find(s => s.key === 'email_template_footer')?.value || '',
-      heroVideo: settings.find(s => s.key === 'ecommerce_hero_video')?.value || ''
+      heroVideo: settings.find(s => s.key === 'ecommerce_hero_video')?.value || '',
+      chatPopupImage: settings.find(s => s.key === 'chat_popup_image')?.value || settings.find(s => s.key === 'chat_button_image')?.value || '',
+      chatPopupMessage: settings.find(s => s.key === 'chat_popup_message')?.value || "👋 Hi {firstName}! I'm Kwame, your pool care assistant. I can help you find products, explain features, or check on existing orders. What would you like to know?",
+      newsletterPopupImage: settings.find(s => s.key === 'newsletter_popup_image')?.value || '',
+      newsletterPopupHeadline: settings.find(s => s.key === 'newsletter_popup_headline')?.value || 'Get 5% off your first order',
+      newsletterPopupDescription: settings.find(s => s.key === 'newsletter_popup_description')?.value || 'Join our newsletter for pool care tips, new arrivals, and exclusive deals.',
+      newsletterPopupSuccessMessage: settings.find(s => s.key === 'newsletter_popup_success_message')?.value || "You're on the list! Check your inbox for poolside inspiration soon.",
+      footerLogo: settings.find(s => s.key === 'footer_logo')?.value || ''
     };
 
     return NextResponse.json(brandingSettings);
@@ -81,7 +95,14 @@ export async function POST(request: NextRequest) {
       chatButtonImage,
       emailTemplateHeader,
       emailTemplateFooter,
-      heroVideo
+      heroVideo,
+      chatPopupImage,
+      chatPopupMessage,
+      newsletterPopupImage,
+      newsletterPopupHeadline,
+      newsletterPopupDescription,
+      newsletterPopupSuccessMessage,
+      footerLogo,
     } = body;
 
     // Validate required fields
@@ -105,7 +126,14 @@ export async function POST(request: NextRequest) {
       { key: 'chat_button_image', value: chatButtonImage || '' },
       { key: 'email_template_header', value: emailTemplateHeader || '' },
       { key: 'email_template_footer', value: emailTemplateFooter || '' },
-      { key: 'ecommerce_hero_video', value: heroVideo || '' }
+      { key: 'ecommerce_hero_video', value: heroVideo || '' },
+      { key: 'chat_popup_image', value: chatPopupImage || '' },
+      { key: 'chat_popup_message', value: chatPopupMessage || "👋 Hi {firstName}! I'm Kwame, your pool care assistant. I can help you find products, explain features, or check on existing orders. What would you like to know?" },
+      { key: 'newsletter_popup_image', value: newsletterPopupImage || '' },
+      { key: 'newsletter_popup_headline', value: newsletterPopupHeadline || 'Get 5% off your first order' },
+      { key: 'newsletter_popup_description', value: newsletterPopupDescription || 'Join our newsletter for pool care tips, new arrivals, and exclusive deals.' },
+      { key: 'newsletter_popup_success_message', value: newsletterPopupSuccessMessage || "You're on the list! Check your inbox for poolside inspiration soon." },
+      { key: 'footer_logo', value: footerLogo || '' },
     ];
 
     for (const setting of settingsToUpdate) {

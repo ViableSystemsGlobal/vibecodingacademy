@@ -22,9 +22,9 @@ export async function GET(request: NextRequest) {
     // Search filter
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-        { sku: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search } },
+        { description: { contains: search } },
+        { sku: { contains: search } },
       ];
     }
 
@@ -81,36 +81,35 @@ export async function GET(request: NextRequest) {
 
     // Transform products for public consumption
     const transformedProducts = await Promise.all(products.map(async (product) => {
-      // Calculate total stock across all warehouses
       const totalStock = product.stockItems.reduce(
         (sum, item) => sum + item.available,
         0
       );
 
-      // Parse images if stored as JSON string
       let images = [];
       if (product.images) {
         try {
           images = JSON.parse(product.images);
         } catch {
-          images = [product.images]; // Fallback if not JSON
+          images = [product.images];
         }
       }
 
-      // Convert prices from product's base currency to GHS
+      const priceCurrency = product.originalPriceCurrency || product.baseCurrency || "GHS";
+      const originalCurrency = product.originalPriceCurrency || priceCurrency;
+
       let priceInGHS = product.price || 0;
       let originalPriceInGHS = product.originalPrice || null;
-      const baseCurrency = product.baseCurrency || "GHS";
 
-      if (baseCurrency !== "GHS" && product.price) {
-        const priceConversion = await convertCurrency(baseCurrency, "GHS", product.price);
+      if (priceCurrency !== "GHS" && product.price) {
+        const priceConversion = await convertCurrency(priceCurrency, "GHS", product.price);
         if (priceConversion) {
           priceInGHS = priceConversion.convertedAmount;
         }
       }
 
-      if (originalPriceInGHS && baseCurrency !== "GHS") {
-        const originalPriceConversion = await convertCurrency(baseCurrency, "GHS", originalPriceInGHS);
+      if (originalPriceInGHS && originalCurrency !== "GHS") {
+        const originalPriceConversion = await convertCurrency(originalCurrency, "GHS", originalPriceInGHS);
         if (originalPriceConversion) {
           originalPriceInGHS = originalPriceConversion.convertedAmount;
         }
@@ -120,15 +119,15 @@ export async function GET(request: NextRequest) {
         id: product.id,
         name: product.name,
         description: product.description,
-        price: priceInGHS,
-        originalPrice: originalPriceInGHS, // For showing discounts
+        price: Math.round(priceInGHS * 100) / 100,
+        originalPrice: originalPriceInGHS ? Math.round(originalPriceInGHS * 100) / 100 : null,
         currency: "GHS",
         sku: product.sku,
         images: images,
         category: product.category,
         inStock: totalStock > 0,
         stockQuantity: totalStock,
-        lowStock: totalStock > 0 && totalStock <= 5, // Show low stock warning
+        lowStock: totalStock > 0 && totalStock <= 5,
       };
     }));
 
@@ -147,7 +146,17 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Error fetching shop products:", error);
     return NextResponse.json(
-      { error: "Failed to fetch products" },
+      {
+        error: "Failed to fetch products",
+        details:
+          process.env.NODE_ENV === "development" && error instanceof Error
+            ? error.message
+            : undefined,
+        stack:
+          process.env.NODE_ENV === "development" && error instanceof Error
+            ? error.stack
+            : undefined,
+      },
       { status: 500 }
     );
   }
@@ -215,20 +224,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Convert prices from product's base currency to GHS
+    const priceCurrency = product.originalPriceCurrency || product.baseCurrency || "GHS";
+    const originalCurrency = product.originalPriceCurrency || priceCurrency;
+
     let priceInGHS = product.price || 0;
     let originalPriceInGHS = product.originalPrice || null;
-    const baseCurrency = product.baseCurrency || "GHS";
 
-    if (baseCurrency !== "GHS" && product.price) {
-      const priceConversion = await convertCurrency(baseCurrency, "GHS", product.price);
+    if (priceCurrency !== "GHS" && product.price) {
+      const priceConversion = await convertCurrency(priceCurrency, "GHS", product.price);
       if (priceConversion) {
         priceInGHS = priceConversion.convertedAmount;
       }
     }
 
-    if (originalPriceInGHS && baseCurrency !== "GHS") {
-      const originalPriceConversion = await convertCurrency(baseCurrency, "GHS", originalPriceInGHS);
+    if (originalPriceInGHS && originalCurrency !== "GHS") {
+      const originalPriceConversion = await convertCurrency(originalCurrency, "GHS", originalPriceInGHS);
       if (originalPriceConversion) {
         originalPriceInGHS = originalPriceConversion.convertedAmount;
       }
@@ -238,8 +248,8 @@ export async function POST(request: NextRequest) {
       id: product.id,
       name: product.name,
       description: product.description,
-      price: priceInGHS,
-      originalPrice: originalPriceInGHS,
+      price: Math.round(priceInGHS * 100) / 100,
+      originalPrice: originalPriceInGHS ? Math.round(originalPriceInGHS * 100) / 100 : null,
       currency: "GHS",
       sku: product.sku,
       barcode: product.barcode,

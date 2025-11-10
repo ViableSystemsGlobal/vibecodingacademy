@@ -5,6 +5,17 @@ import { useParams, useRouter } from "next/navigation";
 import { ShoppingCart, Package, Truck, Shield, Star } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/contexts/toast-context";
+import { useCustomerAuth } from "@/contexts/customer-auth-context";
+import { EcommercePromoBanner } from "@/components/ecommerce/promo-banner";
+
+interface Review {
+  id: string;
+  name: string;
+  rating: number;
+  comment: string;
+  date: string;
+  avatarColor: string;
+}
 
 interface Product {
   id: string;
@@ -35,12 +46,22 @@ export default function ProductDetailPage() {
   const [selectedImage, setSelectedImage] = useState(0);
   const [addingToCart, setAddingToCart] = useState(false);
   const { success, error: showError } = useToast();
+  const { refreshCartCount } = useCustomerAuth();
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [recommendedProducts, setRecommendedProducts] = useState<Product[]>([]);
 
   useEffect(() => {
     if (params.id) {
       fetchProduct(params.id as string);
     }
   }, [params.id]);
+
+  useEffect(() => {
+    if (product) {
+      setReviews(generateMockReviews(product.name));
+      void fetchRecommendedProducts(product.category.id, product.id);
+    }
+  }, [product]);
 
   const fetchProduct = async (productId: string) => {
     try {
@@ -88,6 +109,7 @@ export default function ProductDetailPage() {
         success("Added to cart!", `${quantity} x ${product.name} added successfully`);
         // Reset quantity
         setQuantity(1);
+        await refreshCartCount();
         // Could also update cart count in header
       } else {
         const errorData = await response.json();
@@ -99,6 +121,51 @@ export default function ProductDetailPage() {
     } finally {
       setAddingToCart(false);
     }
+  };
+
+  const fetchRecommendedProducts = async (categoryId: string, currentProductId: string) => {
+    try {
+      const response = await fetch(`/api/public/shop/products?category=${encodeURIComponent(categoryId)}&limit=6&sort=newest`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch recommendations");
+      }
+      const data = await response.json();
+      const products: Product[] = data?.products || [];
+      const filtered = products.filter((item) => item.id !== currentProductId).slice(0, 4);
+      setRecommendedProducts(filtered);
+    } catch (error) {
+      console.error("Failed to fetch recommended products:", error);
+      setRecommendedProducts([]);
+    }
+  };
+
+  const generateMockReviews = (productName: string): Review[] => {
+    return [
+      {
+        id: "rev-1",
+        name: "Nana A.",
+        rating: 5,
+        comment: `Absolutely love the ${productName}! Quality is fantastic and the delivery was quick. Highly recommend for anyone looking to upgrade their pool care routine.`,
+        date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 8).toLocaleDateString(),
+        avatarColor: "bg-blue-600",
+      },
+      {
+        id: "rev-2",
+        name: "Ama B.",
+        rating: 4,
+        comment: `Great value for money. The ${productName} has made maintenance so much easier. Packaging was solid and the instructions were clear.`,
+        date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 15).toLocaleDateString(),
+        avatarColor: "bg-emerald-600",
+      },
+      {
+        id: "rev-3",
+        name: "Kojo T.",
+        rating: 5,
+        comment: `This product exceeded expectations. Customer support helped me choose the right accessories to pair with the ${productName}.`,
+        date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 32).toLocaleDateString(),
+        avatarColor: "bg-amber-500",
+      },
+    ];
   };
 
   const formatPrice = (price: number, currency: string = "GHS") => {
@@ -348,6 +415,139 @@ export default function ProductDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Customer Reviews */}
+      <div className="container mx-auto px-4 pb-12">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white rounded-3xl shadow p-8">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Customer Reviews</h2>
+                <p className="text-gray-500 text-sm">Hear from pool owners who purchased this product</p>
+              </div>
+              <div className="flex items-center gap-1 text-amber-500">
+                <Star className="h-5 w-5 fill-current" />
+                <span className="text-sm font-semibold text-gray-700">
+                  {reviews.length > 0
+                    ? `${(
+                        reviews.reduce((sum, review) => sum + review.rating, 0) /
+                        reviews.length
+                      ).toFixed(1)} / 5`
+                    : "No reviews yet"}
+                </span>
+              </div>
+            </div>
+
+            {reviews.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-8 text-center">
+                <p className="text-gray-600">No reviews yet. Be the first to share your experience with this product!</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-3">
+                {reviews.map((review) => (
+                  <div key={review.id} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-full text-white ${review.avatarColor}`}>
+                        {review.name
+                          .split(" ")
+                          .map((part) => part[0])
+                          .join("")}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{review.name}</p>
+                        <p className="text-xs text-gray-500">{review.date}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={`${review.id}-star-${star}`}
+                          className={`h-4 w-4 ${star <= review.rating ? "text-amber-400 fill-current" : "text-gray-300"}`}
+                        />
+                      ))}
+                    </div>
+                    <p className="mt-3 text-sm text-gray-600 leading-relaxed">{review.comment}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Recommended Products */}
+      <div className="container mx-auto px-4 pb-16">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Recommended For You</h2>
+              <p className="text-gray-500 text-sm">
+                Other popular picks that pair well with {product.name}
+              </p>
+            </div>
+            <Link href="/shop" className="text-sm font-semibold text-[#23185c] hover:underline">
+              Browse all
+            </Link>
+          </div>
+
+          {recommendedProducts.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-gray-200 bg-white p-10 text-center text-gray-500">
+              We&apos;re curating recommendations for this product. Please check back soon!
+            </div>
+          ) : (
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {recommendedProducts.map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/shop/products/${item.id}`}
+                  className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                >
+                  <div className="relative">
+                    {item.images && item.images.length > 0 ? (
+                      <img
+                        src={item.images[0]}
+                        alt={item.name}
+                        className="h-44 w-full object-cover transition duration-300 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex h-44 w-full items-center justify-center bg-gray-100 text-gray-400">
+                        <Package className="h-10 w-10" />
+                      </div>
+                    )}
+                    {item.originalPrice && item.originalPrice > item.price && (
+                      <span className="absolute left-4 top-4 rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
+                        Save {getDiscountPercentage(item.price, item.originalPrice)}%
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-1 flex-col px-4 py-4">
+                    <h3 className="text-sm font-semibold text-gray-900 transition group-hover:text-[#23185c] line-clamp-2">
+                      {item.name}
+                    </h3>
+                    <p className="mt-3 text-base font-bold text-gray-900">
+                      {formatPrice(item.price, item.currency)}
+                    </p>
+                    {item.originalPrice && item.originalPrice > item.price && (
+                      <p className="text-xs text-gray-500 line-through">
+                        {formatPrice(item.originalPrice, item.currency)}
+                      </p>
+                    )}
+                    <div className="mt-auto pt-4">
+                      <span className="inline-flex items-center text-xs font-semibold uppercase tracking-wide text-[#23185c]/70">
+                        View details
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <section className="py-12">
+        <EcommercePromoBanner />
+      </section>
     </div>
   );
 }

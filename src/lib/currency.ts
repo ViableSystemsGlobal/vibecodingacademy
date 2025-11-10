@@ -18,6 +18,12 @@ export interface ExchangeRateData {
   effectiveTo?: Date;
 }
 
+const DEFAULT_EXCHANGE_RATES: Record<string, Record<string, number>> = {
+  USD: { GHS: 15 },
+  EUR: { GHS: 16 },
+  GBP: { GHS: 18 },
+};
+
 /**
  * Get the latest exchange rate between two currencies
  */
@@ -101,6 +107,19 @@ export async function convertCurrency(
     
     if (!exchangeRate) {
       console.warn(`No exchange rate found for ${fromCurrency} to ${toCurrency}, using amount as-is`);
+
+      const fallbackRate = DEFAULT_EXCHANGE_RATES[fromCurrency]?.[toCurrency];
+      if (fallbackRate) {
+        const convertedAmount = amount * fallbackRate;
+        return {
+          fromCurrency,
+          toCurrency,
+          amount,
+          convertedAmount: Math.round(convertedAmount * 100) / 100,
+          exchangeRate: fallbackRate,
+          source: 'static_fallback'
+        };
+      }
       // Return original amount if no exchange rate found (fallback)
       return {
         fromCurrency,

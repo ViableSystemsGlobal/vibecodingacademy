@@ -82,12 +82,11 @@ export async function GET() {
             }
           }
 
-          // Convert price from product's base currency to GHS
           let priceInGHS = product.price || 0;
-          const baseCurrency = product.baseCurrency || "GHS";
+          const priceCurrency = product.originalPriceCurrency || product.baseCurrency || "GHS";
           
-          if (baseCurrency !== "GHS" && product.price) {
-            const priceConversion = await convertCurrency(baseCurrency, "GHS", product.price);
+          if (priceCurrency !== "GHS" && product.price) {
+            const priceConversion = await convertCurrency(priceCurrency, "GHS", product.price);
             if (priceConversion) {
               priceInGHS = priceConversion.convertedAmount;
             }
@@ -247,18 +246,15 @@ export async function PUT(request: NextRequest) {
 
     let cart = JSON.parse(cartData);
 
-    if (quantity <= 0) {
-      // Remove item from cart
-      cart.items = cart.items.filter(
-        (item: any) => item.productId !== productId
-      );
-    } else {
-      // Update quantity
+    if (productId) {
       const itemIndex = cart.items.findIndex(
         (item: any) => item.productId === productId
       );
 
       if (itemIndex >= 0) {
+        if (quantity <= 0) {
+          cart.items.splice(itemIndex, 1);
+        } else {
         // Validate stock
         const product = await prisma.product.findUnique({
           where: { id: productId },
@@ -271,6 +267,7 @@ export async function PUT(request: NextRequest) {
             0
           );
           cart.items[itemIndex].quantity = Math.min(quantity, totalStock);
+          }
         }
       }
     }

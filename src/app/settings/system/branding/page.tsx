@@ -25,6 +25,13 @@ interface BrandingSettings {
   emailTemplateHeader: string;
   emailTemplateFooter: string;
   heroVideo: string;
+  chatPopupImage: string;
+  chatPopupMessage: string;
+  newsletterPopupImage: string;
+  newsletterPopupHeadline: string;
+  newsletterPopupDescription: string;
+  newsletterPopupSuccessMessage: string;
+  footerLogo: string;
 }
 
 export default function BrandingSettingsPage() {
@@ -40,7 +47,14 @@ export default function BrandingSettingsPage() {
     chatButtonImage: "",
     emailTemplateHeader: "",
     emailTemplateFooter: "",
-    heroVideo: ""
+    heroVideo: "",
+    chatPopupImage: "",
+    chatPopupMessage: "👋 Hi {firstName}! I'm Kwame, your pool care assistant. I can help you find products, explain features, or check on existing orders. What would you like to know?",
+    newsletterPopupImage: "",
+    newsletterPopupHeadline: "Get 5% off your first order",
+    newsletterPopupDescription: "Join our newsletter for pool care tips, new arrivals, and exclusive deals.",
+    newsletterPopupSuccessMessage: "You're on the list! Check your inbox for poolside inspiration soon.",
+    footerLogo: "",
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -110,7 +124,19 @@ export default function BrandingSettingsPage() {
     document.head.appendChild(link);
   };
 
-  const handleFileUpload = async (field: 'companyLogo' | 'favicon' | 'pdfHeaderImage' | 'pdfFooterImage' | 'chatButtonImage' | 'heroVideo', file: File) => {
+  const handleFileUpload = async (
+    field:
+      | 'companyLogo'
+      | 'favicon'
+      | 'pdfHeaderImage'
+      | 'pdfFooterImage'
+      | 'chatButtonImage'
+      | 'chatPopupImage'
+      | 'newsletterPopupImage'
+      | 'heroVideo'
+      | 'footerLogo',
+    file: File
+  ) => {
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -133,7 +159,10 @@ export default function BrandingSettingsPage() {
           pdfHeaderImage: 'PDF header image',
           pdfFooterImage: 'PDF footer image',
           chatButtonImage: 'Chat button image',
-          heroVideo: 'Hero video'
+          chatPopupImage: 'Chat preview image',
+          newsletterPopupImage: 'Newsletter popup image',
+          heroVideo: 'Hero video',
+          footerLogo: 'Footer logo'
         };
         success(`${fieldNames[field]} uploaded successfully!`);
       } else {
@@ -497,6 +526,101 @@ export default function BrandingSettingsPage() {
             </CardContent>
           </Card>
 
+          {/* Newsletter Popup */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Newsletter Popup</CardTitle>
+              <CardDescription>
+                Configure the promotional popup shown to first-time ecommerce visitors. Collect emails and customise the success copy.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div className="space-y-4">
+                  <Label>Popup Illustration</Label>
+                  {settings.newsletterPopupImage && (
+                    <div className="rounded-xl border border-dashed border-gray-200 p-3">
+                      <img
+                        src={settings.newsletterPopupImage}
+                        alt="Newsletter Popup"
+                        className="h-48 w-full rounded-lg object-cover"
+                      />
+                      <p className="mt-2 text-xs text-gray-500">Current popup image</p>
+                    </div>
+                  )}
+                  <div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          handleFileUpload('newsletterPopupImage', file);
+                        }
+                      }}
+                      className="hidden"
+                      id="newsletter-popup-upload"
+                    />
+                    <Label htmlFor="newsletter-popup-upload" className="cursor-pointer">
+                      <div className="flex h-24 w-full items-center justify-center rounded-xl border-2 border-dashed border-gray-300 hover:border-gray-400">
+                        <div className="text-center">
+                          <Upload className="mb-2 h-6 w-6 text-gray-400" />
+                          <p className="text-sm text-gray-600">
+                            {settings.newsletterPopupImage ? 'Change popup image' : 'Upload popup image'}
+                          </p>
+                          <p className="text-xs text-gray-500">Recommended: 4:5 ratio, min 800px wide</p>
+                        </div>
+                      </div>
+                    </Label>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="newsletter-headline">Headline</Label>
+                    <Input
+                      id="newsletter-headline"
+                      value={settings.newsletterPopupHeadline}
+                      onChange={(e) =>
+                        setSettings((prev) => ({ ...prev, newsletterPopupHeadline: e.target.value }))
+                      }
+                      placeholder="Get 5% off your first order"
+                      className="mt-2"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="newsletter-description">Supporting Copy</Label>
+                    <Textarea
+                      id="newsletter-description"
+                      value={settings.newsletterPopupDescription}
+                      onChange={(e) =>
+                        setSettings((prev) => ({ ...prev, newsletterPopupDescription: e.target.value }))
+                      }
+                      placeholder="Join our newsletter for pool care tips, new arrivals, and exclusive deals."
+                      rows={4}
+                      className="mt-2"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="newsletter-success">Success Message</Label>
+                    <Textarea
+                      id="newsletter-success"
+                      value={settings.newsletterPopupSuccessMessage}
+                      onChange={(e) =>
+                        setSettings((prev) => ({ ...prev, newsletterPopupSuccessMessage: e.target.value }))
+                      }
+                      placeholder="You're on the list! Check your inbox for poolside inspiration soon."
+                      rows={3}
+                      className="mt-2"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Shown after visitors submit their email address.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Ecommerce Hero Video */}
           <Card>
             <CardHeader>
@@ -656,6 +780,58 @@ export default function BrandingSettingsPage() {
                   rows={8}
                   className="font-mono text-sm"
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Footer Logo */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Image className="h-5 w-5" />
+                <span>Footer Logo</span>
+              </CardTitle>
+              <CardDescription>
+                Upload a logo specifically for the storefront footer.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {settings.footerLogo && (
+                <div className="flex items-center space-x-3">
+                  <img
+                    src={settings.footerLogo}
+                    alt="Footer Logo"
+                    className="h-16 w-auto object-contain border rounded"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-600">Current footer logo</p>
+                  </div>
+                </div>
+              )}
+              <div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      handleFileUpload('footerLogo', file);
+                    }
+                  }}
+                  className="hidden"
+                  id="footer-logo-upload"
+                />
+                <Label htmlFor="footer-logo-upload" className="cursor-pointer">
+                  <div className="flex items-center justify-center w-full h-20 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 transition-colors">
+                    <div className="text-center">
+                      <Upload className="h-6 w-6 mx-auto text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-600">
+                        {settings.footerLogo ? 'Change footer logo' : 'Upload footer logo'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">Recommended: transparent PNG</p>
+                    </div>
+                  </div>
+                </Label>
               </div>
             </CardContent>
           </Card>

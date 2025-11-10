@@ -21,13 +21,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    if (!type || !['companyLogo', 'favicon', 'pdfHeaderImage', 'pdfFooterImage', 'chatButtonImage', 'heroVideo', 'banner'].includes(type)) {
-      return NextResponse.json({ error: 'Invalid file type' }, { status: 400 });
+    if (
+      !type ||
+      !['companyLogo', 'favicon', 'pdfHeaderImage', 'pdfFooterImage', 'chatButtonImage', 'heroVideo', 'banner', 'chatPopupImage', 'footerLogo', 'newsletterPopupImage'].includes(type)
+    ) {
+      return NextResponse.json({ success: false, message: 'Invalid upload type' }, { status: 400 });
     }
 
     // Create uploads directory - use public/uploads for development, /app/uploads for production
     const isProduction = process.env.NODE_ENV === 'production';
-    const uploadsSubDir = type === 'banner' ? 'banners' : 'branding';
+    const folderMap: Record<string, string> = {
+      companyLogo: 'branding',
+      favicon: 'branding',
+      pdfHeaderImage: 'branding',
+      pdfFooterImage: 'branding',
+      chatButtonImage: 'branding',
+      chatPopupImage: 'branding',
+      newsletterPopupImage: 'branding',
+      heroVideo: 'branding',
+      footerLogo: 'branding',
+      banner: 'banners'
+    };
+    const uploadsSubDir = folderMap[type] || 'branding'; // Default to 'branding' if type not found
     const uploadsDir = isProduction 
       ? join('/app', 'uploads', uploadsSubDir)
       : join(process.cwd(), 'public', 'uploads', uploadsSubDir);
@@ -42,7 +57,7 @@ export async function POST(request: NextRequest) {
     // Generate unique filename
     const timestamp = Date.now();
     const fileExtension = file.name.split('.').pop();
-    const fileName = `${type.toLowerCase()}_${timestamp}.${fileExtension}`;
+    const fileName = `${type}_${Date.now()}${fileExtension}`;
     const filePath = join(uploadsDir, fileName);
     console.log('🔍 Branding Upload API - Saving file to:', filePath);
 

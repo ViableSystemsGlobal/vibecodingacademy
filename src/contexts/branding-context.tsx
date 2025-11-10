@@ -11,6 +11,13 @@ interface BrandingSettings {
   description: string;
   chatButtonImage?: string;
   heroVideo?: string;
+  chatPopupImage?: string;
+  chatPopupMessage?: string;
+  newsletterPopupImage?: string;
+  newsletterPopupHeadline?: string;
+  newsletterPopupDescription?: string;
+  newsletterPopupSuccessMessage?: string;
+  footerLogo?: string;
 }
 
 interface BrandingContextType {
@@ -39,7 +46,14 @@ const defaultBranding: BrandingSettings = {
   primaryColor: '#dc2626', // Red as default
   secondaryColor: '#b91c1c', // Dark red as default
   description: 'A practical, single-tenant system for sales and distribution management',
-  chatButtonImage: ''
+  chatButtonImage: '',
+  chatPopupImage: '',
+  chatPopupMessage: "👋 Hi {firstName}! I'm Kwame, your pool care assistant. I can help you find products, explain features, or check on existing orders. What would you like to know?",
+  newsletterPopupImage: '',
+  newsletterPopupHeadline: 'Get 5% off your first order',
+  newsletterPopupDescription: 'Join our newsletter for pool care tips, new arrivals, and exclusive deals.',
+  newsletterPopupSuccessMessage: "You're on the list! Check your inbox for poolside inspiration soon.",
+  footerLogo: '',
 };
 
 // Convert hex color to Tailwind classes
@@ -127,7 +141,10 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
       const response = await fetch('/api/public/branding');
       if (response.ok) {
         const data = await response.json();
-        setBranding(data);
+        setBranding({
+          ...defaultBranding,
+          ...data,
+        });
         
         // Update document title
         if (typeof document !== 'undefined') {
