@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import SendCustomerEmailModal from "@/components/modals/send-customer-email-modal";
 
 interface Order {
   id: string;
@@ -97,6 +98,7 @@ export default function OrderDetailsPage() {
 
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
 
   const orderId = params.id as string;
 
@@ -564,11 +566,20 @@ export default function OrderDetailsPage() {
                   <p className="text-xs text-gray-400 capitalize mt-1">{order.customerType || 'distributor'}</p>
                 </div>
                 {getCustomerEmail() && (
-                  <div className="flex items-center space-x-2">
-                    <MailIcon className="h-4 w-4 text-gray-400" />
-                    <a href={`mailto:${getCustomerEmail()}`} className="text-sm text-blue-600 hover:underline">
-                      {getCustomerEmail()}
-                    </a>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <MailIcon className="h-4 w-4 text-gray-400" />
+                      <span className="text-sm text-gray-600">{getCustomerEmail()}</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEmailModalOpen(true)}
+                      className="text-xs"
+                    >
+                      <Send className="h-3 w-3 mr-1" />
+                      Email
+                    </Button>
                   </div>
                 )}
                 {getCustomerPhone() && (
@@ -664,6 +675,16 @@ export default function OrderDetailsPage() {
           </Card>
         </div>
       </div>
+
+      {/* Email Modal */}
+      {getCustomerEmail() && (
+        <SendCustomerEmailModal
+          isOpen={emailModalOpen}
+          onClose={() => setEmailModalOpen(false)}
+          customerName={getCustomerName()}
+          emailAddress={getCustomerEmail() || ''}
+        />
+      )}
     </div>
   );
 }

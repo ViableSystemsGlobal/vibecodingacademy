@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/contexts/toast-context";
@@ -40,15 +40,23 @@ import { AddOrderModal } from "@/components/modals/add-order-modal";
 import { EditOrderModal } from "@/components/modals/edit-order-modal";
 import { ConfirmationModal } from "@/components/modals/confirmation-modal";
 import { AIRecommendationCard } from "@/components/ai-recommendation-card";
+import { DataTable } from "@/components/ui/data-table";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { OrderStatus } from "@prisma/client";
+
+// Define OrderStatus type and values
+type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' | 'RETURNED' | 'READY_TO_SHIP' | 'COMPLETED';
+
+const ORDER_STATUSES: OrderStatus[] = ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED', 'READY_TO_SHIP', 'COMPLETED'];
 
 interface Order {
   id: string;
   orderNumber: string;
   totalAmount: number;
   status: OrderStatus;
-  paymentMethod: string;
+  paymentMethod: string | null;
+  paymentStatus?: string | null;
+  amountPaid?: number;
+  amountDue?: number;
   customerType?: string;
   notes?: string;
   deliveryAddress?: string;
@@ -108,22 +116,26 @@ export default function OrdersPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<OrderStatus | ''>('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [sortBy, setSortBy] = useState<string | undefined>(undefined);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [itemsPerPage] = useState(10);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
-  const [isAllSelected, setIsAllSelected] = useState(false);
+  const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
 
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (page: number = currentPage) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      params.append('page', currentPage.toString());
+      params.append('page', page.toString());
       params.append('limit', itemsPerPage.toString());
       if (searchTerm) params.append('search', searchTerm);
       if (filterStatus) params.append('status', filterStatus);
+      if (sortBy) params.append('sortBy', sortBy);
+      if (sortOrder) params.append('sortOrder', sortOrder);
 
       const response = await fetch(`/api/orders?${params.toString()}`, {
         credentials: 'include',
@@ -136,6 +148,8 @@ export default function OrdersPage() {
       if (data.success) {
         setOrders(data.data.orders);
         setTotalOrders(data.data.pagination.total);
+        setTotalPages(data.data.pagination.pages);
+        setCurrentPage(page);
 
         // Calculate metrics (fetch all for accurate metrics)
         const allOrdersResponse = await fetch(`/api/orders?limit=9999`, { credentials: 'include' });
@@ -174,58 +188,64 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, itemsPerPage, searchTerm, filterStatus, error]);
+  }, [currentPage, itemsPerPage, searchTerm, filterStatus, sortBy, sortOrder, error]);
 
+  // Initial load on mount
   useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+    fetchOrders(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
-  // Filter orders based on search term
-  const filteredOrders = orders.filter(order => {
-    const matchesSearch = !searchTerm || 
-      order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      getCustomerName(order).toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = !filterStatus || order.status === filterStatus;
-    
-    return matchesSearch && matchesStatus;
-  });
-
-  // Sync isAllSelected with filteredOrders
+  // Effect for sorting and filters
   useEffect(() => {
-    if (filteredOrders.length === 0) {
-      setIsAllSelected(false);
-    } else {
-      const allSelected = selectedOrders.size === filteredOrders.length && filteredOrders.length > 0;
-      setIsAllSelected(allSelected);
+    // Don't run on initial mount (handled above)
+    const isInitialMount = currentPage === 1 && !searchTerm && !filterStatus && !sortBy;
+    if (isInitialMount) {
+      return;
     }
-  }, [selectedOrders, filteredOrders]);
+    fetchOrders(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterStatus, sortBy, sortOrder]);
 
-  const handleSelectOrder = (orderId: string, e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
+  // Debounced search effect (including when cleared)
+  const isMountedRef = useRef(false);
+  useEffect(() => {
+    // Skip initial mount (handled by initial load effect)
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      return;
     }
-    setSelectedOrders(prev => {
-      const newSelected = new Set(prev);
-      if (newSelected.has(orderId)) {
-        newSelected.delete(orderId);
-      } else {
-        newSelected.add(orderId);
-      }
-      return newSelected;
-    });
+    
+    const timeoutId = setTimeout(() => {
+      setCurrentPage(1);
+      fetchOrders(1);
+    }, searchTerm ? 500 : 0); // No debounce when clearing (empty search)
+
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm]);
+
+  // Handle sorting change
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
   };
-
-  const handleSelectAll = () => {
-    if (isAllSelected) {
-      setSelectedOrders(new Set());
-      setIsAllSelected(false);
-    } else {
-      const allIds = new Set(filteredOrders.map(order => order.id));
-      setSelectedOrders(allIds);
-      setIsAllSelected(true);
-    }
+  
+  // Handle search change
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+  
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    fetchOrders(page);
+  };
+  
+  // Handle selection change
+  const handleSelectionChange = (selectedIds: string[]) => {
+    setSelectedOrders(selectedIds);
   };
 
   const handleDeleteOrder = async () => {
@@ -310,8 +330,7 @@ export default function OrdersPage() {
     }
   };
 
-  const totalPages = Math.ceil(totalOrders / itemsPerPage);
-  const availableStatuses = Object.values(OrderStatus);
+  const availableStatuses = ORDER_STATUSES;
 
   return (
     <>
@@ -386,209 +405,205 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* Search and Filters */}
-      <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-grow">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search orders..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value as OrderStatus | '')}
-                className="w-full md:w-auto px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Statuses</option>
-                {availableStatuses.map(status => (
-                  <option key={status} value={status}>
-                    {status.replace(/_/g, ' ')}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Orders Table */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">All Orders</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-              <span className="ml-3 text-gray-500">Loading orders...</span>
-            </div>
-          ) : orders.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <ShoppingCart className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <p className="text-xl font-medium">No orders found.</p>
-              <p className="text-sm mt-2">Click "Create Order" to add your first order.</p>
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className={`bg-${theme.primary} text-white`}>
-                    <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider w-12" style={{ backgroundColor: theme.primary, color: 'white' }}>
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleSelectAll();
-                          }}
-                          className="flex items-center justify-center w-4 h-4 hover:opacity-75 transition-opacity"
-                        >
-                          {isAllSelected ? (
-                            <CheckSquare className="h-4 w-4 text-white" />
-                          ) : (
-                            <Square className="h-4 w-4 text-white" />
-                          )}
-                        </button>
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ backgroundColor: theme.primary, color: 'white' }}>
-                        Order #
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ backgroundColor: theme.primary, color: 'white' }}>
-                        Customer
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ backgroundColor: theme.primary, color: 'white' }}>
-                        Status
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ backgroundColor: theme.primary, color: 'white' }}>
-                        Amount
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ backgroundColor: theme.primary, color: 'white' }}>
-                        Payment
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ backgroundColor: theme.primary, color: 'white' }}>
-                        Items
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider" style={{ backgroundColor: theme.primary, color: 'white' }}>
-                        Created
-                      </th>
-                      <th scope="col" className="relative px-6 py-3" style={{ backgroundColor: theme.primary, color: 'white' }}>
-                        <span className="sr-only">Actions</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredOrders.map((order) => (
-                      <tr 
-                        key={order.id} 
-                        className="hover:bg-gray-50 cursor-pointer"
-                        onClick={() => router.push(`/orders/${order.id}`)}
-                      >
-                        <td 
-                          className="px-6 py-4 whitespace-nowrap"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            onClick={(e) => handleSelectOrder(order.id, e)}
-                            className="flex items-center justify-center w-4 h-4 hover:opacity-75 transition-opacity"
-                            type="button"
-                          >
-                            {selectedOrders.has(order.id) ? (
-                              <CheckSquare className="h-4 w-4 text-blue-600" />
-                            ) : (
-                              <Square className="h-4 w-4 text-gray-400" />
-                            )}
-                          </button>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {order.orderNumber}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          <Link href={getCustomerLink(order)} className={`text-${theme.primary} hover:underline`}>
-                            {getCustomerName(order)}
-                          </Link>
-                          <p className="text-xs text-gray-400 capitalize">{order.customerType || 'distributor'}</p>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                            {getStatusIcon(order.status)}
-                            <span className="ml-1">{order.status.replace(/_/g, ' ')}</span>
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatCurrency(order.totalAmount, 'GHS')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 flex items-center">
-                          {getPaymentMethodIcon(order.paymentMethod)}
-                          <span className="ml-2">{order.paymentMethod.replace(/_/g, ' ')}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {order.items.length} item{order.items.length !== 1 ? 's' : ''}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatDate(order.createdAt)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex items-center space-x-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedOrder(order);
-                                setShowEditModal(true);
-                              }}
-                              className="text-blue-600 hover:text-blue-900"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedOrder(order);
-                                setShowDeleteConfirmation(true);
-                              }}
-                              className="text-red-600 hover:text-red-900"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination */}
-              <div className="flex justify-between items-center mt-4">
+          <DataTable
+            data={orders}
+            enableSelection={true}
+            selectedItems={selectedOrders}
+            onSelectionChange={handleSelectionChange}
+            onRowClick={(order) => router.push(`/orders/${order.id}`)}
+            itemsPerPage={itemsPerPage}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalOrders}
+            onPageChange={handlePageChange}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSortChange={handleSortChange}
+            searchValue={searchTerm}
+            onSearchChange={handleSearchChange}
+            searchPlaceholder="Search orders by order number or customer..."
+            enableExport={true}
+            exportFilename="orders"
+            isLoading={loading}
+            customFilters={
+              <select
+                value={filterStatus}
+                onChange={(e) => {
+                  setFilterStatus(e.target.value as OrderStatus | '');
+                  setCurrentPage(1);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Statuses</option>
+                {availableStatuses.map((status: OrderStatus) => (
+                  <option key={status} value={status}>
+                    {status.replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </select>
+            }
+            bulkActions={
+              <div className="flex gap-2">
                 <Button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
                   variant="outline"
+                  size="sm"
+                  onClick={() => success(`Selected ${selectedOrders.length} order(s)`)}
+                  disabled={selectedOrders.length === 0}
                 >
-                  Previous
-                </Button>
-                <span className="text-sm text-gray-700">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <Button
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  variant="outline"
-                >
-                  Next
+                  Bulk Actions
                 </Button>
               </div>
-            </>
-          )}
+            }
+            columns={[
+              {
+                key: 'orderNumber',
+                label: 'Order #',
+                sortable: true,
+                render: (order) => (
+                  <span className="text-sm font-medium text-gray-900">{order.orderNumber}</span>
+                )
+              },
+              {
+                key: 'customer',
+                label: 'Customer',
+                sortable: true,
+                render: (order) => (
+                  <div>
+                    <Link href={getCustomerLink(order)} className={`text-${theme.primary} hover:underline`}>
+                      {getCustomerName(order)}
+                    </Link>
+                    <p className="text-xs text-gray-400 capitalize">{order.customerType || 'distributor'}</p>
+                  </div>
+                )
+              },
+              {
+                key: 'status',
+                label: 'Status',
+                sortable: true,
+                render: (order) => (
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+                    {getStatusIcon(order.status)}
+                    <span className="ml-1">{order.status.replace(/_/g, ' ')}</span>
+                  </span>
+                )
+              },
+              {
+                key: 'totalAmount',
+                label: 'Amount',
+                sortable: true,
+                render: (order) => (
+                  <span className="text-sm text-gray-500">{formatCurrency(order.totalAmount, 'GHS')}</span>
+                )
+              },
+              {
+                key: 'paymentStatus',
+                label: 'Payment',
+                sortable: true,
+                render: (order) => {
+                  const paymentStatus = order.paymentStatus || 'UNPAID';
+                  const paymentMethod = order.paymentMethod;
+                  const statusColors: Record<string, string> = {
+                    'PAID': 'bg-green-100 text-green-800',
+                    'PARTIALLY_PAID': 'bg-yellow-100 text-yellow-800',
+                    'UNPAID': 'bg-red-100 text-red-800',
+                    'PENDING': 'bg-gray-100 text-gray-800',
+                  };
+                  return (
+                    <div className="flex flex-col">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusColors[paymentStatus] || statusColors['UNPAID']}`}>
+                        {paymentStatus.replace(/_/g, ' ')}
+                      </span>
+                      {paymentMethod && (
+                        <span className="text-xs text-gray-500 mt-1">{paymentMethod.replace(/_/g, ' ')}</span>
+                      )}
+                    </div>
+                  );
+                }
+              },
+              {
+                key: 'amountDue',
+                label: 'Outstanding',
+                sortable: true,
+                render: (order) => {
+                  const outstanding = order.amountDue || 0;
+                  return (
+                    <span className={`text-sm font-medium ${outstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {formatCurrency(outstanding, 'GHS')}
+                    </span>
+                  );
+                }
+              },
+              {
+                key: 'items',
+                label: 'Items',
+                render: (order) => (
+                  <span className="text-sm text-gray-500">
+                    {order.items.length} item{order.items.length !== 1 ? 's' : ''}
+                  </span>
+                )
+              },
+              {
+                key: 'createdAt',
+                label: 'Created',
+                sortable: true,
+                render: (order) => (
+                  <span className="text-sm text-gray-500">{formatDate(order.createdAt)}</span>
+                )
+              },
+              {
+                key: 'actions',
+                label: 'Actions',
+                render: (order) => (
+                  <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/orders/${order.id}`);
+                      }}
+                      className="text-green-600 hover:text-green-900"
+                      title="View order details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedOrder(order);
+                        setShowEditModal(true);
+                      }}
+                      className="text-blue-600 hover:text-blue-900"
+                      title="Edit order"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedOrder(order);
+                        setShowDeleteConfirmation(true);
+                      }}
+                      className="text-red-600 hover:text-red-900"
+                      title="Delete order"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )
+              }
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -627,3 +642,4 @@ export default function OrdersPage() {
     </>
   );
 }
+
