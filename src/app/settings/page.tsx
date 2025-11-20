@@ -2,17 +2,17 @@
 
 import { useState } from "react";
 import { useTheme } from "@/contexts/theme-context";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { 
-  Settings, 
-  Package, 
-  Users, 
-  Building, 
-  Shield, 
-  Globe, 
-  CreditCard, 
-  FileText, 
-  FlaskRound, 
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Settings,
+  Package,
+  Users,
+  Building,
+  Shield,
+  Globe,
+  CreditCard,
+  FileText,
+  FlaskRound,
   Star,
   ChevronRight,
   Search,
@@ -22,7 +22,9 @@ import {
   Plus,
   CheckSquare,
   Tag,
-  ClipboardList
+  ClipboardList,
+  Activity,
+  ShieldCheck,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -111,6 +113,20 @@ export default function SettingsPage() {
 
   const systemSettings = [
     {
+      id: "modules",
+      title: "Modules",
+      description: "Enable or disable system modules to customize functionality.",
+      icon: Package,
+      href: "/settings/modules"
+    },
+    {
+      id: "audit-log",
+      title: "Audit Trail",
+      description: "Review detailed activity history and system changes.",
+      icon: Activity,
+      href: "/settings/system/audit-trail",
+    },
+    {
       id: "branding",
       title: "Branding",
       description: "Company logo, favicon, and visual identity settings.",
@@ -135,8 +151,8 @@ export default function SettingsPage() {
       id: "backup",
       title: "Backup & Recovery",
       description: "Data backup schedules, recovery options, and export settings.",
-      icon: Shield,
-      href: "/settings/system/backup"
+      icon: ShieldCheck,
+      href: "/settings/backup"
     },
     {
       id: "advanced",

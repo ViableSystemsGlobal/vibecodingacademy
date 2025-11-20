@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useToast } from '@/contexts/toast-context';
 import { useTheme } from '@/contexts/theme-context';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,12 @@ interface BackupInfo {
   lastBackup?: string;
   backupSize?: string;
   databaseSize?: string;
+  uploadsSize?: string;
+  uploadsFileCount?: number;
+  totalBackupSize?: string;
   totalRecords?: number;
+  databaseExists?: boolean;
+  isPostgreSQL?: boolean;
 }
 
 export default function BackupSettingsPage() {
@@ -32,10 +37,38 @@ export default function BackupSettingsPage() {
 
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isLoadingInfo, setIsLoadingInfo] = useState(true);
   const [backupInfo, setBackupInfo] = useState<BackupInfo>({});
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
   const [backupFrequency, setBackupFrequency] = useState('daily');
+
+  // Fetch backup info on component mount
+  useEffect(() => {
+    const fetchBackupInfo = async () => {
+      try {
+        const response = await fetch('/api/settings/backup/info', {
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setBackupInfo({
+            databaseSize: data.databaseSize,
+            totalRecords: data.totalRecords,
+            databaseExists: data.databaseExists,
+            isPostgreSQL: data.isPostgreSQL
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching backup info:', err);
+      } finally {
+        setIsLoadingInfo(false);
+      }
+    };
+
+    fetchBackupInfo();
+  }, []);
 
   const handleBackupDatabase = async () => {
     setIsBackingUp(true);
@@ -57,13 +90,13 @@ export default function BackupSettingsPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `adpools-backup-${new Date().toISOString().split('T')[0]}.db`;
+      a.download = `adpools-backup-${new Date().toISOString().split('T')[0]}.zip`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      success('Database backup created successfully');
+      success('Backup created successfully (database + all files)');
       
       // Update backup info
       setBackupInfo({
@@ -81,10 +114,10 @@ export default function BackupSettingsPage() {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.name.endsWith('.db') || file.name.endsWith('.sql')) {
+      if (file.name.endsWith('.zip') || file.name.endsWith('.db') || file.name.endsWith('.sql')) {
         setSelectedFile(file);
       } else {
-        showError('Please select a valid database file (.db or .sql)');
+        showError('Please select a valid backup file (.zip, .db, or .sql)');
       }
     }
   };
@@ -193,7 +226,7 @@ export default function BackupSettingsPage() {
       </Card>
 
       {/* Database Info */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -218,7 +251,11 @@ export default function BackupSettingsPage() {
               <div>
                 <p className="text-sm text-gray-600">Database Size</p>
                 <p className="text-lg font-semibold text-gray-900 mt-1">
-                  {backupInfo.databaseSize || 'Calculating...'}
+                  {isLoadingInfo ? (
+                    <Loader2 className="h-4 w-4 animate-spin inline" />
+                  ) : (
+                    backupInfo.databaseSize || 'N/A'
+                  )}
                 </p>
               </div>
               <div className="p-3 rounded-full bg-green-100">
@@ -232,9 +269,36 @@ export default function BackupSettingsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
+                <p className="text-sm text-gray-600">Uploaded Files</p>
+                <p className="text-lg font-semibold text-gray-900 mt-1">
+                  {isLoadingInfo ? (
+                    <Loader2 className="h-4 w-4 animate-spin inline" />
+                  ) : (
+                    backupInfo.uploadsFileCount?.toLocaleString() || '0'
+                  )}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {backupInfo.uploadsSize || '0 Bytes'}
+                </p>
+              </div>
+              <div className="p-3 rounded-full bg-orange-100">
+                <FileArchive className="h-6 w-6 text-orange-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
                 <p className="text-sm text-gray-600">Total Records</p>
                 <p className="text-lg font-semibold text-gray-900 mt-1">
-                  {backupInfo.totalRecords?.toLocaleString() || '0'}
+                  {isLoadingInfo ? (
+                    <Loader2 className="h-4 w-4 animate-spin inline" />
+                  ) : (
+                    backupInfo.totalRecords?.toLocaleString() || '0'
+                  )}
                 </p>
               </div>
               <div className="p-3 rounded-full bg-purple-100">
@@ -244,6 +308,24 @@ export default function BackupSettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* PostgreSQL Warning */}
+      {backupInfo.isPostgreSQL && (
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="p-4">
+            <div className="flex items-start space-x-3">
+              <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-blue-900">PostgreSQL Database Detected</h3>
+                <p className="text-sm text-blue-800 mt-1">
+                  You are using PostgreSQL. File-based backup/restore is not available. 
+                  Please use <code className="bg-blue-100 px-1 rounded">pg_dump</code> and <code className="bg-blue-100 px-1 rounded">pg_restore</code> for database backups.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Backup Database */}
       <Card>
@@ -255,14 +337,30 @@ export default function BackupSettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-gray-600">
-            Create a complete backup of your database. This will download a copy of your entire database
-            including all records, settings, and configurations.
+            Create a complete backup of your database and all uploaded files. This will download a ZIP archive containing:
           </p>
+          <ul className="text-sm text-gray-600 list-disc list-inside mt-2 space-y-1">
+            <li>Database file (all records, settings, and configurations)</li>
+            <li>All uploaded images (products, categories, branding, banners, etc.)</li>
+            <li>All uploaded documents (task attachments, product documents, etc.)</li>
+            <li>Manifest file with backup information</li>
+          </ul>
+          {backupInfo.uploadsFileCount && backupInfo.uploadsFileCount > 0 && (
+            <p className="text-sm text-gray-500 mt-2">
+              Total files to backup: {backupInfo.uploadsFileCount + 1} files 
+              {backupInfo.totalBackupSize && ` (~${backupInfo.totalBackupSize})`}
+            </p>
+          )}
+          {backupInfo.isPostgreSQL && (
+            <p className="text-sm text-orange-600 font-medium mt-2">
+              Note: File-based backup is only available for SQLite databases.
+            </p>
+          )}
 
           <div className="flex items-center space-x-4">
             <Button
               onClick={handleBackupDatabase}
-              disabled={isBackingUp}
+              disabled={isBackingUp || backupInfo.isPostgreSQL}
               className="flex items-center"
               style={{ backgroundColor: getThemeColor(), color: 'white' }}
             >
@@ -299,6 +397,11 @@ export default function BackupSettingsPage() {
                 <p className="text-sm text-red-800 mt-1">
                   Restoring a backup will replace your current database. All existing data will be lost.
                   Make sure you have a current backup before proceeding.
+                  {backupInfo.isPostgreSQL && (
+                    <span className="block mt-2 text-orange-600 font-medium">
+                      Note: File-based restore is only available for SQLite databases.
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -310,10 +413,14 @@ export default function BackupSettingsPage() {
             </label>
             <input
               type="file"
-              accept=".db,.sql"
+              accept=".zip,.db,.sql"
               onChange={handleFileSelect}
-              className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
+              disabled={backupInfo.isPostgreSQL}
+              className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             />
+            <p className="text-xs text-gray-500 mt-1">
+              Supports: .zip (full backup with files), .db or .sql (database only - legacy format)
+            </p>
             {selectedFile && (
               <p className="text-sm text-green-600 mt-2 flex items-center">
                 <CheckCircle className="h-4 w-4 mr-1" />
@@ -324,7 +431,7 @@ export default function BackupSettingsPage() {
 
           <Button
             onClick={handleRestoreDatabase}
-            disabled={!selectedFile || isRestoring}
+            disabled={!selectedFile || isRestoring || backupInfo.isPostgreSQL}
             variant="outline"
             className="flex items-center border-red-300 text-red-700 hover:bg-red-50"
           >
