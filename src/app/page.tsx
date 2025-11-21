@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import { MODULE_ACCESS } from "@/lib/permissions"
 import Link from "next/link"
 import Image from "next/image"
 import { Shield, Package, Star, Truck, ArrowRight, ShoppingCart, Heart, GitCompare } from "lucide-react"
@@ -16,7 +17,9 @@ import { useCompare } from "@/contexts/compare-context"
 import { useCustomerAuth } from "@/contexts/customer-auth-context"
 import { RegisterServiceWorker } from "@/components/pwa/register-service-worker"
 import { InstallPrompt } from "@/components/pwa/install-prompt"
+import { DEFAULT_STOREFRONT_CONTENT } from "@/lib/storefront-content"
 import { EcommercePromoBanner } from "@/components/ecommerce/promo-banner";
+import { useBranding } from "@/contexts/branding-context";
 
 type Product = {
   id: string
@@ -37,13 +40,28 @@ type Product = {
   discountPercent?: number
 }
 
-interface Category {
+type HeroSlideContent = {
+  id: string
+  eyebrow?: string | null
+  heading: string
+  subheading?: string | null
+  description?: string | null
+  ctaText?: string | null
+  ctaLink?: string | null
+  image?: string | null
+  accentColor?: string | null
+}
+
+interface CategoryTile {
   id: string;
-  name: string;
-  description: string | null;
-  productCount: number;
-  tileImageUrl: string | null;
-  marketingTagline: string | null;
+  title: string;
+  tagline?: string;
+  description?: string;
+  href: string;
+  image?: string | null;
+  accentColor?: string | null;
+  isActive?: boolean;
+  sortOrder?: number;
 }
 
 function ShopHomePage() {
@@ -53,9 +71,99 @@ function ShopHomePage() {
   const [mounted, setMounted] = useState(false)
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([])
   const [dealProducts, setDealProducts] = useState<Product[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
+  const [categoryTiles, setCategoryTiles] = useState<CategoryTile[]>(
+    ((DEFAULT_STOREFRONT_CONTENT.home_categories as CategoryTile[]) || []).filter(
+      (tile) => tile.isActive !== false
+    )
+  )
   const [loading, setLoading] = useState(true)
   const [banners, setBanners] = useState<any[]>([])
+  const [specialDeal, setSpecialDeal] = useState<{
+    title?: string | null;
+    subtitle?: string | null;
+    description?: string | null;
+    ctaText?: string | null;
+    ctaLink?: string | null;
+    gradient?: string | null;
+    media?: any;
+  } | null>(null)
+  const { branding } = useBranding()
+  const generateHeroId = (base: string, index: number) =>
+    `${base}-${index}-${Math.random().toString(36).slice(2, 8)}`
+
+  // Update document title immediately - only if we have company name
+  // Don't set a default title - wait for branding to load
+  const companyName = branding?.companyName;
+  const newTitle = companyName ? `${companyName} | Home` : null;
+  
+  // Update title synchronously in render phase (happens before useEffect)
+  // Only update if we have a company name and the current title is wrong
+  if (typeof window !== "undefined" && companyName && newTitle && (
+    document.title === "Sales Management System" || 
+    document.title.includes("Sales Management") ||
+    (!document.title.includes(companyName) && document.title !== newTitle)
+  )) {
+    document.title = newTitle;
+  }
+
+  // Also update via useEffect for when branding loads/changes
+  // Only update if we have a company name - don't use defaults
+  useEffect(() => {
+    const updateTitle = () => {
+      const currentCompanyName = branding?.companyName;
+      
+      // Only update if we have a company name
+      if (!currentCompanyName) return;
+      
+      const targetTitle = `${currentCompanyName} | Home`;
+      
+      if (document.title !== targetTitle && (
+        document.title === "Sales Management System" || 
+        document.title.includes("Sales Management") ||
+        !document.title.includes(currentCompanyName)
+      )) {
+        document.title = targetTitle;
+      }
+    };
+    
+    // Only update if branding is loaded
+    if (branding?.companyName) {
+      updateTitle();
+      
+      // Update multiple times to catch delayed updates
+      const timeouts = [
+        setTimeout(updateTitle, 10),
+        setTimeout(updateTitle, 100),
+        setTimeout(updateTitle, 500),
+        setTimeout(updateTitle, 1000),
+      ];
+      
+      // Continuous check every 2 seconds
+      const interval = setInterval(updateTitle, 2000);
+      
+      return () => {
+        timeouts.forEach(clearTimeout);
+        clearInterval(interval);
+      };
+    }
+  }, [branding?.companyName]);
+
+  const normalizeHeroSlides = (slides: HeroSlideContent[] | undefined) => {
+    if (!Array.isArray(slides)) return []
+    return slides.map((slide, index) => ({
+      ...slide,
+      id:
+        (slide.id && slide.id.toString().trim()) ||
+        generateHeroId(slide.heading || "hero", index),
+    }))
+  }
+
+  const [heroSlides, setHeroSlides] = useState<HeroSlideContent[]>(
+    normalizeHeroSlides(
+      (DEFAULT_STOREFRONT_CONTENT.home_hero as { slides: HeroSlideContent[] }).slides
+    )
+  )
+  const [promoBanner, setPromoBanner] = useState(DEFAULT_STOREFRONT_CONTENT.home_promo_banner)
   const { success: toastSuccess, error: toastError } = useToast()
   const { addItem: addWishlistItem, isInWishlist } = useWishlist()
   const {
@@ -65,22 +173,6 @@ function ShopHomePage() {
   } = useCompare()
   const { refreshCartCount } = useCustomerAuth()
   const [addingToCart, setAddingToCart] = useState<string | null>(null)
-  const heroSlides = useMemo(() => {
-    if (!banners || banners.length === 0) return []
-
-    return banners.map((banner, index) => ({
-      id: banner.id || `banner-${index}`,
-      eyebrow: banner.tagline || "Exclusive Offers",
-      heading: banner.title || "Unbeatable Prices Everyday",
-      subheading: banner.subtitle,
-      description: banner.description || banner.linkText,
-      ctaText: banner.linkText || "Shop Now",
-      ctaLink: banner.link || "/shop",
-      image: banner.image || null,
-      accentColor: banner.accentColor,
-    }))
-  }, [banners])
-
   useEffect(() => {
     // Set mounted on client side only
     setMounted(true)
@@ -94,7 +186,8 @@ function ShopHomePage() {
     const hostname = window.location.hostname
     const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
     const isAdminDomain = hostname.includes('sms.') || hostname.includes('admin.')
-    const isAdminPort = port === '3001'
+    const adminPorts = new Set(['3001', '3003'])
+    const isAdminPort = adminPorts.has(port)
     const isShopPort = port === '3000'
     const isShop = isShopPort || (!isAdminDomain && !isAdminPort)
 
@@ -103,7 +196,43 @@ function ShopHomePage() {
     // Admin domain/port - redirect to dashboard or login
     if (isAdminDomain || isAdminPort) {
       if (session) {
-        router.push("/dashboard")
+        // Check dashboard permissions before redirecting
+        const checkDashboardAccess = async () => {
+          try {
+            const abilitiesResponse = await fetch('/api/user/abilities', {
+              credentials: 'include'
+            })
+            
+            if (abilitiesResponse.ok) {
+              const abilitiesData = await abilitiesResponse.json()
+              const userAbilities = abilitiesData.abilities || []
+              
+              // Check if user has dashboard access
+              const dashboardAbilities = MODULE_ACCESS.dashboard || []
+              const userRole = session.user?.role as string
+              const hasDashboardAccess = 
+                userRole === 'SUPER_ADMIN' || 
+                userRole === 'ADMIN' ||
+                dashboardAbilities.some(ability => userAbilities.includes(ability))
+              
+              if (hasDashboardAccess) {
+                router.push("/dashboard")
+              } else {
+                // Redirect to /tasks/my if no dashboard access
+                router.push("/tasks/my")
+              }
+            } else {
+              // If abilities fetch fails, default to dashboard (will be checked there)
+              router.push("/dashboard")
+            }
+          } catch (error) {
+            console.error('Error checking dashboard permissions:', error)
+            // Default to dashboard if check fails
+            router.push("/dashboard")
+          }
+        }
+        
+        checkDashboardAccess()
       } else {
         router.push("/auth/signin")
       }
@@ -113,9 +242,11 @@ function ShopHomePage() {
     // Shop domain - fetch homepage data
     if (isShop) {
       fetchFeaturedProducts()
-      fetchCategories()
+      fetchCategoryTiles()
       fetchBanners()
       fetchDeals()
+      fetchStorefrontContent()
+      fetchSpecialDeal()
     }
   }, [session, status, router])
 
@@ -137,19 +268,35 @@ function ShopHomePage() {
     }
   }
 
-  const fetchCategories = async () => {
+  const fetchCategoryTiles = async () => {
     try {
-      const response = await fetch("/api/public/shop/categories")
+      const response = await fetch(
+        "/api/public/storefront/content?keys=home_categories"
+      )
       if (response.ok) {
         const data = await response.json()
-        setCategories(data.categories?.slice(0, 6) || [])
+        const tiles =
+          (data?.content?.home_categories as CategoryTile[]) ||
+          ((DEFAULT_STOREFRONT_CONTENT.home_categories as CategoryTile[]) || [])
+        const activeTiles = tiles
+          .filter((tile) => tile?.isActive !== false)
+          .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        setCategoryTiles(activeTiles)
       } else {
-        console.error("Failed to fetch categories:", response.status)
-        setCategories([])
+        // Silently fallback to defaults
+        const fallback =
+          ((DEFAULT_STOREFRONT_CONTENT.home_categories as CategoryTile[]) || []).filter(
+            (tile) => tile?.isActive !== false
+          )
+        setCategoryTiles(fallback)
       }
     } catch (error) {
-      console.error("Failed to fetch categories:", error)
-      setCategories([])
+      // Silently fallback to defaults
+      const fallback =
+        ((DEFAULT_STOREFRONT_CONTENT.home_categories as CategoryTile[]) || []).filter(
+          (tile) => tile?.isActive !== false
+        )
+      setCategoryTiles(fallback)
     }
   }
 
@@ -160,11 +307,11 @@ function ShopHomePage() {
         const data = await response.json()
         setBanners(data.banners || [])
       } else {
-        console.error("Failed to fetch banners:", response.status)
+        // Silently fail - banners are optional
         setBanners([])
       }
     } catch (error) {
-      console.error("Failed to fetch banners:", error)
+      // Silently fail - banners are optional
       setBanners([])
     }
   }
@@ -179,6 +326,40 @@ function ShopHomePage() {
     } catch (error) {
       console.error("Failed to fetch deals:", error)
       setDealProducts([])
+    }
+  }
+
+  const fetchSpecialDeal = async () => {
+    try {
+      const response = await fetch('/api/public/storefront/sections/homepage_special_deal');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.section && data.section.isActive) {
+          setSpecialDeal(data.section);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching special deal:', error);
+    }
+  }
+
+  const fetchStorefrontContent = async () => {
+    try {
+      const response = await fetch('/api/public/storefront/content?keys=home_promo_banner,home_hero')
+      if (response.ok) {
+        const data = await response.json()
+        const banner = data?.content?.home_promo_banner
+        const hero = data?.content?.home_hero?.slides
+        if (banner) setPromoBanner(banner)
+        const normalizedHero = normalizeHeroSlides(
+          Array.isArray(hero) && hero.length > 0
+            ? hero
+            : (DEFAULT_STOREFRONT_CONTENT.home_hero as { slides: HeroSlideContent[] }).slides
+        )
+        setHeroSlides(normalizedHero)
+      }
+    } catch (error) {
+      console.error('Failed to fetch storefront content:', error)
     }
   }
 
@@ -346,28 +527,65 @@ function ShopHomePage() {
           <section className="py-12">
             <div className="container mx-auto px-4">
               <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr]">
-                <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 via-emerald-500 to-emerald-700 p-10 text-white shadow-lg">
+                <div 
+                  className={`relative overflow-hidden rounded-3xl p-10 text-white shadow-lg ${
+                    (() => {
+                      // Check if there's an image in media (already parsed by API)
+                      const media = specialDeal?.media;
+                      const imageUrl = media?.imageUrl || media?.image || null;
+                      
+                      // If there's an image, don't apply gradient class (will use background image instead)
+                      if (imageUrl) {
+                        return '';
+                      }
+                      
+                      // Otherwise use gradient
+                      return specialDeal?.gradient 
+                        ? `bg-gradient-to-br ${specialDeal.gradient}`
+                        : 'bg-gradient-to-br from-emerald-600 via-emerald-500 to-emerald-700';
+                    })()
+                  }`}
+                  style={{
+                    ...(() => {
+                      // Check if there's an image in media (already parsed by API)
+                      const media = specialDeal?.media;
+                      const imageUrl = media?.imageUrl || media?.image || null;
+                      
+                      // If there's an image, use it as background with dark overlay for text readability
+                      if (imageUrl) {
+                        return {
+                          backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url(${imageUrl})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                          backgroundRepeat: 'no-repeat',
+                        };
+                      }
+                      return {};
+                    })(),
+                  }}
+                >
                   <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
-                    Today’s Special Deal
+                    {specialDeal?.subtitle || "Today's Special Deal"}
                   </span>
                   <h3 className="mt-4 text-3xl font-bold leading-tight lg:text-4xl">
-                    Healthy & Fresh
-                    <br />
-                    Vegetables
+                    {specialDeal?.title || (
+                      <>
+                        Healthy & Fresh
+                        <br />
+                        Vegetables
+                      </>
+                    )}
                   </h3>
                   <p className="mt-3 max-w-sm text-sm text-emerald-50">
-                    Save up to 50% on seasonal produce, curated for your pool parties and weekend getaways. Bundle fresh picks with accessories and get free delivery.
+                    {specialDeal?.description || "Save up to 50% on seasonal produce, curated for your pool parties and weekend getaways. Bundle fresh picks with accessories and get free delivery."}
                   </p>
                   <Link
-                    href="/shop?sort=deals"
+                    href={specialDeal?.ctaLink || "/shop?sort=deals"}
                     className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-semibold text-emerald-600 hover:bg-emerald-50"
                   >
-                    Explore Deals
+                    {specialDeal?.ctaText || "Explore Deals"}
                     <ArrowRight className="h-4 w-4" />
                   </Link>
-                  <div className="pointer-events-none absolute -bottom-6 right-4 flex h-32 w-32 items-center justify-center rounded-full bg-white/20">
-                    <span className="text-lg font-bold">Save 50%</span>
-                  </div>
                 </div>
 
                 <div>
@@ -459,12 +677,12 @@ function ShopHomePage() {
                             </h3>
                           </Link>
 
-                          <div className="mt-3 flex items-baseline gap-2">
+                          <div className="mt-3 flex flex-col">
                             <span className="text-base font-bold text-gray-900">
                               {formatPrice(product.price, product.currency)}
                             </span>
                             {product.originalPrice && (
-                              <span className="text-sm text-gray-400 line-through">
+                              <span className="text-xs text-gray-400 line-through mt-0.5">
                                 {formatPrice(product.originalPrice, product.currency)}
                               </span>
                             )}
@@ -520,41 +738,55 @@ function ShopHomePage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Categories - 2x2 Grid */}
               <div>
-                {categories.length > 0 ? (
+                {categoryTiles.length > 0 ? (
                   <div className="grid grid-cols-2 gap-6">
-                    {categories.slice(0, 4).map((category) => (
+                    {categoryTiles.slice(0, 4).map((tile, index) => (
                       <Link
-                        key={category.id}
-                        href={`/shop?category=${category.id}`}
+                        key={
+                          (tile.id && tile.id.toString().trim()) ||
+                          `category-${index}-${tile.title ?? "tile"}`
+                        }
+                        href={tile.href || "/shop"}
                         className="group relative block aspect-[3/2] overflow-hidden rounded-3xl border border-transparent shadow-sm transition hover:-translate-y-1 hover:border-white/60 hover:shadow-xl"
                       >
-                        {category.tileImageUrl ? (
+                        {tile.image ? (
                           <img
-                            src={category.tileImageUrl}
-                            alt={category.name}
+                            src={tile.image}
+                            alt={tile.title}
                             className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
                           />
                         ) : (
-                          <div className="absolute inset-0 bg-gradient-to-br from-[#23185c] to-blue-500" />
+                          <div className="absolute inset-0">
+                            {tile.accentColor?.startsWith("bg-") ? (
+                              <div className={`h-full w-full rounded-3xl ${tile.accentColor}`} />
+                            ) : tile.accentColor ? (
+                              <div
+                                className="h-full w-full rounded-3xl"
+                                style={{ background: tile.accentColor }}
+                              />
+                            ) : (
+                              <div className="h-full w-full rounded-3xl bg-gradient-to-br from-[#23185c] to-blue-500 opacity-80" />
+                            )}
+                          </div>
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/25 to-transparent" />
-                        {!category.tileImageUrl && (
+                        {!tile.image && (
                           <div className="absolute left-5 top-5 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white">
                             <Package className="h-5 w-5" />
                           </div>
                         )}
                         <div className="relative flex h-full flex-col items-end justify-end p-5 text-right">
-                          {category.marketingTagline ? (
+                          {tile.tagline ? (
                             <p className="mb-2 text-xs font-medium uppercase tracking-[0.2em] text-white/70">
-                              {category.marketingTagline}
+                              {tile.tagline}
                             </p>
                           ) : null}
                           <h3 className="text-lg font-semibold text-white">
-                            {category.name}
+                            {tile.title}
                           </h3>
-                          <p className="text-xs text-white/70">
-                            {category.productCount} {category.productCount === 1 ? "product" : "products"}
-                          </p>
+                          {tile.description ? (
+                            <p className="text-xs text-white/70">{tile.description}</p>
+                          ) : null}
                         </div>
                       </Link>
                     ))}
@@ -578,7 +810,7 @@ function ShopHomePage() {
               </div>
             </div>
 
-            {categories.length > 0 && (
+            {categoryTiles.length > 0 && (
               <div className="text-center mt-10">
                 <Link
                   href="/shop"
@@ -756,7 +988,7 @@ function ShopHomePage() {
 
         {/* Promotional Strip */}
         <section className="py-12">
-          <EcommercePromoBanner />
+          <EcommercePromoBanner {...promoBanner} />
         </section>
 
       </EcommerceLayout>
