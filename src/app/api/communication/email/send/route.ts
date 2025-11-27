@@ -157,45 +157,62 @@ export async function POST(request: NextRequest) {
       (isBulk || emailRecipients.length >= queueSettings.emailBatchSize);
 
     if (useQueue) {
-      // Create email campaign if bulk
-      let campaignId = null;
-      if (isBulk && emailRecipients.length > 1) {
-        const campaign = await prisma.emailCampaign.create({
-          data: {
-            name: `Bulk Email - ${new Date().toLocaleDateString()}`,
-            description: `Bulk email sent to ${emailRecipients.length} recipients`,
+      try {
+        // Check if queue system is available
+        const { isQueueSystemAvailable } = await import('@/lib/queue-service');
+        const queueAvailable = await isQueueSystemAvailable();
+        
+        if (!queueAvailable) {
+          // Fall through to synchronous sending
+          console.log('Queue system not available, falling back to synchronous sending');
+        } else {
+          // Create email campaign if bulk
+          let campaignId = null;
+          if (isBulk && emailRecipients.length > 1) {
+            const campaign = await prisma.emailCampaign.create({
+              data: {
+                name: `Bulk Email - ${new Date().toLocaleDateString()}`,
+                description: `Bulk email sent to ${emailRecipients.length} recipients`,
+                recipients: emailRecipients,
+                subject,
+                message,
+                status: 'SENDING',
+                userId: session.user.id,
+                sentAt: new Date(),
+              },
+            });
+            campaignId = campaign.id;
+          }
+
+          // Add to queue with batching
+          const { jobId, totalBatches, totalRecipients } = await addBulkEmailJob({
             recipients: emailRecipients,
             subject,
             message,
-            status: 'SENDING',
+            attachments,
             userId: session.user.id,
-            sentAt: new Date(),
-          },
-        });
-        campaignId = campaign.id;
+            campaignId,
+            batchSize: queueSettings.emailBatchSize,
+            delayBetweenBatches: queueSettings.emailDelayMs,
+          });
+
+          return NextResponse.json({
+            success: true,
+            message: `Email job queued successfully. ${totalRecipients} emails will be sent in ${totalBatches} batches.`,
+            jobId,
+            totalRecipients,
+            totalBatches,
+            queued: true,
+          });
+        }
+      } catch (error) {
+        // Queue system not available, fall back to synchronous sending
+        console.warn('Queue system error, falling back to synchronous sending:', error);
       }
-
-      // Add to queue with batching
-      const { jobId, totalBatches, totalRecipients } = await addBulkEmailJob({
-        recipients: emailRecipients,
-        subject,
-        message,
-        attachments,
-        userId: session.user.id,
-        campaignId,
-        batchSize: queueSettings.emailBatchSize,
-        delayBetweenBatches: queueSettings.emailDelayMs,
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: `Email job queued successfully. ${totalRecipients} emails will be sent in ${totalBatches} batches.`,
-        jobId,
-        totalRecipients,
-        totalBatches,
-        queued: true,
-      });
-    } else {
+    }
+    
+    // Synchronous sending (fallback or small batches)
+    {
       // For small batches, send directly (synchronous)
       const results = [];
       const emailMessages = [];

@@ -5,6 +5,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+type StorefrontTestimonialModel = {
+  findMany: (args?: Record<string, unknown>) => Promise<any[]>;
+  update: (args: Record<string, unknown>) => Promise<any>;
+  create: (args: Record<string, unknown>) => Promise<any>;
+  deleteMany: (args: Record<string, unknown>) => Promise<any>;
+  delete: (args: Record<string, unknown>) => Promise<any>;
+};
+
 function sanitizeString(value: unknown): string | null {
   if (typeof value === "string") {
     return value.trim();
@@ -21,9 +29,7 @@ export async function GET() {
     }
 
     const model = (prisma as unknown as {
-      storefrontTestimonial?: {
-        findMany: Function;
-      };
+      storefrontTestimonial?: StorefrontTestimonialModel;
     }).storefrontTestimonial;
 
     if (!model) {
@@ -83,11 +89,7 @@ export async function POST(request: NextRequest) {
     }
 
     const model = (prisma as unknown as {
-      storefrontTestimonial?: {
-        update: Function;
-        create: Function;
-        deleteMany: Function;
-      };
+      storefrontTestimonial?: StorefrontTestimonialModel;
     }).storefrontTestimonial;
 
     if (!model) {
@@ -205,9 +207,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const model = (prisma as unknown as {
-      storefrontTestimonial?: {
-        delete: Function;
-      };
+      storefrontTestimonial?: StorefrontTestimonialModel;
     }).storefrontTestimonial;
 
     if (!model) {

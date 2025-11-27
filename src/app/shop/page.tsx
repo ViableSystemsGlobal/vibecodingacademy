@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ShoppingCart,
@@ -66,7 +66,7 @@ const PRICE_BRACKETS = [
   { id: "over-1000", label: "Above ₵1,000", min: 1000, max: undefined },
 ];
 
-export default function ShopPage() {
+function ShopPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get("search") ?? "";
@@ -783,5 +783,17 @@ export default function ShopPage() {
           </section>
       </div>
     </div>
+  );
+}
+
+export default function ShopPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <ShopPageContent />
+    </Suspense>
   );
 }

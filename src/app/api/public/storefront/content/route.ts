@@ -5,6 +5,10 @@ import {
   parseKeysParam,
 } from "@/lib/storefront-content";
 
+type DynamicFindMany<T = unknown> = {
+  findMany: (args?: Record<string, unknown>) => Promise<T>;
+};
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -18,13 +22,12 @@ export async function GET(request: NextRequest) {
         }
       : undefined;
 
-    const model = (prisma as unknown as {
-      storefrontContent?: { findMany: Function };
-      storefrontTestimonial?: { findMany: Function };
-    }).storefrontContent;
-    const testimonialModel = (prisma as unknown as {
-      storefrontTestimonial?: { findMany: Function };
-    }).storefrontTestimonial;
+    const dynamicPrisma = prisma as unknown as {
+      storefrontContent?: DynamicFindMany<any[]>;
+      storefrontTestimonial?: DynamicFindMany<any[]>;
+    };
+    const model = dynamicPrisma.storefrontContent;
+    const testimonialModel = dynamicPrisma.storefrontTestimonial;
 
     let contentRecords: any[] = [];
     try {

@@ -29,15 +29,15 @@ export async function POST(
     const userId = (session.user as any).id;
 
     // Enable the module
-    const module = await ModuleManager.enable(resolvedParams.slug, userId);
+    const moduleRecord = await ModuleManager.enable(resolvedParams.slug, userId);
 
     // Log audit event
     await logAuditEvent({
       userId,
       action: "module.enabled",
       resource: "Module",
-      resourceId: module.id,
-      newData: { slug: module.slug, isEnabled: true },
+      resourceId: moduleRecord.id,
+      newData: { slug: moduleRecord.slug, isEnabled: true },
       ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || null,
       userAgent: request.headers.get("user-agent") || null,
     });
@@ -47,8 +47,8 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: `Module ${module.name} enabled`,
-      module,
+      message: `Module ${moduleRecord.name} enabled`,
+      module: moduleRecord,
     });
   } catch (error: any) {
     console.error("Error enabling module:", error);

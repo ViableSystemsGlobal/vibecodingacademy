@@ -124,43 +124,60 @@ export async function POST(request: NextRequest) {
       (isBulk || recipients.length >= queueSettings.smsBatchSize);
 
     if (useQueue) {
-      // Create campaign if it's a bulk message
-      let campaignId = null;
-      if (isBulk && recipients.length > 1) {
-        const campaign = await prisma.smsCampaign.create({
-          data: {
-            name: `Bulk SMS - ${new Date().toLocaleDateString()}`,
-            description: `Bulk SMS sent to ${recipients.length} recipients`,
-            recipients: recipients,
-            message: message,
-            status: 'SENDING',
-            userId: session.user.id,
-            sentAt: new Date()
+      try {
+        // Check if queue system is available
+        const { isQueueSystemAvailable } = await import('@/lib/queue-service');
+        const queueAvailable = await isQueueSystemAvailable();
+        
+        if (!queueAvailable) {
+          // Fall through to synchronous sending
+          console.log('Queue system not available, falling back to synchronous sending');
+        } else {
+          // Create campaign if it's a bulk message
+          let campaignId = null;
+          if (isBulk && recipients.length > 1) {
+            const campaign = await prisma.smsCampaign.create({
+              data: {
+                name: `Bulk SMS - ${new Date().toLocaleDateString()}`,
+                description: `Bulk SMS sent to ${recipients.length} recipients`,
+                recipients: recipients,
+                message: message,
+                status: 'SENDING',
+                userId: session.user.id,
+                sentAt: new Date()
+              }
+            });
+            campaignId = campaign.id;
           }
-        });
-        campaignId = campaign.id;
+
+          // Add to queue with batching
+          const { jobId, totalBatches, totalRecipients } = await addBulkSMSJob({
+            recipients,
+            message,
+            userId: session.user.id,
+            campaignId: campaignId || undefined,
+            distributorId: distributorId || undefined,
+            batchSize: queueSettings.smsBatchSize,
+            delayBetweenBatches: queueSettings.smsDelayMs,
+          });
+
+          return NextResponse.json({
+            success: true,
+            message: `SMS job queued successfully. ${totalRecipients} SMS will be sent in ${totalBatches} batches.`,
+            jobId,
+            totalRecipients,
+            totalBatches,
+            queued: true,
+          });
+        }
+      } catch (error) {
+        // Queue system not available, fall back to synchronous sending
+        console.warn('Queue system error, falling back to synchronous sending:', error);
       }
-
-      // Add to queue with batching
-      const { jobId, totalBatches, totalRecipients } = await addBulkSMSJob({
-        recipients,
-        message,
-        userId: session.user.id,
-        campaignId: campaignId || undefined,
-        distributorId: distributorId || undefined,
-        batchSize: queueSettings.smsBatchSize,
-        delayBetweenBatches: queueSettings.smsDelayMs,
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: `SMS job queued successfully. ${totalRecipients} SMS will be sent in ${totalBatches} batches.`,
-        jobId,
-        totalRecipients,
-        totalBatches,
-        queued: true,
-      });
-    } else {
+    }
+    
+    // Synchronous sending (fallback or small batches)
+    {
       // For small batches, send directly (synchronous)
       const results = [];
       let totalCost = 0;

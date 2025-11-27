@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+type DynamicFindUnique<T = unknown> = {
+  findUnique: (args: Record<string, unknown>) => Promise<T>;
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ key: string }> }
@@ -8,11 +12,10 @@ export async function GET(
   try {
     const { key } = await params;
 
-    const model = (prisma as unknown as {
-      storefrontSection?: {
-        findUnique: Function;
-      };
-    }).storefrontSection;
+    const dynamicPrisma = prisma as unknown as {
+      storefrontSection?: DynamicFindUnique<any>;
+    };
+    const model = dynamicPrisma.storefrontSection;
 
     if (!model) {
       return NextResponse.json({ section: null });

@@ -479,9 +479,8 @@ export default function ContactsPage() {
                     />
                   )
                 }
-              ]}
-              itemsPerPage={10}
-            />
+            ]}
+          />
           )}
         </Card>
 

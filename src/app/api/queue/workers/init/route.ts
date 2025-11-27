@@ -1,11 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getWorkerStatus } from '@/lib/queue-workers';
+
+// Lazy import to avoid build-time Redis connection
+async function getWorkerStatus() {
+  try {
+    const { getWorkerStatus: _getWorkerStatus } = await import('@/lib/queue-workers');
+    return await _getWorkerStatus();
+  } catch (error) {
+    // During build or if Redis is unavailable, return default status
+    return {
+      email: false,
+      sms: false,
+    };
+  }
+}
 
 // Initialize queue workers
 // This endpoint should be called on server startup or via a cron job
 export async function POST(request: NextRequest) {
   try {
-    const workers = getWorkerStatus();
+    const workers = await getWorkerStatus();
     return NextResponse.json({
       success: true,
       message: 'Queue workers initialized',
@@ -23,7 +36,7 @@ export async function POST(request: NextRequest) {
 // Health check
 export async function GET(request: NextRequest) {
   try {
-    const workers = getWorkerStatus();
+    const workers = await getWorkerStatus();
     return NextResponse.json({
       success: true,
       workers,

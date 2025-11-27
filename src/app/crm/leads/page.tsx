@@ -910,7 +910,6 @@ export default function LeadsPage() {
                 )
               }
             ]}
-            itemsPerPage={10}
           />
         )}
       </Card>

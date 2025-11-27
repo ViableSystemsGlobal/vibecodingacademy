@@ -832,7 +832,6 @@ function StockPageContent() {
                   )
                 }
               ]}
-              itemsPerPage={10}
             />
           </CardContent>
         </Card>

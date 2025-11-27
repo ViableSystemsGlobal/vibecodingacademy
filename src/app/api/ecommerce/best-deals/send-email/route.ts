@@ -477,40 +477,57 @@ export async function POST(request: NextRequest) {
       recipients.length >= queueSettings.emailBatchSize;
 
     if (useQueue) {
-      // Create email campaign
-      const campaign = await prisma.emailCampaign.create({
-        data: {
-          name: `Best Deals Email - ${new Date().toLocaleDateString()}`,
-          description: `Best Deals email sent to ${recipients.length} recipients`,
-          recipients: recipients.map(r => r.email),
-          subject,
-          message: emailHtml,
-          status: 'SENDING',
-          userId: session.user.id,
-          sentAt: new Date(),
-        },
-      });
+      try {
+        // Check if queue system is available
+        const { isQueueSystemAvailable } = await import('@/lib/queue-service');
+        const queueAvailable = await isQueueSystemAvailable();
+        
+        if (!queueAvailable) {
+          // Fall through to synchronous sending
+          console.log('Queue system not available, falling back to synchronous sending');
+        } else {
+          // Create email campaign
+          const campaign = await prisma.emailCampaign.create({
+            data: {
+              name: `Best Deals Email - ${new Date().toLocaleDateString()}`,
+              description: `Best Deals email sent to ${recipients.length} recipients`,
+              recipients: recipients.map(r => r.email),
+              subject,
+              message: emailHtml,
+              status: 'SENDING',
+              userId: session.user.id,
+              sentAt: new Date(),
+            },
+          });
 
-      // Add to queue with batching
-      const { jobId, totalBatches, totalRecipients } = await addBulkEmailJob({
-        recipients: recipients.map(r => r.email),
-        subject,
-        message: emailHtml,
-        userId: session.user.id,
-        campaignId: campaign.id,
-        batchSize: queueSettings.emailBatchSize,
-        delayBetweenBatches: queueSettings.emailDelayMs,
-      });
+          // Add to queue with batching
+          const { jobId, totalBatches, totalRecipients } = await addBulkEmailJob({
+            recipients: recipients.map(r => r.email),
+            subject,
+            message: emailHtml,
+            userId: session.user.id,
+            campaignId: campaign.id,
+            batchSize: queueSettings.emailBatchSize,
+            delayBetweenBatches: queueSettings.emailDelayMs,
+          });
 
-      return NextResponse.json({
-        success: true,
-        message: `Best Deals email job queued successfully. ${totalRecipients} emails will be sent in ${totalBatches} batches.`,
-        jobId,
-        totalRecipients,
-        totalBatches,
-        queued: true,
-      });
-    } else {
+          return NextResponse.json({
+            success: true,
+            message: `Best Deals email job queued successfully. ${totalRecipients} emails will be sent in ${totalBatches} batches.`,
+            jobId,
+            totalRecipients,
+            totalBatches,
+            queued: true,
+          });
+        }
+      } catch (error) {
+        // Queue system not available, fall back to synchronous sending
+        console.warn('Queue system error, falling back to synchronous sending:', error);
+      }
+    }
+    
+    // Synchronous sending (fallback or small batches)
+    {
       // For small batches, send directly (synchronous)
       const results = await Promise.all(
         recipients.map(async (recipient) => {

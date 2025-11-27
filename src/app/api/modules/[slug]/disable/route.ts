@@ -28,15 +28,15 @@ export async function POST(
     const userId = (session.user as any).id;
 
     // Disable the module
-    const module = await ModuleManager.disable(resolvedParams.slug, userId);
+    const moduleRecord = await ModuleManager.disable(resolvedParams.slug, userId);
 
     // Log audit event
     await logAuditEvent({
       userId,
       action: "module.disabled",
       resource: "Module",
-      resourceId: module.id,
-      newData: { slug: module.slug, isEnabled: false },
+      resourceId: moduleRecord.id,
+      newData: { slug: moduleRecord.slug, isEnabled: false },
       ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || null,
       userAgent: request.headers.get("user-agent") || null,
     });
@@ -46,8 +46,8 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: `Module ${module.name} disabled`,
-      module,
+      message: `Module ${moduleRecord.name} disabled`,
+      module: moduleRecord,
     });
   } catch (error: any) {
     console.error("Error disabling module:", error);

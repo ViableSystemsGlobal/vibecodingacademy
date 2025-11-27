@@ -3,6 +3,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+type StorefrontSectionModel = {
+  findMany: (args?: Record<string, unknown>) => Promise<any[]>;
+  update: (args: Record<string, unknown>) => Promise<any>;
+  upsert: (args: Record<string, unknown>) => Promise<any>;
+};
+
 function sanitizeString(value: unknown): string | null {
   if (typeof value === "string") {
     return value.trim();
@@ -19,9 +25,7 @@ export async function GET() {
     }
 
     const model = (prisma as unknown as {
-      storefrontSection?: {
-        findMany: Function;
-      };
+      storefrontSection?: StorefrontSectionModel;
     }).storefrontSection;
 
     if (!model) {
@@ -80,10 +84,7 @@ export async function POST(request: NextRequest) {
     }
 
     const model = (prisma as unknown as {
-      storefrontSection?: {
-        update: Function;
-        upsert: Function;
-      };
+      storefrontSection?: StorefrontSectionModel;
     }).storefrontSection;
 
     if (!model) {

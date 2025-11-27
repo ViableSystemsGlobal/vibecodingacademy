@@ -652,7 +652,6 @@ export default function AccountsPage() {
                 )
               }
             ]}
-            itemsPerPage={10}
           />
         )}
       </Card>

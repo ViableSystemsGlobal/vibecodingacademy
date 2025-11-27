@@ -18,13 +18,13 @@ export async function GET(
     }
 
     const resolvedParams = await params;
-    const module = await ModuleManager.findBySlug(resolvedParams.slug);
+    const moduleRecord = await ModuleManager.findBySlug(resolvedParams.slug);
 
-    if (!module) {
+    if (!moduleRecord) {
       return NextResponse.json({ error: "Module not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ module });
+    return NextResponse.json({ module: moduleRecord });
   } catch (error) {
     console.error("Error fetching module:", error);
     return NextResponse.json(

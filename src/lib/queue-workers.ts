@@ -3,10 +3,33 @@ import IORedis from 'ioredis';
 import { prisma } from '@/lib/prisma';
 import nodemailer from 'nodemailer';
 
-const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-});
+// Lazy connection - only create when needed (not during build)
+let connection: IORedis | null = null;
+
+function getConnection(): IORedis {
+  if (!connection) {
+    // During build, create a connection that won't actually connect
+    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    connection = new IORedis(redisUrl, {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+      lazyConnect: true, // Don't connect immediately - this is key!
+      retryStrategy: () => null, // Don't retry - fail fast
+      connectTimeout: 100, // Very short timeout
+      commandTimeout: 100,
+      enableOfflineQueue: false, // Don't queue commands when offline
+    });
+    
+    // Suppress connection errors during build
+    connection.on('error', (err) => {
+      // Only log if not in build phase
+      if (process.env.NEXT_PHASE !== 'phase-production-build') {
+        console.error('Redis connection error:', err);
+      }
+    });
+  }
+  return connection;
+}
 
 // Rate limiting: max emails per second
 const EMAIL_RATE_LIMIT = 5; // 5 emails per second
@@ -241,179 +264,247 @@ async function sendSMSViaDeywuro(
 }
 
 /**
- * Email Worker
+ * Email Worker - Lazy initialization
  */
-export const emailWorker = new Worker(
-  'email-queue',
-  async (job: Job) => {
-    const { recipient, subject, message, attachments, userId, campaignId, isBulk } = job.data;
+let _emailWorker: Worker | null = null;
 
+async function isWorkerAvailable(): Promise<boolean> {
+  // During build, always return false
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    return false;
+  }
+  
+  try {
+    const conn = getConnection();
+    await conn.ping();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getEmailWorker(): Worker {
+  // Skip worker initialization during build or if Redis unavailable
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    throw new Error('Workers not available during build');
+  }
+  if (!_emailWorker) {
+    _emailWorker = new Worker(
+      'email-queue',
+      async (job: Job) => {
+        const { recipient, subject, message, attachments, userId, campaignId, isBulk } = job.data;
+
+        try {
+          const emailResult = await sendEmailViaSMTP(recipient, subject, message, attachments);
+
+          // Save to database
+          await prisma.emailMessage.create({
+            data: {
+              recipient,
+              subject,
+              message,
+              status: emailResult.success ? 'SENT' : 'FAILED',
+              sentAt: emailResult.success ? new Date() : null,
+              failedAt: emailResult.success ? null : new Date(),
+              errorMessage: emailResult.error || null,
+              provider: 'smtp',
+              providerId: emailResult.messageId || null,
+              userId,
+              campaignId,
+              isBulk,
+            },
+          });
+
+          return {
+            success: emailResult.success,
+            recipient,
+            error: emailResult.error,
+          };
+        } catch (error: any) {
+          console.error(`Error processing email job for ${recipient}:`, error);
+          
+          // Save failed email
+          await prisma.emailMessage.create({
+            data: {
+              recipient,
+              subject,
+              message,
+              status: 'FAILED',
+              failedAt: new Date(),
+              errorMessage: error.message || 'Unknown error',
+              provider: 'smtp',
+              userId,
+              campaignId,
+              isBulk,
+            },
+          });
+
+          throw error;
+        }
+      },
+      { connection: getConnection(), concurrency: 5 } // Process 5 emails concurrently
+    );
+
+    /**
+     * Bulk Email Batch Worker
+     */
+    _emailWorker.on('completed', async (job) => {
+      if (job.name === 'send-bulk-email-batch') {
+        const { jobId, batchNumber, totalBatches } = job.data;
+        console.log(`✅ Email batch ${batchNumber}/${totalBatches} completed for job ${jobId}`);
+      }
+    });
+
+    _emailWorker.on('failed', async (job, err) => {
+      console.error(`❌ Email job ${job?.id} failed:`, err);
+    });
+  }
+  return _emailWorker;
+}
+
+export { getEmailWorker };
+export const emailWorker = new Proxy({} as Worker, {
+  get(_target, prop) {
     try {
-      const emailResult = await sendEmailViaSMTP(recipient, subject, message, attachments);
-
-      // Save to database
-      await prisma.emailMessage.create({
-        data: {
-          recipient,
-          subject,
-          message,
-          status: emailResult.success ? 'SENT' : 'FAILED',
-          sentAt: emailResult.success ? new Date() : null,
-          failedAt: emailResult.success ? null : new Date(),
-          errorMessage: emailResult.error || null,
-          provider: 'smtp',
-          providerId: emailResult.messageId || null,
-          userId,
-          campaignId,
-          isBulk,
-        },
-      });
-
-      return {
-        success: emailResult.success,
-        recipient,
-        error: emailResult.error,
-      };
-    } catch (error: any) {
-      console.error(`Error processing email job for ${recipient}:`, error);
-      
-      // Save failed email
-      await prisma.emailMessage.create({
-        data: {
-          recipient,
-          subject,
-          message,
-          status: 'FAILED',
-          failedAt: new Date(),
-          errorMessage: error.message || 'Unknown error',
-          provider: 'smtp',
-          userId,
-          campaignId,
-          isBulk,
-        },
-      });
-
-      throw error;
+      return getEmailWorker()[prop as keyof Worker];
+    } catch (error) {
+      // During build, return a no-op function
+      if (typeof prop === 'string' && (prop === 'process' || prop === 'on' || prop === 'off')) {
+        return () => {};
+      }
+      return undefined;
     }
-  },
-  { connection, concurrency: 5 } // Process 5 emails concurrently
-);
-
-/**
- * Bulk Email Batch Worker
- */
-emailWorker.on('completed', async (job) => {
-  if (job.name === 'send-bulk-email-batch') {
-    const { jobId, batchNumber, totalBatches } = job.data;
-    console.log(`✅ Email batch ${batchNumber}/${totalBatches} completed for job ${jobId}`);
   }
 });
 
-emailWorker.on('failed', async (job, err) => {
-  console.error(`❌ Email job ${job?.id} failed:`, err);
-});
-
 /**
- * SMS Worker
+ * SMS Worker - Lazy initialization
  */
-export const smsWorker = new Worker(
-  'sms-queue',
-  async (job: Job) => {
-    const { phoneNumber, message, userId, campaignId, distributorId, isBulk } = job.data;
+let _smsWorker: Worker | null = null;
 
-    try {
-      const smsResult = await sendSMSViaDeywuro(phoneNumber, message);
-
-      // Save to database
-      if (distributorId) {
-        await prisma.distributorSMS.create({
-          data: {
-            distributorId,
-            to: phoneNumber,
-            message,
-            status: smsResult.success ? 'SENT' : 'FAILED',
-            sentBy: userId,
-            sentAt: smsResult.success ? new Date() : null,
-          },
-        });
-      } else {
-        await prisma.smsMessage.create({
-          data: {
-            recipient: phoneNumber,
-            message,
-            status: smsResult.success ? 'SENT' : 'FAILED',
-            sentAt: smsResult.success ? new Date() : null,
-            failedAt: smsResult.success ? null : new Date(),
-            errorMessage: smsResult.error || null,
-            cost: smsResult.cost || 0.05,
-            provider: 'deywuro',
-            providerId: smsResult.messageId || null,
-            userId,
-            campaignId,
-            isBulk,
-          },
-        });
-      }
-
-      return {
-        success: smsResult.success,
-        phoneNumber,
-        error: smsResult.error,
-        cost: smsResult.cost,
-      };
-    } catch (error: any) {
-      console.error(`Error processing SMS job for ${phoneNumber}:`, error);
-      
-      // Save failed SMS
-      if (distributorId) {
-        await prisma.distributorSMS.create({
-          data: {
-            distributorId,
-            to: phoneNumber,
-            message,
-            status: 'FAILED',
-            sentBy: userId,
-            sentAt: null,
-          },
-        });
-      } else {
-        await prisma.smsMessage.create({
-          data: {
-            recipient: phoneNumber,
-            message,
-            status: 'FAILED',
-            failedAt: new Date(),
-            errorMessage: error.message || 'Unknown error',
-            provider: 'deywuro',
-            userId,
-            campaignId,
-            isBulk,
-          },
-        });
-      }
-
-      throw error;
-    }
-  },
-  { connection, concurrency: 3 } // Process 3 SMS concurrently (more conservative)
-);
-
-/**
- * Bulk SMS Batch Worker
- */
-smsWorker.on('completed', async (job) => {
-  if (job.name === 'send-bulk-sms-batch') {
-    const { jobId, batchNumber, totalBatches } = job.data;
-    console.log(`✅ SMS batch ${batchNumber}/${totalBatches} completed for job ${jobId}`);
+function getSMSWorker(): Worker {
+  // Skip worker initialization during build
+  if (process.env.NEXT_PHASE === 'phase-production-build') {
+    throw new Error('Workers not available during build');
   }
-});
+  if (!_smsWorker) {
+    _smsWorker = new Worker(
+      'sms-queue',
+      async (job: Job) => {
+        const { phoneNumber, message, userId, campaignId, distributorId, isBulk } = job.data;
 
-smsWorker.on('failed', async (job, err) => {
-  console.error(`❌ SMS job ${job?.id} failed:`, err);
+        try {
+          const smsResult = await sendSMSViaDeywuro(phoneNumber, message);
+
+          // Save to database
+          if (distributorId) {
+            await prisma.distributorSMS.create({
+              data: {
+                distributorId,
+                to: phoneNumber,
+                message,
+                status: smsResult.success ? 'SENT' : 'FAILED',
+                sentBy: userId,
+                sentAt: smsResult.success ? new Date() : null,
+              },
+            });
+          } else {
+            await prisma.smsMessage.create({
+              data: {
+                recipient: phoneNumber,
+                message,
+                status: smsResult.success ? 'SENT' : 'FAILED',
+                sentAt: smsResult.success ? new Date() : null,
+                failedAt: smsResult.success ? null : new Date(),
+                errorMessage: smsResult.error || null,
+                cost: smsResult.cost || 0.05,
+                provider: 'deywuro',
+                providerId: smsResult.messageId || null,
+                userId,
+                campaignId,
+                isBulk,
+              },
+            });
+          }
+
+          return {
+            success: smsResult.success,
+            phoneNumber,
+            error: smsResult.error,
+            cost: smsResult.cost,
+          };
+        } catch (error: any) {
+          console.error(`Error processing SMS job for ${phoneNumber}:`, error);
+          
+          // Save failed SMS
+          if (distributorId) {
+            await prisma.distributorSMS.create({
+              data: {
+                distributorId,
+                to: phoneNumber,
+                message,
+                status: 'FAILED',
+                sentBy: userId,
+                sentAt: null,
+              },
+            });
+          } else {
+            await prisma.smsMessage.create({
+              data: {
+                recipient: phoneNumber,
+                message,
+                status: 'FAILED',
+                failedAt: new Date(),
+                errorMessage: error.message || 'Unknown error',
+                provider: 'deywuro',
+                userId,
+                campaignId,
+                isBulk,
+              },
+            });
+          }
+
+          throw error;
+        }
+      },
+      { connection: getConnection(), concurrency: 3 } // Process 3 SMS concurrently (more conservative)
+    );
+
+    /**
+     * Bulk SMS Batch Worker
+     */
+    _smsWorker.on('completed', async (job) => {
+      if (job.name === 'send-bulk-sms-batch') {
+        const { jobId, batchNumber, totalBatches } = job.data;
+        console.log(`✅ SMS batch ${batchNumber}/${totalBatches} completed for job ${jobId}`);
+      }
+    });
+
+    _smsWorker.on('failed', async (job, err) => {
+      console.error(`❌ SMS job ${job?.id} failed:`, err);
+    });
+  }
+  return _smsWorker;
+}
+
+export { getSMSWorker };
+export const smsWorker = new Proxy({} as Worker, {
+  get(_target, prop) {
+    try {
+      return getSMSWorker()[prop as keyof Worker];
+    } catch (error) {
+      // During build, return a no-op function
+      if (typeof prop === 'string' && (prop === 'process' || prop === 'on' || prop === 'off')) {
+        return () => {};
+      }
+      return undefined;
+    }
+  }
 });
 
 // Process bulk email batches
-emailWorker.process('send-bulk-email-batch', async (job: Job) => {
+try {
+  getEmailWorker().process('send-bulk-email-batch', async (job: Job) => {
   const { recipients, subject, message, attachments, userId, campaignId, batchNumber, totalBatches, jobId } = job.data;
 
   console.log(`📧 Processing email batch ${batchNumber}/${totalBatches} for job ${jobId} (${recipients.length} recipients)`);
@@ -456,10 +547,14 @@ emailWorker.process('send-bulk-email-batch', async (job: Job) => {
   }
 
   return { batchNumber, totalBatches, results };
-});
+  });
+} catch (error) {
+  // Ignore during build
+}
 
 // Process bulk SMS batches
-smsWorker.process('send-bulk-sms-batch', async (job: Job) => {
+try {
+  getSMSWorker().process('send-bulk-sms-batch', async (job: Job) => {
   const { recipients, message, userId, campaignId, distributorId, batchNumber, totalBatches, jobId } = job.data;
 
   console.log(`📱 Processing SMS batch ${batchNumber}/${totalBatches} for job ${jobId} (${recipients.length} recipients)`);
@@ -516,13 +611,22 @@ smsWorker.process('send-bulk-sms-batch', async (job: Job) => {
   }
 
   return { batchNumber, totalBatches, results };
-});
+  });
+} catch (error) {
+  // Ignore during build
+}
 
-console.log('✅ Queue workers initialized');
-
-export function getWorkerStatus() {
-  return {
-    email: true,
-    sms: true,
-  };
+export async function getWorkerStatus() {
+  try {
+    const available = await isWorkerAvailable();
+    return {
+      email: available,
+      sms: available,
+    };
+  } catch {
+    return {
+      email: false,
+      sms: false,
+    };
+  }
 }
