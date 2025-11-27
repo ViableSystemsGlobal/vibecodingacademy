@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { useTheme } from '@/contexts/theme-context';
 import { useToast } from '@/contexts/toast-context';
 import { useSession } from 'next-auth/react';
@@ -41,7 +42,10 @@ import {
   ClipboardList,
   Warehouse,
   BarChart3,
-  Globe
+  Globe,
+  Server,
+  Activity,
+  Zap
 } from 'lucide-react';
 
 // Template interfaces
@@ -2345,6 +2349,15 @@ interface NotificationSettings {
     sendEscalation: boolean;
     escalationInterval: number; // hours
   };
+  queue: {
+    emailEnabled: boolean;
+    smsEnabled: boolean;
+    redisUrl: string;
+    emailBatchSize: number;
+    emailDelayMs: number;
+    smsBatchSize: number;
+    smsDelayMs: number;
+  };
 }
 
 const defaultSettings: NotificationSettings = {
@@ -2379,7 +2392,58 @@ const defaultSettings: NotificationSettings = {
     sendOverdue: true,
     sendEscalation: true,
     escalationInterval: 1 // hours
+  },
+  queue: {
+    emailEnabled: true,
+    smsEnabled: true,
+    redisUrl: '',
+    emailBatchSize: 10,
+    emailDelayMs: 1000,
+    smsBatchSize: 10,
+    smsDelayMs: 2000
   }
+};
+
+const normalizeSettings = (incoming?: Partial<NotificationSettings>): NotificationSettings => {
+  const emailSettings = incoming?.email || {};
+  const smsSettings = incoming?.sms || {};
+  const taskSettings = incoming?.taskNotifications || {};
+  const queueSettings = incoming?.queue || {};
+
+  return {
+    email: {
+      ...defaultSettings.email,
+      ...emailSettings,
+      smtp: {
+        ...defaultSettings.email.smtp,
+        ...(emailSettings as any)?.smtp,
+      },
+      notifications: {
+        ...defaultSettings.email.notifications,
+        ...(emailSettings as any)?.notifications,
+      },
+    },
+    sms: {
+      ...defaultSettings.sms,
+      ...smsSettings,
+      provider: {
+        ...defaultSettings.sms.provider,
+        ...(smsSettings as any)?.provider,
+      },
+      notifications: {
+        ...defaultSettings.sms.notifications,
+        ...(smsSettings as any)?.notifications,
+      },
+    },
+    taskNotifications: {
+      ...defaultSettings.taskNotifications,
+      ...taskSettings,
+    },
+    queue: {
+      ...defaultSettings.queue,
+      ...queueSettings,
+    },
+  };
 };
 
 export default function NotificationSettingsPage() {
@@ -2387,7 +2451,7 @@ export default function NotificationSettingsPage() {
   const themeClasses = getThemeClasses();
   const { data: session } = useSession();
   const { success: showSuccess, error: showError } = useToast();
-  const [activeTab, setActiveTab] = useState<'email' | 'sms' | 'routing' | 'email-templates' | 'sms-templates' | 'task-notifications'>('email');
+  const [activeTab, setActiveTab] = useState<'email' | 'sms' | 'routing' | 'email-templates' | 'sms-templates' | 'task-notifications' | 'queue'>('email');
   const [settings, setSettings] = useState<NotificationSettings>(defaultSettings);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -2405,11 +2469,31 @@ export default function NotificationSettingsPage() {
   const [runnerStatus, setRunnerStatus] = useState<'running' | 'stopped' | 'loading'>('loading');
   const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [queueHealth, setQueueHealth] = useState<{ status: 'unknown' | 'healthy' | 'unreachable'; latency?: number; message?: string }>({ status: 'unknown' });
+  const [checkingQueueHealth, setCheckingQueueHealth] = useState(false);
+  const [workerStatus, setWorkerStatus] = useState<{ email: boolean; sms: boolean }>({ email: false, sms: false });
+  const [checkingWorkerStatus, setCheckingWorkerStatus] = useState(false);
 
   useEffect(() => {
     loadSettings();
     checkRunnerStatus();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'queue') {
+      checkQueueWorkers();
+      handleQueueHealthCheck();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    setQueueHealth((prev) => ({
+      ...prev,
+      status: 'unknown',
+      latency: undefined,
+      message: undefined,
+    }));
+  }, [settings.queue.redisUrl]);
 
   const loadSettings = async () => {
     try {
@@ -2418,13 +2502,13 @@ export default function NotificationSettingsPage() {
       
       if (response.ok) {
         const data = await response.json();
-        setSettings(data.settings || defaultSettings);
+        setSettings(normalizeSettings(data.settings));
       } else {
-        setSettings(defaultSettings);
+        setSettings(normalizeSettings());
       }
     } catch (error) {
       console.error('Error loading settings:', error);
-      setSettings(defaultSettings);
+      setSettings(normalizeSettings());
     } finally {
       setIsLoading(false);
     }
@@ -2661,6 +2745,69 @@ export default function NotificationSettingsPage() {
     }
   };
 
+  const updateQueueSetting = (key: keyof NotificationSettings['queue'], value: string | number | boolean) => {
+    setSettings((prev) => ({
+      ...prev,
+      queue: {
+        ...prev.queue,
+        [key]: value,
+      },
+    }));
+  };
+
+  const handleQueueHealthCheck = async () => {
+    try {
+      setCheckingQueueHealth(true);
+      const response = await fetch('/api/queue/health', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          redisUrl: settings.queue.redisUrl || undefined,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setQueueHealth({
+          status: 'healthy',
+          latency: data.latency,
+        });
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setQueueHealth({
+          status: 'unreachable',
+          message: errorData.error || errorData.message || 'Unable to connect to Redis',
+        });
+      }
+    } catch (error) {
+      console.error('Queue health check failed:', error);
+      setQueueHealth({
+        status: 'unreachable',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setCheckingQueueHealth(false);
+    }
+  };
+
+  const checkQueueWorkers = async () => {
+    try {
+      setCheckingWorkerStatus(true);
+      const response = await fetch('/api/queue/workers/init');
+      if (response.ok) {
+        const data = await response.json();
+        setWorkerStatus(data.workers || { email: false, sms: false });
+      } else {
+        setWorkerStatus({ email: false, sms: false });
+      }
+    } catch (error) {
+      console.error('Failed to check queue workers:', error);
+      setWorkerStatus({ email: false, sms: false });
+    } finally {
+      setCheckingWorkerStatus(false);
+    }
+  };
+
   const updateSMSSetting = (key: string, value: string | boolean, autoSave: boolean = false) => {
     if (key.startsWith('notifications.')) {
       const notificationKey = key.replace('notifications.', '');
@@ -2728,6 +2875,13 @@ export default function NotificationSettingsPage() {
     );
   }
 
+  const queueStatusColor =
+    queueHealth.status === 'healthy'
+      ? 'text-green-600'
+      : queueHealth.status === 'unreachable'
+      ? 'text-red-500'
+      : 'text-gray-500';
+
   return (
     <>
       <div className="space-y-6">
@@ -2769,6 +2923,17 @@ export default function NotificationSettingsPage() {
             >
               <Mail className="h-4 w-4 inline mr-2" />
               Email Configuration
+            </button>
+            <button
+              onClick={() => setActiveTab('queue')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'queue'
+                  ? `border-${themeClasses.primary} text-${themeClasses.primary}`
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Server className="h-4 w-4 inline mr-2" />
+              Queue & Bulk Sending
             </button>
             <button
               onClick={() => setActiveTab('sms')}
@@ -3159,6 +3324,196 @@ export default function NotificationSettingsPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {activeTab === 'queue' && (
+          <div className="space-y-6">
+            <Card className="p-6">
+              <div className="flex flex-col gap-4">
+                <div>
+                  <h3 className="text-lg font-medium">Queue Usage</h3>
+                  <p className="text-sm text-gray-500">
+                    Run large email and SMS batches through the background queue to avoid timeouts.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4">
+                    <div>
+                      <p className="font-medium">Use queue for Email</p>
+                      <p className="text-sm text-gray-500">
+                        Recommended for Best Deals and Communication campaigns.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={settings.queue.emailEnabled}
+                      onCheckedChange={(checked) => updateQueueSetting('emailEnabled', Boolean(checked))}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4">
+                    <div>
+                      <p className="font-medium">Use queue for SMS</p>
+                      <p className="text-sm text-gray-500">
+                        Keeps the Deywuro gateway within safe limits.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={settings.queue.smsEnabled}
+                      onCheckedChange={(checked) => updateQueueSetting('smsEnabled', Boolean(checked))}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Batches with {settings.queue.emailBatchSize} + email recipients or {settings.queue.smsBatchSize} + SMS recipients will use the queue automatically.
+                </p>
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <Server className="h-5 w-5 text-gray-500" />
+                <div>
+                  <h3 className="text-lg font-medium">Redis Connection</h3>
+                  <p className="text-sm text-gray-500">
+                    Provide the Redis connection string used by the queue workers.
+                  </p>
+                </div>
+              </div>
+              <Label htmlFor="redisUrl">Redis URL</Label>
+              <Input
+                id="redisUrl"
+                placeholder="redis://localhost:6379"
+                value={settings.queue.redisUrl}
+                onChange={(e) => updateQueueSetting('redisUrl', e.target.value)}
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                Leave blank to use the <code>REDIS_URL</code> environment variable. Changes take effect after the next restart.
+              </p>
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="text-lg font-medium">Batch Configuration</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Adjust batch size and delay between batches. Lower values reduce provider load; higher values finish faster.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-gray-500" /> Email Queue
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                    <div>
+                      <Label>Email batch size</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={settings.queue.emailBatchSize}
+                        onChange={(e) => updateQueueSetting('emailBatchSize', Math.max(1, Number(e.target.value) || 1))}
+                      />
+                    </div>
+                    <div>
+                      <Label>Delay between batches (ms)</Label>
+                      <Input
+                        type="number"
+                        min={100}
+                        step={100}
+                        value={settings.queue.emailDelayMs}
+                        onChange={(e) => updateQueueSetting('emailDelayMs', Math.max(100, Number(e.target.value) || 100))}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-gray-500" /> SMS Queue
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                    <div>
+                      <Label>SMS batch size</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={settings.queue.smsBatchSize}
+                        onChange={(e) => updateQueueSetting('smsBatchSize', Math.max(1, Number(e.target.value) || 1))}
+                      />
+                    </div>
+                    <div>
+                      <Label>Delay between batches (ms)</Label>
+                      <Input
+                        type="number"
+                        min={500}
+                        step={100}
+                        value={settings.queue.smsDelayMs}
+                        onChange={(e) => updateQueueSetting('smsDelayMs', Math.max(500, Number(e.target.value) || 500))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-medium">Queue Health</h3>
+                  <p className="text-sm text-gray-500">
+                    Validate the Redis connection and worker status.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleQueueHealthCheck}
+                    disabled={checkingQueueHealth}
+                    className="flex items-center gap-2"
+                  >
+                    {checkingQueueHealth ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4" />}
+                    Test Redis
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={checkQueueWorkers}
+                    disabled={checkingWorkerStatus}
+                    className="flex items-center gap-2"
+                  >
+                    {checkingWorkerStatus ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                    Refresh Workers
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <p className="text-sm text-gray-500">Redis status</p>
+                  <p className={`text-lg font-semibold ${queueStatusColor}`}>
+                    {queueHealth.status === 'healthy'
+                      ? 'Healthy'
+                      : queueHealth.status === 'unreachable'
+                      ? 'Unreachable'
+                      : 'Unknown'}
+                  </p>
+                  {queueHealth.latency !== undefined && (
+                    <p className="text-xs text-gray-500">Latency: {queueHealth.latency} ms</p>
+                  )}
+                  {queueHealth.message && (
+                    <p className="text-xs text-red-500 mt-1">{queueHealth.message}</p>
+                  )}
+                </div>
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <p className="text-sm text-gray-500">Workers</p>
+                  <ul className="text-sm mt-2 space-y-1">
+                    <li className={workerStatus.email ? 'text-green-600' : 'text-red-500'}>
+                      {workerStatus.email ? '●' : '○'} Email worker {workerStatus.email ? 'ready' : 'not running'}
+                    </li>
+                    <li className={workerStatus.sms ? 'text-green-600' : 'text-red-500'}>
+                      {workerStatus.sms ? '●' : '○'} SMS worker {workerStatus.sms ? 'ready' : 'not running'}
+                    </li>
+                  </ul>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Workers initialize automatically when the admin app starts.
+                  </p>
+                </div>
               </div>
             </Card>
           </div>

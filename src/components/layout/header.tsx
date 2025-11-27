@@ -59,15 +59,23 @@ export function Header() {
 
     searchTimeoutRef.current = setTimeout(async () => {
       try {
+        console.log('Searching for:', searchQuery);
         const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
         if (response.ok) {
           const data = await response.json();
+          console.log('Search results:', data.results);
           setSearchResults(data.results || []);
           setShowSearchResults(true);
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('Search API error:', response.status, response.statusText, errorData);
+          setSearchResults([]);
+          setShowSearchResults(true); // Show dropdown even with no results
         }
       } catch (error) {
         console.error('Search error:', error);
         setSearchResults([]);
+        setShowSearchResults(true); // Show dropdown even with error
       }
     }, 300);
 
@@ -127,30 +135,48 @@ export function Header() {
           <Input
             placeholder="Search anything..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => searchQuery.length >= 2 && setShowSearchResults(true)}
-            className={`w-80 pl-10 h-9 border-gray-200 focus:border-${theme.primary} focus:ring-${theme.primaryBg}`}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSearchQuery(value);
+            }}
+            onFocus={() => {
+              if (searchQuery.length >= 2) {
+                setShowSearchResults(true);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && searchResults.length > 0) {
+                handleResultClick(searchResults[0].url);
+              }
+            }}
+            className="w-80 pl-10 h-9 border-gray-200"
           />
-          {showSearchResults && searchResults.length > 0 && (
+          {showSearchResults && searchQuery.length >= 2 && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
-              {searchResults.map((result) => (
-                <button
-                  key={`${result.type}-${result.id}`}
-                  onClick={() => handleResultClick(result.url)}
-                  className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-start space-x-3 border-b border-gray-100 last:border-b-0"
-                >
-                  <div className={`mt-0.5 text-gray-400`}>
-                    {getResultIcon(result.type)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{result.title}</p>
-                    {result.subtitle && (
-                      <p className="text-xs text-gray-500 truncate">{result.subtitle}</p>
-                    )}
-                    <p className="text-xs text-gray-400 mt-1 capitalize">{result.type}</p>
-                  </div>
-                </button>
-              ))}
+              {searchResults.length > 0 ? (
+                searchResults.map((result) => (
+                  <button
+                    key={`${result.type}-${result.id}`}
+                    onClick={() => handleResultClick(result.url)}
+                    className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-start space-x-3 border-b border-gray-100 last:border-b-0"
+                  >
+                    <div className={`mt-0.5 text-gray-400`}>
+                      {getResultIcon(result.type)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{result.title}</p>
+                      {result.subtitle && (
+                        <p className="text-xs text-gray-500 truncate">{result.subtitle}</p>
+                      )}
+                      <p className="text-xs text-gray-400 mt-1 capitalize">{result.type}</p>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                  No results found for "{searchQuery}"
+                </div>
+              )}
             </div>
           )}
         </div>

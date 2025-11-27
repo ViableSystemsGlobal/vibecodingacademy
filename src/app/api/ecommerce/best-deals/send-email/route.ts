@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCompanyName } from "@/lib/payment-order-notifications";
+import { addBulkEmailJob } from "@/lib/queue-service";
+import { getQueueSettings } from "@/lib/queue-config";
 import nodemailer from "nodemailer";
 
 // Helper function to get setting value
@@ -149,7 +151,7 @@ export async function GET(request: NextRequest) {
     try {
       customerRecords = await prisma.customer.findMany({
         where: {
-          email: { not: null },
+          email: { not: '' },
           isActive: true,
         },
         select: {
@@ -284,7 +286,7 @@ export async function POST(request: NextRequest) {
       const [customers, orderEmails] = await Promise.all([
         prisma.customer.findMany({
           where: {
-            email: { not: null },
+            email: { not: '' },
             isActive: true,
           },
           select: {
@@ -300,7 +302,7 @@ export async function POST(request: NextRequest) {
           },
           distinct: ['customerEmail'],
           where: {
-            customerEmail: { not: null },
+            customerEmail: { not: '' },
           },
         }).catch(() => []),
       ]);
@@ -337,7 +339,7 @@ export async function POST(request: NextRequest) {
         prisma.customer.findMany({
           where: {
             id: { in: customerIds.filter((id: string) => !id.startsWith('order_')) },
-            email: { not: null },
+            email: { not: '' },
           },
           select: {
             email: true,
@@ -352,8 +354,8 @@ export async function POST(request: NextRequest) {
           },
           distinct: ['customerEmail'],
           where: {
-            customerEmail: { not: null },
             customerEmail: {
+              not: '',
               in: customerIds
                 .filter((id: string) => id.startsWith('order_'))
                 .map((id: string) => id.replace('order_', '')),
@@ -467,46 +469,88 @@ export async function POST(request: NextRequest) {
 
     // Generate email HTML
     const emailHtml = generateBestDealsEmail(products, companyName, shopUrl);
+    const subject = `🔥 Best Deals - Exclusive Discounts on Pool Essentials!`;
+    const queueSettings = await getQueueSettings();
 
-    // Send emails to all recipients
-    const results = await Promise.all(
-      recipients.map(async (recipient) => {
-        try {
-          const result = await sendBestDealsEmailDirect(
-            recipient.email,
-            `🔥 Best Deals - Exclusive Discounts on Pool Essentials!`,
-            emailHtml
-          );
-          return {
-            email: recipient.email,
-            name: recipient.name,
-            success: result.success,
-            error: result.error,
-          };
-        } catch (error) {
-          return {
-            email: recipient.email,
-            name: recipient.name,
-            success: false,
-            error: error instanceof Error ? error.message : "Unknown error",
-          };
-        }
-      })
-    );
+    const useQueue =
+      queueSettings.emailEnabled &&
+      recipients.length >= queueSettings.emailBatchSize;
 
-    const successful = results.filter((r) => r.success).length;
-    const failed = results.filter((r) => !r.success).length;
+    if (useQueue) {
+      // Create email campaign
+      const campaign = await prisma.emailCampaign.create({
+        data: {
+          name: `Best Deals Email - ${new Date().toLocaleDateString()}`,
+          description: `Best Deals email sent to ${recipients.length} recipients`,
+          recipients: recipients.map(r => r.email),
+          subject,
+          message: emailHtml,
+          status: 'SENDING',
+          userId: session.user.id,
+          sentAt: new Date(),
+        },
+      });
 
-    return NextResponse.json({
-      success: true,
-      message: `Emails sent: ${successful} successful, ${failed} failed`,
-      results: {
-        total: recipients.length,
-        successful,
-        failed,
-        details: results,
-      },
-    });
+      // Add to queue with batching
+      const { jobId, totalBatches, totalRecipients } = await addBulkEmailJob({
+        recipients: recipients.map(r => r.email),
+        subject,
+        message: emailHtml,
+        userId: session.user.id,
+        campaignId: campaign.id,
+        batchSize: queueSettings.emailBatchSize,
+        delayBetweenBatches: queueSettings.emailDelayMs,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Best Deals email job queued successfully. ${totalRecipients} emails will be sent in ${totalBatches} batches.`,
+        jobId,
+        totalRecipients,
+        totalBatches,
+        queued: true,
+      });
+    } else {
+      // For small batches, send directly (synchronous)
+      const results = await Promise.all(
+        recipients.map(async (recipient) => {
+          try {
+            const result = await sendBestDealsEmailDirect(
+              recipient.email,
+              subject,
+              emailHtml
+            );
+            return {
+              email: recipient.email,
+              name: recipient.name,
+              success: result.success,
+              error: result.error,
+            };
+          } catch (error) {
+            return {
+              email: recipient.email,
+              name: recipient.name,
+              success: false,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        })
+      );
+
+      const successful = results.filter((r) => r.success).length;
+      const failed = results.filter((r) => !r.success).length;
+
+      return NextResponse.json({
+        success: true,
+        message: `Emails sent: ${successful} successful, ${failed} failed`,
+        results: {
+          total: recipients.length,
+          successful,
+          failed,
+          details: results,
+        },
+      });
+    }
   } catch (error: any) {
     console.error("Error sending best deals email:", error);
     return NextResponse.json(

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { addBulkSMSJob, addSMSJob } from '@/lib/queue-service';
+import { getQueueSettings } from '@/lib/queue-config';
 
 async function getSettingValue(key: string, defaultValue: string = ''): Promise<string> {
   try {
@@ -114,30 +116,76 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const results = [];
-    let totalCost = 0;
-    let successCount = 0;
-    let failureCount = 0;
+    // Use queue for bulk sends (10+ recipients) or if explicitly requested
+    const queueSettings = await getQueueSettings();
 
-    // Create campaign if it's a bulk message
-    let campaignId = null;
-    if (isBulk && recipients.length > 1) {
-      const campaign = await prisma.smsCampaign.create({
-        data: {
-          name: `Bulk SMS - ${new Date().toLocaleDateString()}`,
-          description: `Bulk SMS sent to ${recipients.length} recipients`,
-          recipients: recipients,
-          message: message,
-          status: 'SENDING',
-          userId: session.user.id,
-          sentAt: new Date()
-        }
+    const useQueue =
+      queueSettings.smsEnabled &&
+      (isBulk || recipients.length >= queueSettings.smsBatchSize);
+
+    if (useQueue) {
+      // Create campaign if it's a bulk message
+      let campaignId = null;
+      if (isBulk && recipients.length > 1) {
+        const campaign = await prisma.smsCampaign.create({
+          data: {
+            name: `Bulk SMS - ${new Date().toLocaleDateString()}`,
+            description: `Bulk SMS sent to ${recipients.length} recipients`,
+            recipients: recipients,
+            message: message,
+            status: 'SENDING',
+            userId: session.user.id,
+            sentAt: new Date()
+          }
+        });
+        campaignId = campaign.id;
+      }
+
+      // Add to queue with batching
+      const { jobId, totalBatches, totalRecipients } = await addBulkSMSJob({
+        recipients,
+        message,
+        userId: session.user.id,
+        campaignId: campaignId || undefined,
+        distributorId: distributorId || undefined,
+        batchSize: queueSettings.smsBatchSize,
+        delayBetweenBatches: queueSettings.smsDelayMs,
       });
-      campaignId = campaign.id;
-    }
 
-    // Send SMS to each recipient
-    for (const phoneNumber of recipients) {
+      return NextResponse.json({
+        success: true,
+        message: `SMS job queued successfully. ${totalRecipients} SMS will be sent in ${totalBatches} batches.`,
+        jobId,
+        totalRecipients,
+        totalBatches,
+        queued: true,
+      });
+    } else {
+      // For small batches, send directly (synchronous)
+      const results = [];
+      let totalCost = 0;
+      let successCount = 0;
+      let failureCount = 0;
+
+      // Create campaign if it's a bulk message
+      let campaignId = null;
+      if (isBulk && recipients.length > 1) {
+        const campaign = await prisma.smsCampaign.create({
+          data: {
+            name: `Bulk SMS - ${new Date().toLocaleDateString()}`,
+            description: `Bulk SMS sent to ${recipients.length} recipients`,
+            recipients: recipients,
+            message: message,
+            status: 'SENDING',
+            userId: session.user.id,
+            sentAt: new Date()
+          }
+        });
+        campaignId = campaign.id;
+      }
+
+      // Send SMS to each recipient
+      for (const phoneNumber of recipients) {
       try {
         // Validate phone number format
         const cleanPhone = phoneNumber.replace(/\D/g, '');
@@ -274,30 +322,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Update campaign status if it was a bulk message
-    if (campaignId) {
-      await prisma.smsCampaign.update({
-        where: { id: campaignId },
-        data: {
-          status: successCount > 0 ? 'COMPLETED' : 'FAILED',
-          totalSent: successCount,
-          totalFailed: failureCount,
-          completedAt: new Date()
-        }
+      // Update campaign status if it was a bulk message
+      if (campaignId) {
+        await prisma.smsCampaign.update({
+          where: { id: campaignId },
+          data: {
+            status: successCount > 0 ? 'COMPLETED' : 'FAILED',
+            totalSent: successCount,
+            totalFailed: failureCount,
+            completedAt: new Date()
+          }
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `SMS sent to ${successCount} recipients successfully`,
+        results: {
+          total: recipients.length,
+          successful: successCount,
+          failed: failureCount,
+          totalCost: totalCost.toFixed(4)
+        },
+        details: results
       });
     }
-
-    return NextResponse.json({
-      success: true,
-      message: `SMS sent to ${successCount} recipients successfully`,
-      results: {
-        total: recipients.length,
-        successful: successCount,
-        failed: failureCount,
-        totalCost: totalCost.toFixed(4)
-      },
-      details: results
-    });
 
   } catch (error) {
     console.error('Error in SMS send API:', error);

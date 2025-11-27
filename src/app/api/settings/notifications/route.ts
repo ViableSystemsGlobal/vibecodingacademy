@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCompanyNameFromSystemSettings } from "@/lib/company-settings";
+import { getQueueSettings } from "@/lib/queue-config";
 
 // Helper function to get setting value from database or environment
 async function getSettingValue(key: string, defaultValue: string = ''): Promise<string> {
@@ -208,7 +209,8 @@ export async function GET(request: NextRequest) {
         sendOverdue: (await getSettingValue('TASK_NOTIFICATION_SEND_OVERDUE', 'true')) === 'true',
         sendEscalation: (await getSettingValue('TASK_NOTIFICATION_SEND_ESCALATION', 'true')) === 'true',
         escalationInterval: parseInt(await getSettingValue('TASK_NOTIFICATION_ESCALATION_INTERVAL', '1'))
-      }
+      },
+      queue: await getQueueSettings()
     };
 
     return NextResponse.json({ settings });
@@ -321,6 +323,23 @@ export async function PUT(request: NextRequest) {
       await saveSetting('TASK_NOTIFICATION_SEND_OVERDUE', settings.taskNotifications.sendOverdue ? 'true' : 'false');
       await saveSetting('TASK_NOTIFICATION_SEND_ESCALATION', settings.taskNotifications.sendEscalation ? 'true' : 'false');
       await saveSetting('TASK_NOTIFICATION_ESCALATION_INTERVAL', settings.taskNotifications.escalationInterval?.toString() || '1');
+    }
+
+    // Save queue settings
+    if (settings.queue) {
+      await saveSetting('QUEUE_EMAIL_ENABLED', settings.queue.emailEnabled ? 'true' : 'false');
+      await saveSetting('QUEUE_SMS_ENABLED', settings.queue.smsEnabled ? 'true' : 'false');
+      await saveSetting('QUEUE_EMAIL_BATCH_SIZE', settings.queue.emailBatchSize?.toString() || '10');
+      await saveSetting('QUEUE_EMAIL_DELAY_MS', settings.queue.emailDelayMs?.toString() || '1000');
+      await saveSetting('QUEUE_SMS_BATCH_SIZE', settings.queue.smsBatchSize?.toString() || '10');
+      await saveSetting('QUEUE_SMS_DELAY_MS', settings.queue.smsDelayMs?.toString() || '2000');
+
+      if (typeof settings.queue.redisUrl === 'string') {
+        await saveSetting('QUEUE_REDIS_URL', settings.queue.redisUrl || '');
+        if (settings.queue.redisUrl) {
+          process.env.REDIS_URL = settings.queue.redisUrl;
+        }
+      }
     }
 
     return NextResponse.json({

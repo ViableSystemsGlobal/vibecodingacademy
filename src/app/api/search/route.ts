@@ -85,14 +85,14 @@ export async function GET(request: NextRequest) {
         where: {
           OR: [
             { number: { contains: searchTerm } },
-            { subject: { contains: searchTerm } },
+            { notes: { contains: searchTerm } },
           ],
           ...(isSuperAdmin ? {} : { ownerId: userId }),
         },
         select: {
           id: true,
           number: true,
-          subject: true,
+          notes: true,
         },
         take: 5,
       }),
@@ -163,7 +163,7 @@ export async function GET(request: NextRequest) {
         type: 'order',
         id: o.id,
         title: o.number,
-        subtitle: o.subject,
+        subtitle: o.notes || '',
         url: `/orders/${o.id}`,
       })),
       ...accounts.map(a => ({

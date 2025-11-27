@@ -4,6 +4,8 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getCompanyName } from '@/lib/company-settings';
 import nodemailer from 'nodemailer';
+import { addBulkEmailJob } from '@/lib/queue-service';
+import { getQueueSettings } from '@/lib/queue-config';
 
 // Helper function to get setting value from database
 async function getSettingValue(key: string, defaultValue: string = ''): Promise<string> {
@@ -144,87 +146,132 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const results = [];
-    const emailMessages = [];
+    // Normalize recipients to array of email strings
+    const emailRecipients = recipients.map((r: any) => typeof r === 'string' ? r : r.email);
 
-    // Send emails to each recipient
-    for (const recipient of recipients) {
-      // Handle both string emails and object with email property
-      const emailAddress = typeof recipient === 'string' ? recipient : recipient.email;
-      
-      try {
-        const emailResult = await sendEmailViaSMTP(emailAddress, subject, message, attachments);
-        
-        // Create email message record
-        const emailMessage = await prisma.emailMessage.create({
+    const queueSettings = await getQueueSettings();
+
+    // Use queue for bulk sends based on settings
+    const useQueue =
+      queueSettings.emailEnabled &&
+      (isBulk || emailRecipients.length >= queueSettings.emailBatchSize);
+
+    if (useQueue) {
+      // Create email campaign if bulk
+      let campaignId = null;
+      if (isBulk && emailRecipients.length > 1) {
+        const campaign = await prisma.emailCampaign.create({
           data: {
-            recipient: emailAddress,
+            name: `Bulk Email - ${new Date().toLocaleDateString()}`,
+            description: `Bulk email sent to ${emailRecipients.length} recipients`,
+            recipients: emailRecipients,
             subject,
             message,
-            status: emailResult.success ? 'SENT' : 'FAILED',
-            sentAt: emailResult.success ? new Date() : null,
-            failedAt: emailResult.success ? null : new Date(),
-            errorMessage: emailResult.error || null,
-            provider: 'smtp',
-            providerId: emailResult.messageId || null,
+            status: 'SENDING',
             userId: session.user.id,
-            isBulk,
+            sentAt: new Date(),
           },
         });
-
-        emailMessages.push(emailMessage);
-        results.push({
-          recipient: emailAddress,
-          success: emailResult.success,
-          error: emailResult.error,
-          messageId: emailMessage.id
-        });
-
-      } catch (error) {
-        console.error(`Error sending email to ${emailAddress}:`, error);
-        
-        // Create failed email message record
-        const emailMessage = await prisma.emailMessage.create({
-          data: {
-            recipient: emailAddress,
-            subject,
-            message,
-            status: 'FAILED',
-            failedAt: new Date(),
-            errorMessage: error instanceof Error ? error.message : 'Unknown error',
-            provider: 'smtp',
-            userId: session.user.id,
-            isBulk,
-          },
-        });
-
-        emailMessages.push(emailMessage);
-        results.push({
-          recipient: emailAddress,
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          messageId: emailMessage.id
-        });
+        campaignId = campaign.id;
       }
+
+      // Add to queue with batching
+      const { jobId, totalBatches, totalRecipients } = await addBulkEmailJob({
+        recipients: emailRecipients,
+        subject,
+        message,
+        attachments,
+        userId: session.user.id,
+        campaignId,
+        batchSize: queueSettings.emailBatchSize,
+        delayBetweenBatches: queueSettings.emailDelayMs,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Email job queued successfully. ${totalRecipients} emails will be sent in ${totalBatches} batches.`,
+        jobId,
+        totalRecipients,
+        totalBatches,
+        queued: true,
+      });
+    } else {
+      // For small batches, send directly (synchronous)
+      const results = [];
+      const emailMessages = [];
+
+      for (const emailAddress of emailRecipients) {
+        try {
+          const emailResult = await sendEmailViaSMTP(emailAddress, subject, message, attachments);
+          
+          const emailMessage = await prisma.emailMessage.create({
+            data: {
+              recipient: emailAddress,
+              subject,
+              message,
+              status: emailResult.success ? 'SENT' : 'FAILED',
+              sentAt: emailResult.success ? new Date() : null,
+              failedAt: emailResult.success ? null : new Date(),
+              errorMessage: emailResult.error || null,
+              provider: 'smtp',
+              providerId: emailResult.messageId || null,
+              userId: session.user.id,
+              isBulk: false,
+            },
+          });
+
+          emailMessages.push(emailMessage);
+          results.push({
+            recipient: emailAddress,
+            success: emailResult.success,
+            error: emailResult.error,
+            messageId: emailMessage.id
+          });
+        } catch (error) {
+          console.error(`Error sending email to ${emailAddress}:`, error);
+          
+          const emailMessage = await prisma.emailMessage.create({
+            data: {
+              recipient: emailAddress,
+              subject,
+              message,
+              status: 'FAILED',
+              failedAt: new Date(),
+              errorMessage: error instanceof Error ? error.message : 'Unknown error',
+              provider: 'smtp',
+              userId: session.user.id,
+              isBulk: false,
+            },
+          });
+
+          emailMessages.push(emailMessage);
+          results.push({
+            recipient: emailAddress,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            messageId: emailMessage.id
+          });
+        }
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      const failureCount = results.filter(r => !r.success).length;
+
+      return NextResponse.json({
+        success: true,
+        message: `Email processing completed. ${successCount} sent, ${failureCount} failed.`,
+        results,
+        totalSent: successCount,
+        totalFailed: failureCount,
+        emailMessages: emailMessages.map(msg => ({
+          id: msg.id,
+          recipient: msg.recipient,
+          status: msg.status,
+          sentAt: msg.sentAt,
+          errorMessage: msg.errorMessage
+        }))
+      });
     }
-
-    const successCount = results.filter(r => r.success).length;
-    const failureCount = results.filter(r => !r.success).length;
-
-    return NextResponse.json({
-      success: true,
-      message: `Email processing completed. ${successCount} sent, ${failureCount} failed.`,
-      results,
-      totalSent: successCount,
-      totalFailed: failureCount,
-      emailMessages: emailMessages.map(msg => ({
-        id: msg.id,
-        recipient: msg.recipient,
-        status: msg.status,
-        sentAt: msg.sentAt,
-        errorMessage: msg.errorMessage
-      }))
-    });
 
   } catch (error) {
     console.error('Error in email send API:', error);

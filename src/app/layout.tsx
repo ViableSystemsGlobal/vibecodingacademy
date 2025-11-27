@@ -10,6 +10,7 @@ import { WishlistProvider as WishlistContextProvider } from "@/contexts/wishlist
 import { ToastContainer } from "@/components/toast-container";
 import { HydrationBoundary } from "@/components/hydration-boundary";
 import { TaskNotificationStarter } from "@/components/task-notification-starter";
+import { QueueWorkerStarter } from "@/components/queue-worker-starter";
 import { DynamicFavicon } from "@/components/dynamic-favicon";
 import { AppLayout } from "@/components/layout/app-layout";
 import { InitialLoader } from "@/components/initial-loader";
@@ -124,6 +125,7 @@ export default function RootLayout({
                             <InitialLoader />
                             <ConditionalAdminComponents>
                             <TaskNotificationStarter />
+                            <QueueWorkerStarter />
                             </ConditionalAdminComponents>
                             <DynamicFavicon />
                             <AppLayout>
