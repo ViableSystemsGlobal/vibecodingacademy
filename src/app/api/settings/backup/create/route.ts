@@ -6,6 +6,10 @@ import { getDatabasePath, getUploadDirectories, getAllFiles } from '@/lib/db-uti
 import archiver from 'archiver';
 import { join, relative } from 'path';
 import { existsSync } from 'fs';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,24 +19,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get database path dynamically
-    const dbPath = getDatabasePath();
+    const dbUrl = process.env.DATABASE_URL || '';
+    const isPostgreSQL = dbUrl.startsWith('postgresql://') || dbUrl.startsWith('postgres://');
     
-    if (!dbPath) {
-      return NextResponse.json(
-        { error: 'Database backup is only available for SQLite databases. For PostgreSQL, please use pg_dump.' },
-        { status: 400 }
-      );
-    }
-
-    // Check if database exists
-    if (!existsSync(dbPath)) {
-      return NextResponse.json(
-        { error: 'Database file not found' },
-        { status: 404 }
-      );
-    }
-
     // Create a ZIP archive
     const archive = archiver('zip', {
       zlib: { level: 9 } // Maximum compression
@@ -51,10 +40,113 @@ export async function POST(request: NextRequest) {
       archiveError = err;
     });
 
-    // Add database file to archive
-    const dbBuffer = await readFile(dbPath);
-    const dbFileName = dbPath.split(/[/\\]/).pop() || 'database.db';
-    archive.append(dbBuffer, { name: `database/${dbFileName}` });
+    let databaseBackedUp = false;
+    let dbFileName = 'database.db';
+    let dbSize = 0;
+
+    if (isPostgreSQL) {
+      // Use pg_dump for PostgreSQL
+      try {
+        // Parse DATABASE_URL to extract connection details
+        const url = new URL(dbUrl);
+        const host = url.hostname;
+        const port = url.port || '5432';
+        const database = url.pathname.slice(1); // Remove leading /
+        const username = url.username;
+        const password = url.password;
+
+        // Create pg_dump command
+        // Use PGPASSWORD environment variable for password
+        const pgDumpCommand = `PGPASSWORD="${password}" pg_dump -h ${host} -p ${port} -U ${username} -d ${database} -F c -f /tmp/pg_backup.dump`;
+
+        // Execute pg_dump
+        await execAsync(pgDumpCommand, {
+          env: { ...process.env, PGPASSWORD: password },
+          maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+        });
+
+        // Read the dump file
+        const dumpBuffer = await readFile('/tmp/pg_backup.dump');
+        dbSize = dumpBuffer.length;
+        dbFileName = 'database.dump';
+        
+        archive.append(dumpBuffer, { name: `database/${dbFileName}` });
+        databaseBackedUp = true;
+
+        // Clean up temp file
+        try {
+          await execAsync('rm /tmp/pg_backup.dump');
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      } catch (error: any) {
+        console.error('Error creating PostgreSQL backup:', error);
+        // Fall back to SQL dump format if custom format fails
+        try {
+          const url = new URL(dbUrl);
+          const host = url.hostname;
+          const port = url.port || '5432';
+          const database = url.pathname.slice(1);
+          const username = url.username;
+          const password = url.password;
+
+          const pgDumpCommand = `PGPASSWORD="${password}" pg_dump -h ${host} -p ${port} -U ${username} -d ${database} -F p > /tmp/pg_backup.sql`;
+
+          await execAsync(pgDumpCommand, {
+            env: { ...process.env, PGPASSWORD: password },
+            maxBuffer: 10 * 1024 * 1024
+          });
+
+          const dumpBuffer = await readFile('/tmp/pg_backup.sql');
+          dbSize = dumpBuffer.length;
+          dbFileName = 'database.sql';
+          
+          archive.append(dumpBuffer, { name: `database/${dbFileName}` });
+          databaseBackedUp = true;
+
+          try {
+            await execAsync('rm /tmp/pg_backup.sql');
+          } catch (e) {
+            // Ignore
+          }
+        } catch (fallbackError: any) {
+          return NextResponse.json(
+            { error: `Failed to create PostgreSQL backup: ${fallbackError.message}. Make sure pg_dump is installed and accessible.` },
+            { status: 500 }
+          );
+        }
+      }
+    } else {
+      // SQLite file-based backup
+      const dbPath = getDatabasePath();
+      
+      if (!dbPath) {
+        return NextResponse.json(
+          { error: 'Could not determine database path' },
+          { status: 400 }
+        );
+      }
+
+      if (!existsSync(dbPath)) {
+        return NextResponse.json(
+          { error: 'Database file not found' },
+          { status: 404 }
+        );
+      }
+
+      const dbBuffer = await readFile(dbPath);
+      dbSize = dbBuffer.length;
+      dbFileName = dbPath.split(/[/\\]/).pop() || 'database.db';
+      archive.append(dbBuffer, { name: `database/${dbFileName}` });
+      databaseBackedUp = true;
+    }
+
+    if (!databaseBackedUp) {
+      return NextResponse.json(
+        { error: 'Failed to backup database' },
+        { status: 500 }
+      );
+    }
 
     // Add all uploaded files
     const uploadDirs = getUploadDirectories();
@@ -93,7 +185,8 @@ export async function POST(request: NextRequest) {
     const manifestData = {
       backupDate: new Date().toISOString(),
       databaseFile: `database/${dbFileName}`,
-      databaseSize: dbBuffer.length,
+      databaseType: isPostgreSQL ? 'postgresql' : 'sqlite',
+      databaseSize: dbSize,
       uploadDirectories: manifest,
       totalFiles: filesAdded + 1, // +1 for database
       version: '1.0'
@@ -143,4 +236,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

@@ -309,17 +309,17 @@ export default function BackupSettingsPage() {
         </Card>
       </div>
 
-      {/* PostgreSQL Warning */}
+      {/* PostgreSQL Info */}
       {backupInfo.isPostgreSQL && (
         <Card className="bg-blue-50 border-blue-200">
           <CardContent className="p-4">
             <div className="flex items-start space-x-3">
-              <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
+              <CheckCircle className="h-5 w-5 text-blue-600 mt-0.5" />
               <div>
                 <h3 className="font-semibold text-blue-900">PostgreSQL Database Detected</h3>
                 <p className="text-sm text-blue-800 mt-1">
-                  You are using PostgreSQL. File-based backup/restore is not available. 
-                  Please use <code className="bg-blue-100 px-1 rounded">pg_dump</code> and <code className="bg-blue-100 px-1 rounded">pg_restore</code> for database backups.
+                  You are using PostgreSQL. Backup and restore functionality is now available using <code className="bg-blue-100 px-1 rounded">pg_dump</code> and <code className="bg-blue-100 px-1 rounded">pg_restore</code>.
+                  Make sure these tools are installed on your server.
                 </p>
               </div>
             </div>
@@ -352,15 +352,15 @@ export default function BackupSettingsPage() {
             </p>
           )}
           {backupInfo.isPostgreSQL && (
-            <p className="text-sm text-orange-600 font-medium mt-2">
-              Note: File-based backup is only available for SQLite databases.
+            <p className="text-sm text-blue-600 font-medium mt-2">
+              Note: PostgreSQL backups use pg_dump. Make sure pg_dump is installed on your server.
           </p>
           )}
 
           <div className="flex items-center space-x-4">
             <Button
               onClick={handleBackupDatabase}
-              disabled={isBackingUp || backupInfo.isPostgreSQL}
+              disabled={isBackingUp}
               className="flex items-center"
               style={{ backgroundColor: getThemeColor(), color: 'white' }}
             >
@@ -398,8 +398,8 @@ export default function BackupSettingsPage() {
                   Restoring a backup will replace your current database. All existing data will be lost.
                   Make sure you have a current backup before proceeding.
                   {backupInfo.isPostgreSQL && (
-                    <span className="block mt-2 text-orange-600 font-medium">
-                      Note: File-based restore is only available for SQLite databases.
+                    <span className="block mt-2 text-blue-600 font-medium">
+                      Note: PostgreSQL restore uses pg_restore/psql. Make sure these tools are installed on your server.
                     </span>
                   )}
                 </p>
@@ -413,13 +413,12 @@ export default function BackupSettingsPage() {
             </label>
             <input
               type="file"
-              accept=".zip,.db,.sql"
+              accept=".zip,.db,.sql,.dump"
               onChange={handleFileSelect}
-              disabled={backupInfo.isPostgreSQL}
-              className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Supports: .zip (full backup with files), .db or .sql (database only - legacy format)
+              Supports: .zip (full backup with files), .db, .sql, or .dump (database only - legacy format)
             </p>
             {selectedFile && (
               <p className="text-sm text-green-600 mt-2 flex items-center">
@@ -431,7 +430,7 @@ export default function BackupSettingsPage() {
 
           <Button
             onClick={handleRestoreDatabase}
-            disabled={!selectedFile || isRestoring || backupInfo.isPostgreSQL}
+            disabled={!selectedFile || isRestoring}
             variant="outline"
             className="flex items-center border-red-300 text-red-700 hover:bg-red-50"
           >

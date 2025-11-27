@@ -6,6 +6,10 @@ import { getDatabasePath, getUploadDirectories } from '@/lib/db-utils';
 import AdmZip from 'adm-zip';
 import { join, dirname } from 'path';
 import { existsSync } from 'fs';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,15 +19,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get database path dynamically
-    const dbPath = getDatabasePath();
-    
-    if (!dbPath) {
-      return NextResponse.json(
-        { error: 'Database restore is only available for SQLite databases. For PostgreSQL, please use pg_restore.' },
-        { status: 400 }
-      );
-    }
+    const dbUrl = process.env.DATABASE_URL || '';
+    const isPostgreSQL = dbUrl.startsWith('postgresql://') || dbUrl.startsWith('postgres://');
 
     // Get the uploaded file
     const formData = await request.formData();
@@ -37,13 +34,13 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Check if it's a ZIP file (new format) or old .db/.sql file
+    // Check if it's a ZIP file (new format) or old .db/.sql/.dump file
     const isZip = file.name.endsWith('.zip');
-    const isOldFormat = file.name.endsWith('.db') || file.name.endsWith('.sql');
+    const isOldFormat = file.name.endsWith('.db') || file.name.endsWith('.sql') || file.name.endsWith('.dump');
 
     if (!isZip && !isOldFormat) {
       return NextResponse.json(
-        { error: 'Invalid file type. Please upload a .zip, .db, or .sql file' },
+        { error: 'Invalid file type. Please upload a .zip, .db, .sql, or .dump file' },
         { status: 400 }
       );
     }
@@ -53,10 +50,98 @@ export async function POST(request: NextRequest) {
       const zip = new AdmZip(buffer);
       const zipEntries = zip.getEntries();
       
+      // Read manifest to determine database type
+      let manifest: any = null;
+      let databaseEntry: any = null;
+      let databaseType = 'sqlite';
+
+      for (const entry of zipEntries) {
+        if (entry.entryName === 'manifest.json') {
+          manifest = JSON.parse(entry.getData().toString());
+          databaseType = manifest.databaseType || 'sqlite';
+        }
+        if (entry.entryName.startsWith('database/')) {
+          databaseEntry = entry;
+        }
+      }
+
+      if (!databaseEntry) {
+        return NextResponse.json(
+          { error: 'Database file not found in backup archive' },
+          { status: 400 }
+        );
+      }
+
       let databaseRestored = false;
       let filesRestored = 0;
 
-      // Extract all files
+      // Restore database
+      if (isPostgreSQL) {
+        // PostgreSQL restore
+        try {
+          const url = new URL(dbUrl);
+          const host = url.hostname;
+          const port = url.port || '5432';
+          const database = url.pathname.slice(1);
+          const username = url.username;
+          const password = url.password;
+
+          const dbData = databaseEntry.getData();
+          const dbFileName = databaseEntry.entryName.replace('database/', '');
+
+          // Save dump to temp file
+          const tempFile = `/tmp/pg_restore_${Date.now()}.${dbFileName.endsWith('.sql') ? 'sql' : 'dump'}`;
+          await writeFile(tempFile, dbData);
+
+          if (dbFileName.endsWith('.dump')) {
+            // Custom format - use pg_restore
+            const pgRestoreCommand = `PGPASSWORD="${password}" pg_restore -h ${host} -p ${port} -U ${username} -d ${database} --clean --if-exists ${tempFile}`;
+            
+            await execAsync(pgRestoreCommand, {
+              env: { ...process.env, PGPASSWORD: password },
+              maxBuffer: 10 * 1024 * 1024
+            });
+          } else {
+            // SQL format - use psql
+            const psqlCommand = `PGPASSWORD="${password}" psql -h ${host} -p ${port} -U ${username} -d ${database} -f ${tempFile}`;
+            
+            await execAsync(psqlCommand, {
+              env: { ...process.env, PGPASSWORD: password },
+              maxBuffer: 10 * 1024 * 1024
+            });
+          }
+
+          // Clean up temp file
+          try {
+            await execAsync(`rm ${tempFile}`);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+
+          databaseRestored = true;
+        } catch (error: any) {
+          console.error('Error restoring PostgreSQL database:', error);
+          return NextResponse.json(
+            { error: `Failed to restore PostgreSQL database: ${error.message}. Make sure pg_restore/psql is installed and accessible.` },
+            { status: 500 }
+          );
+        }
+      } else {
+        // SQLite restore
+        const dbPath = getDatabasePath();
+        
+        if (!dbPath) {
+          return NextResponse.json(
+            { error: 'Could not determine database path' },
+            { status: 400 }
+          );
+        }
+
+        await writeFile(dbPath, databaseEntry.getData());
+        databaseRestored = true;
+      }
+
+      // Restore uploaded files
       for (const entry of zipEntries) {
         if (entry.isDirectory) {
           continue;
@@ -64,16 +149,6 @@ export async function POST(request: NextRequest) {
 
         const entryName = entry.entryName;
 
-        // Restore database file
-        if (entryName.startsWith('database/')) {
-          const dbFileName = entryName.replace('database/', '');
-          // Use the actual database path, not the filename from archive
-          await writeFile(dbPath, entry.getData());
-          databaseRestored = true;
-          continue;
-        }
-
-        // Restore uploaded files
         if (entryName.startsWith('uploads/')) {
           const relativePath = entryName.replace('uploads/', '');
           const parts = relativePath.split('/');
@@ -115,8 +190,8 @@ export async function POST(request: NextRequest) {
 
       if (!databaseRestored) {
         return NextResponse.json(
-          { error: 'Database file not found in backup archive' },
-          { status: 400 }
+          { error: 'Failed to restore database' },
+          { status: 500 }
         );
       }
 
@@ -127,12 +202,69 @@ export async function POST(request: NextRequest) {
 
     } else {
       // Handle old format (database only)
-    await writeFile(dbPath, buffer);
+      if (isPostgreSQL) {
+        // PostgreSQL restore from .sql or .dump file
+        try {
+          const url = new URL(dbUrl);
+          const host = url.hostname;
+          const port = url.port || '5432';
+          const database = url.pathname.slice(1);
+          const username = url.username;
+          const password = url.password;
 
-    return NextResponse.json({
-      success: true,
-        message: 'Database restored successfully (legacy format - files not included)'
-    });
+          const tempFile = `/tmp/pg_restore_${Date.now()}.${file.name.endsWith('.dump') ? 'dump' : 'sql'}`;
+          await writeFile(tempFile, buffer);
+
+          if (file.name.endsWith('.dump')) {
+            const pgRestoreCommand = `PGPASSWORD="${password}" pg_restore -h ${host} -p ${port} -U ${username} -d ${database} --clean --if-exists ${tempFile}`;
+            
+            await execAsync(pgRestoreCommand, {
+              env: { ...process.env, PGPASSWORD: password },
+              maxBuffer: 10 * 1024 * 1024
+            });
+          } else {
+            const psqlCommand = `PGPASSWORD="${password}" psql -h ${host} -p ${port} -U ${username} -d ${database} -f ${tempFile}`;
+            
+            await execAsync(psqlCommand, {
+              env: { ...process.env, PGPASSWORD: password },
+              maxBuffer: 10 * 1024 * 1024
+            });
+          }
+
+          try {
+            await execAsync(`rm ${tempFile}`);
+          } catch (e) {
+            // Ignore
+          }
+
+          return NextResponse.json({
+            success: true,
+            message: 'Database restored successfully (legacy format - files not included)'
+          });
+        } catch (error: any) {
+          return NextResponse.json(
+            { error: `Failed to restore PostgreSQL database: ${error.message}` },
+            { status: 500 }
+          );
+        }
+      } else {
+        // SQLite restore
+        const dbPath = getDatabasePath();
+        
+        if (!dbPath) {
+          return NextResponse.json(
+            { error: 'Could not determine database path' },
+            { status: 400 }
+          );
+        }
+
+        await writeFile(dbPath, buffer);
+
+        return NextResponse.json({
+          success: true,
+          message: 'Database restored successfully (legacy format - files not included)'
+        });
+      }
     }
 
   } catch (error) {
@@ -143,4 +275,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
