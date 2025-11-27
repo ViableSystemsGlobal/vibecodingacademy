@@ -1,1 +1,13 @@
-{}
+{
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/api/public/shop/auth/me/route": "app/api/public/shop/auth/me/route.js",
+  "/api/public/shop/banners/route": "app/api/public/shop/banners/route.js",
+  "/api/public/shop/cart/route": "app/api/public/shop/cart/route.js",
+  "/api/public/shop/categories/route": "app/api/public/shop/categories/route.js",
+  "/api/public/shop/deals/route": "app/api/public/shop/deals/route.js",
+  "/api/public/shop/products/route": "app/api/public/shop/products/route.js",
+  "/api/public/storefront/content/route": "app/api/public/storefront/content/route.js",
+  "/api/public/storefront/sections/route": "app/api/public/storefront/sections/route.js",
+  "/api/public/storefront/seo/route": "app/api/public/storefront/seo/route.js",
+  "/page": "app/page.js"
+}

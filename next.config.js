@@ -43,6 +43,9 @@ const nextConfig = {
     // TODO: Fix remaining TypeScript errors in PDF generation and other edge cases
     ignoreBuildErrors: true,
   },
+  turbopack: {
+    root: __dirname,
+  },
 }
 
 module.exports = nextConfig

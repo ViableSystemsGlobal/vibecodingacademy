@@ -1,5 +1,21 @@
 {
-  "node": {},
+  "node": {
+    "00d04a8b03686e97bb383f274c3be3385533dd35f9": {
+      "workers": {
+        "app/page": {
+          "moduleId": "[project]/.next-internal/server/app/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/lib/storefront-seo.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getStorefrontSeoSettings",
+          "filename": "src/lib/storefront-seo.ts"
+        }
+      },
+      "layer": {
+        "app/page": "rsc"
+      },
+      "filename": "src/lib/storefront-seo.ts",
+      "exportedName": "getStorefrontSeoSettings"
+    }
+  },
   "edge": {},
-  "encryptionKey": "AhLRHUDnbhn2nSRA0NybxLAWBKMQXXOBN6HO3B1n6YM="
+  "encryptionKey": "+B0mWH2TpcBCwBAi9UXUMRrsmPO/ajJQZkxrv9l851I="
 }
