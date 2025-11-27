@@ -13,7 +13,7 @@ model User {
   name                       String?
   phone                      String?
   image                      String?
-  role                       UserRole                   @default("SALES_REP")
+  role                       UserRole                   @default(SALES_REP)
   isActive                   Boolean                    @default(true)
   lastLoginAt                DateTime?
   emailVerified              DateTime?
@@ -201,7 +201,7 @@ model EcommerceCategoryConfig {
 
 model Product {
   id                      String                   @id @default(cuid())
-  type                    ItemType                 @default("PRODUCT")
+  type                    ItemType                 @default(PRODUCT)
   sku                     String?                  @unique
   name                    String
   description             String?
@@ -226,7 +226,7 @@ model Product {
   updatedAt               DateTime                 @updatedAt
   costPrice               Float?
   barcode                 String?                  @unique
-  barcodeType             BarcodeType?             @default("EAN13")
+  barcodeType             BarcodeType?             @default(EAN13)
   generateBarcode         Boolean                  @default(true)
   serviceCode             String?                  @unique
   duration                String?
@@ -313,7 +313,7 @@ model Address {
   id                         String      @id @default(cuid())
   accountId                  String
   label                      String
-  type                       AddressType @default("BOTH")
+  type                       AddressType @default(BOTH)
   street                     String
   city                       String
   region                     String
@@ -337,7 +337,7 @@ model Address {
 model Account {
   id                       String        @id @default(cuid())
   name                     String
-  type                     AccountType   @default("INDIVIDUAL")
+  type                     AccountType   @default(INDIVIDUAL)
   email                    String?
   phone                    String?
   address                  String?
@@ -401,7 +401,7 @@ model Lead {
   phone              String?
   company            String?
   source             String?
-  status             LeadStatus    @default("NEW")
+  status             LeadStatus    @default(NEW)
   score              Int           @default(0)
   notes              String?
   subject            String?
@@ -439,7 +439,7 @@ model Lead {
 model Opportunity {
   id          String           @id @default(cuid())
   name        String
-  stage       OpportunityStage @default("QUOTE_SENT")
+  stage       OpportunityStage @default(QUOTE_SENT)
   value       Float?
   probability Int              @default(0)
   closeDate   DateTime?
@@ -465,7 +465,7 @@ model Opportunity {
 model Quotation {
   id                      String          @id @default(cuid())
   number                  String          @unique
-  status                  QuotationStatus @default("DRAFT")
+  status                  QuotationStatus @default(DRAFT)
   subject                 String
   validUntil              DateTime?
   notes                   String?
@@ -479,7 +479,7 @@ model Quotation {
   distributorId           String?
   leadId                  String?
   opportunityId           String?
-  customerType            CustomerType    @default("STANDARD")
+  customerType            CustomerType    @default(STANDARD)
   ownerId                 String
   createdAt               DateTime        @default(now())
   updatedAt               DateTime        @updatedAt
@@ -534,7 +534,7 @@ model QuotationLine {
 model Proforma {
   id          String         @id @default(cuid())
   number      String         @unique
-  status      ProformaStatus @default("DRAFT")
+  status      ProformaStatus @default(DRAFT)
   subject     String
   validUntil  DateTime?
   notes       String?
@@ -648,7 +648,7 @@ model Supplier {
   country      String?         @default("Ghana")
   taxId        String?
   paymentTerms String?
-  status       SupplierStatus  @default("ACTIVE")
+  status       SupplierStatus  @default(ACTIVE)
   notes        String?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
@@ -668,8 +668,8 @@ model Backorder {
   quantityPending   Float
   unitPrice         Float
   lineTotal         Float
-  status            BackorderStatus   @default("PENDING")
-  priority          BackorderPriority @default("NORMAL")
+  status            BackorderStatus   @default(PENDING)
+  priority          BackorderPriority @default(NORMAL)
   expectedDate      DateTime?
   notes             String?
   accountId         String
@@ -750,7 +750,7 @@ model Notification {
   message     String
   data        Json?
   channels    Json
-  status      NotificationStatus @default("PENDING")
+  status      NotificationStatus @default(PENDING)
   scheduledAt DateTime?
   sentAt      DateTime?
   readAt      DateTime?
@@ -795,7 +795,7 @@ model SmsMessage {
   id           String       @id @default(cuid())
   recipient    String
   message      String
-  status       SmsStatus    @default("PENDING")
+  status       SmsStatus    @default(PENDING)
   sentAt       DateTime?
   deliveredAt  DateTime?
   failedAt     DateTime?
@@ -820,7 +820,7 @@ model SmsCampaign {
   description String?
   recipients  Json
   message     String
-  status      CampaignStatus @default("DRAFT")
+  status      CampaignStatus @default(DRAFT)
   scheduledAt DateTime?
   sentAt      DateTime?
   completedAt DateTime?
@@ -840,7 +840,7 @@ model EmailMessage {
   recipient    String
   subject      String
   message      String
-  status       EmailStatus    @default("PENDING")
+  status       EmailStatus    @default(PENDING)
   sentAt       DateTime?
   deliveredAt  DateTime?
   failedAt     DateTime?
@@ -865,7 +865,7 @@ model EmailCampaign {
   recipients  Json
   subject     String
   message     String
-  status      CampaignStatus @default("DRAFT")
+  status      CampaignStatus @default(DRAFT)
   scheduledAt DateTime?
   sentAt      DateTime?
   completedAt DateTime?
@@ -884,12 +884,12 @@ model Task {
   id                String              @id @default(cuid())
   title             String
   description       String?
-  status            TaskStatus          @default("PENDING")
-  priority          TaskPriority        @default("MEDIUM")
+  status            TaskStatus          @default(PENDING)
+  priority          TaskPriority        @default(MEDIUM)
   dueDate           DateTime?
   completedAt       DateTime?
   assignedTo        String?
-  assignmentType    AssignmentType      @default("INDIVIDUAL")
+  assignmentType    AssignmentType      @default(INDIVIDUAL)
   createdBy         String
   estimatedDuration Int?
   actualDuration    Int?
@@ -927,7 +927,7 @@ model TaskAssignee {
   id          String     @id @default(cuid())
   taskId      String
   userId      String
-  status      TaskStatus @default("PENDING")
+  status      TaskStatus @default(PENDING)
   completedAt DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
@@ -942,7 +942,7 @@ model RecurringTask {
   id            String            @id @default(cuid())
   title         String
   description   String?
-  priority      TaskPriority      @default("MEDIUM")
+  priority      TaskPriority      @default(MEDIUM)
   pattern       RecurrencePattern
   interval      Int               @default(1)
   daysOfWeek    Json?
@@ -1021,7 +1021,7 @@ model TaskTemplate {
   id                String             @id @default(cuid())
   name              String
   description       String?
-  priority          TaskPriority       @default("MEDIUM")
+  priority          TaskPriority       @default(MEDIUM)
   estimatedDuration Int?
   categoryId        String?
   isActive          Boolean            @default(true)
@@ -1105,7 +1105,7 @@ model LeadEmail {
   subject     String
   content     String
   type        String      @default("OUTBOUND")
-  status      EmailStatus @default("PENDING")
+  status      EmailStatus @default(PENDING)
   sentBy      String
   sentAt      DateTime?
   scheduledAt DateTime?
@@ -1173,8 +1173,8 @@ model Project {
   name             String
   code             String?           @unique
   description      String?
-  status           ProjectStatus     @default("ACTIVE")
-  visibility       ProjectVisibility @default("INTERNAL")
+  status           ProjectStatus     @default(ACTIVE)
+  visibility       ProjectVisibility @default(INTERNAL)
   startDate        DateTime?
   dueDate          DateTime?
   budget           Float?
@@ -1203,7 +1203,7 @@ model ProjectMember {
   id         String      @id @default(cuid())
   projectId  String
   userId     String
-  role       ProjectRole @default("CONTRIBUTOR")
+  role       ProjectRole @default(CONTRIBUTOR)
   isExternal Boolean     @default(false)
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
@@ -1220,7 +1220,7 @@ model ProjectStage {
   name             String
   color            String            @default("#6366F1")
   order            Int               @default(0)
-  stageType        ProjectStageType  @default("TASK")
+  stageType        ProjectStageType  @default(TASK)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   incidents        Incident[]
@@ -1237,9 +1237,9 @@ model Incident {
   projectId         String
   title             String
   description       String?
-  status            IncidentStatus     @default("NEW")
-  severity          IncidentSeverity   @default("MEDIUM")
-  source            IncidentSource     @default("INTERNAL")
+  status            IncidentStatus     @default(NEW)
+  severity          IncidentSeverity   @default(MEDIUM)
+  source            IncidentSource     @default(INTERNAL)
   reportedBy        String
   assignedTo        String?
   stageId           String?
@@ -1264,7 +1264,7 @@ model IncidentActivity {
   id         String               @id @default(cuid())
   incidentId String
   userId     String?
-  type       IncidentActivityType @default("COMMENT")
+  type       IncidentActivityType @default(COMMENT)
   detail     Json?
   createdAt  DateTime             @default(now())
   user       User?                @relation("IncidentActivities", fields: [userId], references: [id])
@@ -1287,9 +1287,9 @@ model ResourceRequest {
   quantity      Float
   unit          String                   @default("unit")
   neededBy      DateTime?
-  assignedTeam  ResourceAssignmentTeam   @default("WAREHOUSE")
-  status        ResourceRequestStatus    @default("DRAFT")
-  priority      ResourceRequestPriority  @default("NORMAL")
+  assignedTeam  ResourceAssignmentTeam   @default(WAREHOUSE)
+  status        ResourceRequestStatus    @default(DRAFT)
+  priority      ResourceRequestPriority  @default(NORMAL)
   estimatedCost Float?
   currency      String?
   approvedAt    DateTime?
@@ -1383,7 +1383,7 @@ model DistributorLead {
   profileImage               String?
   businessLicense            String?
   taxCertificate             String?
-  status                     DistributorLeadStatus    @default("PENDING")
+  status                     DistributorLeadStatus    @default(PENDING)
   submittedBy                String
   createdAt                  DateTime                 @default(now())
   updatedAt                  DateTime                 @updatedAt
@@ -1489,13 +1489,13 @@ model Distributor {
   profileImage               String?
   businessLicense            String?
   taxCertificate             String?
-  status                     DistributorStatus          @default("ACTIVE")
+  status                     DistributorStatus          @default(ACTIVE)
   approvedBy                 String
   approvedAt                 DateTime                   @default(now())
   creditLimit                Decimal?
   currentCreditUsed          Decimal?                   @default(0)
   creditTerms                String?
-  creditStatus               CreditStatus?              @default("ACTIVE")
+  creditStatus               CreditStatus?              @default(ACTIVE)
   lastCreditReview           DateTime?
   creditApprovedBy           String?
   creditApprovedAt           DateTime?
@@ -1614,7 +1614,7 @@ model Order {
   accountId        String?
   contactId        String?
   totalAmount      Decimal
-  status           OrderStatus       @default("PENDING")
+  status           OrderStatus       @default(PENDING)
   paymentMethod    String            @default("credit")
   notes            String?
   deliveryAddress  String?
@@ -1691,7 +1691,7 @@ model Route {
   waypoints         Json
   totalDistance     Float
   estimatedDuration Int
-  status            RouteStatus @default("PLANNED")
+  status            RouteStatus @default(PLANNED)
   scheduledDate     DateTime
   startedAt         DateTime?
   completedAt       DateTime?
@@ -1712,7 +1712,7 @@ model Delivery {
   orderId         String?        @unique
   scheduledAt     DateTime
   deliveredAt     DateTime?
-  status          DeliveryStatus @default("SCHEDULED")
+  status          DeliveryStatus @default(SCHEDULED)
   notes           String?
   proofOfDelivery String?
   createdAt       DateTime       @default(now())
@@ -1731,7 +1731,7 @@ model SalesOrder {
   quotationId     String?
   invoiceId       String?
   accountId       String
-  status          SalesOrderStatus @default("PENDING")
+  status          SalesOrderStatus @default(PENDING)
   source          String           @default("INTERNAL")
   subtotal        Float
   tax             Float
@@ -1782,8 +1782,8 @@ model Invoice {
   distributorId           String?
   leadId                  String?
   opportunityId           String?
-  status                  InvoiceStatus       @default("DRAFT")
-  paymentStatus           PaymentStatus       @default("UNPAID")
+  status                  InvoiceStatus       @default(DRAFT)
+  paymentStatus           PaymentStatus       @default(UNPAID)
   creditApproved          Boolean             @default(false)
   creditApprovedBy        String?
   creditApprovedAt        DateTime?
@@ -1799,7 +1799,7 @@ model Invoice {
   amountDue               Float
   taxInclusive            Boolean             @default(false)
   paymentTerms            String?
-  customerType            CustomerType        @default("STANDARD")
+  customerType            CustomerType        @default(STANDARD)
   billingAddressId        String?
   shippingAddressId       String?
   billingAddressSnapshot  Json?
@@ -1902,7 +1902,7 @@ model CreditNote {
   reason          CreditNoteReason
   reasonDetails   String?
   notes           String?
-  status          CreditNoteStatus        @default("PENDING")
+  status          CreditNoteStatus        @default(PENDING)
   issueDate       DateTime                @default(now())
   appliedDate     DateTime?
   voidedDate      DateTime?
@@ -1946,7 +1946,7 @@ model Return {
   salesOrderId String
   accountId    String
   reason       ReturnReason
-  status       ReturnStatus @default("PENDING")
+  status       ReturnStatus @default(PENDING)
   subtotal     Float
   tax          Float
   total        Float
@@ -1987,7 +1987,7 @@ model ProductBarcode {
   id          String      @id @default(cuid())
   productId   String
   barcode     String      @unique
-  barcodeType BarcodeType @default("EAN13")
+  barcodeType BarcodeType @default(EAN13)
   source      String?
   description String?
   isPrimary   Boolean     @default(false)
@@ -2025,7 +2025,7 @@ model StocktakeSession {
   sessionNumber String          @unique
   name          String
   warehouseId   String
-  status        StocktakeStatus @default("IN_PROGRESS")
+  status        StocktakeStatus @default(IN_PROGRESS)
   notes         String?
   createdBy     String
   startedAt     DateTime        @default(now())
@@ -2064,7 +2064,7 @@ model Agent {
   id              String         @id @default(cuid())
   userId          String         @unique
   agentCode       String         @unique
-  status          AgentStatus    @default("ACTIVE")
+  status          AgentStatus    @default(ACTIVE)
   hireDate        DateTime       @default(now())
   territory       String?
   team            String?
@@ -2104,7 +2104,7 @@ model Commission {
   baseAmount       Float
   commissionRate   Float
   commissionAmount Float
-  status           CommissionStatus          @default("PENDING")
+  status           CommissionStatus          @default(PENDING)
   approvedBy       String?
   approvedAt       DateTime?
   paidDate         DateTime?
@@ -2149,7 +2149,7 @@ model AgentInvoice {
   id           String    @id @default(cuid())
   agentId      String
   invoiceId    String
-  role         AgentRole @default("PRIMARY")
+  role         AgentRole @default(PRIMARY)
   splitPercent Float?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -2269,8 +2269,8 @@ model EcommerceOrder {
   discount        Decimal                @default(0)
   total           Decimal
   currency        String                 @default("GHS")
-  status          EcommerceOrderStatus   @default("PENDING")
-  paymentStatus   EcommercePaymentStatus @default("PENDING")
+  status          EcommerceOrderStatus   @default(PENDING)
+  paymentStatus   EcommercePaymentStatus @default(PENDING)
   paymentMethod   String?
   paymentId       String?
   trackingNumber  String?
