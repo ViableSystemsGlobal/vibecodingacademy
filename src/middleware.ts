@@ -8,9 +8,13 @@ export function middleware(request: NextRequest) {
   const port = url.port || (url.protocol === 'https:' ? '443' : '80');
   
   // Determine which domain/port we're on
-  // Port 3000 = Ecommerce (shop), Port 3001 = Admin (sms)
+  // Port 3000 = Ecommerce (shop), Port 3001/3003 = Admin (sms)
   const isAdminDomain = hostname.includes('sms.') || hostname.includes('admin.');
-  const isAdminPort = port === '3001' || hostname.includes(':3001');
+  const adminPortMatches = [':3001', ':3003'];
+  const isAdminPort =
+    port === '3001' ||
+    port === '3003' ||
+    adminPortMatches.some((match) => hostname.includes(match));
   const isShopPort = port === '3000' || hostname.includes(':3000');
   
   // Admin domain/port (sms.thepoolshop.africa or localhost:3001)
@@ -20,10 +24,8 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
     
-    // Redirect root to dashboard on admin
-    if (pathname === '/') {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
-    }
+    // Let the root path through - the page component will handle auth redirect
+    // (redirects to /auth/signin if not logged in, or /dashboard if logged in)
     
     // Allow all other admin routes
     return NextResponse.next();

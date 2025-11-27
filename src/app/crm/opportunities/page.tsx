@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, MoreHorizontal, Edit, Trash2, Eye, TrendingUp, FileBarChart, CheckCircle, XCircle, DollarSign, Calendar, CheckSquare, Square, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { Plus, Search, MoreHorizontal, Edit, Trash2, Eye, TrendingUp, FileBarChart, CheckCircle, XCircle, DollarSign, Calendar, CheckSquare, Square, ChevronLeft, ChevronRight, ChevronDown, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
-import { DropdownMenu } from '@/components/ui/dropdown-menu-custom';
+import { Card, CardContent } from '@/components/ui/card';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useTheme } from '@/contexts/theme-context';
 import { useToast } from '@/contexts/toast-context';
 import { AIRecommendationCard } from '@/components/ai-recommendation-card';
@@ -15,6 +15,7 @@ import { ConfirmationModal } from '@/components/modals/confirmation-modal';
 import { EditOpportunityModal } from '@/components/modals/edit-opportunity-modal';
 import { MiniLineChart } from '@/components/ui/mini-line-chart';
 import { SkeletonTable, SkeletonMetricCard } from '@/components/ui/skeleton';
+import { DataTable } from '@/components/ui/data-table';
 import { formatCurrency } from '@/lib/utils';
 import { CurrencyToggle, useCurrency } from '@/components/ui/currency-toggle';
 
@@ -87,10 +88,15 @@ export default function OpportunitiesPage() {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState<string>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
   // Bulk actions state
-  const [selectedOpportunities, setSelectedOpportunities] = useState<Set<string>>(new Set());
-  const [isAllSelected, setIsAllSelected] = useState(false);
+  const [selectedOpportunities, setSelectedOpportunities] = useState<string[]>([]);
   const [confirmationModal, setConfirmationModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -152,28 +158,67 @@ export default function OpportunitiesPage() {
     { key: 'LOST', label: 'Lost', color: 'bg-red-100 text-red-800' },
   ];
 
+  // Initial load on mount
   useEffect(() => {
     if (session?.user) {
       fetchCurrencySettings();
-      fetchOpportunities();
+      fetchOpportunities(1);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
-  // Reset pagination when search or filter changes
+  // Effect for sorting and filters
   useEffect(() => {
-    setCurrentPage(1);
-    setSelectedOpportunities(new Set());
-    setIsAllSelected(false);
-  }, [searchTerm, statusFilter]);
+    if (session?.user) {
+      // Skip initial mount - already loaded above
+      const isInitialMount = currentPage === 1 && !searchTerm && !statusFilter && !sortBy;
+      if (isInitialMount) {
+        return;
+      }
+      fetchOpportunities(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, sortBy, sortOrder, session]);
 
+  // Debounced search effect (including when cleared)
+  const isMountedRef = useRef(false);
+  useEffect(() => {
+    if (session?.user) {
+      // Skip initial mount (handled by initial load effect)
+      if (!isMountedRef.current) {
+        isMountedRef.current = true;
+        return;
+      }
+      
+      const timeoutId = setTimeout(() => {
+        setCurrentPage(1);
+        fetchOpportunities(1);
+      }, searchTerm ? 500 : 0); // No debounce when clearing (empty search)
 
+      return () => clearTimeout(timeoutId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, session]);
 
-  const fetchOpportunities = async () => {
+  const fetchOpportunities = async (page: number = currentPage) => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
-      if (statusFilter) params.append('status', statusFilter);
+      params.append('page', page.toString());
+      params.append('limit', itemsPerPage.toString());
+      
+      if (searchTerm) {
+        params.append('search', searchTerm);
+      }
+      if (statusFilter) {
+        params.append('status', statusFilter);
+      }
+      if (sortBy) {
+        params.append('sortBy', sortBy);
+      }
+      if (sortOrder) {
+        params.append('sortOrder', sortOrder);
+      }
       
       const response = await fetch(`/api/opportunities?${params.toString()}`, {
         credentials: 'include',
@@ -182,13 +227,20 @@ export default function OpportunitiesPage() {
       if (response.ok) {
         const data = await response.json();
         setOpportunities(Array.isArray(data.opportunities) ? data.opportunities : []);
+        setTotalPages(data.pagination?.pages || 1);
+        setTotalItems(data.pagination?.total || 0);
+        setCurrentPage(page);
       } else {
         console.error('Failed to fetch opportunities');
         setOpportunities([]);
+        setTotalPages(1);
+        setTotalItems(0);
       }
     } catch (err) {
       console.error('Error fetching opportunities:', err);
       setOpportunities([]);
+      setTotalPages(1);
+      setTotalItems(0);
     } finally {
       setLoading(false);
     }
@@ -275,35 +327,11 @@ export default function OpportunitiesPage() {
 
   const trends = generateTrendData();
 
-  // Filter and pagination helper functions
-  const getFilteredOpportunities = () => {
-    return opportunities.filter(opp => {
-      const contactName = opp.lead ? `${opp.lead.firstName} ${opp.lead.lastName}` : opp.account?.name || '';
-      const email = opp.lead?.email || opp.account?.email || '';
-      const company = opp.lead?.company || opp.account?.name || '';
-      
-      const matchesSearch = !searchTerm || 
-        contactName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        opp.name.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesStatus = !statusFilter || opp.stage === statusFilter;
-      
-      return matchesSearch && matchesStatus;
-    });
-  };
-
-  const getPaginatedOpportunities = () => {
-    const filtered = getFilteredOpportunities();
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filtered.slice(startIndex, endIndex);
-  };
-
-  const getTotalPages = () => {
-    const filtered = getFilteredOpportunities();
-    return Math.ceil(filtered.length / itemsPerPage);
+  // Sort handler
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
   };
 
   // Bulk action helper functions
@@ -325,43 +353,25 @@ export default function OpportunitiesPage() {
     });
   };
 
-  const handleSelectAll = () => {
-    const paginatedOpps = getPaginatedOpportunities();
-    if (isAllSelected) {
-      setSelectedOpportunities(new Set());
-      setIsAllSelected(false);
-    } else {
-      const newSelected = new Set(selectedOpportunities);
-      paginatedOpps.forEach(opp => newSelected.add(opp.id));
-      setSelectedOpportunities(newSelected);
-      setIsAllSelected(true);
-    }
-  };
-
   const handleSelectOpportunity = (opportunityId: string) => {
-    const newSelected = new Set(selectedOpportunities);
-    if (newSelected.has(opportunityId)) {
-      newSelected.delete(opportunityId);
-    } else {
-      newSelected.add(opportunityId);
-    }
-    setSelectedOpportunities(newSelected);
-    
-    // Update isAllSelected based on current page
-    const paginatedOpps = getPaginatedOpportunities();
-    const allPaginatedSelected = paginatedOpps.every(opp => newSelected.has(opp.id));
-    setIsAllSelected(allPaginatedSelected);
+    setSelectedOpportunities(prev => {
+      if (prev.includes(opportunityId)) {
+        return prev.filter(id => id !== opportunityId);
+      } else {
+        return [...prev, opportunityId];
+      }
+    });
   };
 
   const handleBulkDelete = () => {
-    if (selectedOpportunities.size === 0) return;
+    if (selectedOpportunities.length === 0) return;
     
     showConfirmation(
       'Delete Opportunities',
-      `Are you sure you want to delete ${selectedOpportunities.size} opportunity(ies)? This will also delete all associated tasks, comments, files, emails, SMS, and meetings. Quotations and invoices will be unlinked.`,
+      `Are you sure you want to delete ${selectedOpportunities.length} opportunity(ies)? This will also delete all associated tasks, comments, files, emails, SMS, and meetings. Quotations and invoices will be unlinked.`,
       async () => {
         try {
-          const deletePromises = Array.from(selectedOpportunities).map(id =>
+          const deletePromises = selectedOpportunities.map(id =>
             fetch(`/api/opportunities/${id}`, { 
               method: 'DELETE',
               credentials: 'include'
@@ -373,11 +383,10 @@ export default function OpportunitiesPage() {
           const failCount = results.length - successCount;
           
           // Refresh opportunities
-          await fetchOpportunities();
+          await fetchOpportunities(currentPage);
           
           // Clear selection
-          setSelectedOpportunities(new Set());
-          setIsAllSelected(false);
+          setSelectedOpportunities([]);
           
           if (successCount > 0) {
             success(`Successfully deleted ${successCount} opportunity(ies)`);
@@ -396,14 +405,14 @@ export default function OpportunitiesPage() {
   };
 
   const handleBulkStatusUpdate = (newStatus: string) => {
-    if (selectedOpportunities.size === 0) return;
+    if (selectedOpportunities.length === 0) return;
     
     showConfirmation(
       'Update Opportunity Status',
-      `Are you sure you want to update ${selectedOpportunities.size} opportunity(ies) to ${newStatus}?`,
+      `Are you sure you want to update ${selectedOpportunities.length} opportunity(ies) to ${newStatus}?`,
       async () => {
         try {
-          const updatePromises = Array.from(selectedOpportunities).map(id =>
+          const updatePromises = selectedOpportunities.map(id =>
             fetch(`/api/opportunities/${id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
@@ -414,13 +423,12 @@ export default function OpportunitiesPage() {
           await Promise.all(updatePromises);
           
           // Refresh opportunities
-          await fetchOpportunities();
+          await fetchOpportunities(currentPage);
           
           // Clear selection
-          setSelectedOpportunities(new Set());
-          setIsAllSelected(false);
+          setSelectedOpportunities([]);
           
-          success(`Successfully updated ${selectedOpportunities.size} opportunity(ies) to ${newStatus}`);
+          success(`Successfully updated ${selectedOpportunities.length} opportunity(ies) to ${newStatus}`);
         } catch (err) {
           console.error('Error updating opportunities:', err);
           error('Failed to update opportunities');
@@ -477,7 +485,7 @@ export default function OpportunitiesPage() {
 
           if (response.ok) {
             success('Opportunity deleted successfully');
-            fetchOpportunities(); // Refresh the list
+            fetchOpportunities(currentPage); // Refresh the list
           } else {
             const data = await response.json();
             error(data.error || 'Failed to delete opportunity');
@@ -670,29 +678,6 @@ export default function OpportunitiesPage() {
         {/* Main Content */}
         <div className="space-y-6">
 
-          {/* Search and Filter */}
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <Input
-                placeholder="Search opportunities..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Stages</option>
-                {stages.map(stage => (
-                  <option key={stage.key} value={stage.key}>{stage.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
 
           {/* Opportunities List */}
           {opportunities.length === 0 && !loading && (
@@ -723,50 +708,44 @@ export default function OpportunitiesPage() {
           )}
 
           {/* Bulk Actions Bar */}
-          {selectedOpportunities.size > 0 && (
+          {selectedOpportunities.length > 0 && (
             <Card>
               <div className="p-4 bg-blue-50 border-l-4 border-blue-400">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4">
                     <span className="text-sm font-medium text-blue-800">
-                      {selectedOpportunities.size} opportunity(ies) selected
+                      {selectedOpportunities.length} opportunity(ies) selected
                     </span>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <DropdownMenu
-                      trigger={
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="sm">
                           Update Status
                           <ChevronDown className="w-4 h-4 ml-2" />
                         </Button>
-                      }
-                      items={[
-                        {
-                          label: 'New Opportunity',
-                          onClick: () => handleBulkStatusUpdate('NEW_OPPORTUNITY')
-                        },
-                        {
-                          label: 'Quote Sent',
-                          onClick: () => handleBulkStatusUpdate('QUOTE_SENT')
-                        },
-                        {
-                          label: 'Negotiation',
-                          onClick: () => handleBulkStatusUpdate('NEGOTIATION')
-                        },
-                        {
-                          label: 'Contract Signed',
-                          onClick: () => handleBulkStatusUpdate('CONTRACT_SIGNED')
-                        },
-                        {
-                          label: 'Won',
-                          onClick: () => handleBulkStatusUpdate('WON')
-                        },
-                        {
-                          label: 'Lost',
-                          onClick: () => handleBulkStatusUpdate('LOST')
-                        }
-                      ]}
-                    />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem onClick={() => handleBulkStatusUpdate('NEW_OPPORTUNITY')}>
+                          New Opportunity
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleBulkStatusUpdate('QUOTE_SENT')}>
+                          Quote Sent
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleBulkStatusUpdate('NEGOTIATION')}>
+                          Negotiation
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleBulkStatusUpdate('CONTRACT_SIGNED')}>
+                          Contract Signed
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleBulkStatusUpdate('WON')}>
+                          Won
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleBulkStatusUpdate('LOST')}>
+                          Lost
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -780,8 +759,7 @@ export default function OpportunitiesPage() {
                       variant="outline" 
                       size="sm" 
                       onClick={() => {
-                        setSelectedOpportunities(new Set());
-                        setIsAllSelected(false);
+                        setSelectedOpportunities([]);
                       }}
                     >
                       Clear Selection
@@ -793,177 +771,197 @@ export default function OpportunitiesPage() {
           )}
 
           {/* Opportunities Table */}
-          {opportunities.length > 0 && (
-            <Card>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        <button
-                          onClick={handleSelectAll}
-                          className="flex items-center justify-center w-4 h-4"
+          <Card>
+            <CardContent className="p-6">
+              <DataTable
+              data={opportunities}
+              columns={[
+                {
+                  key: 'contact',
+                  label: 'Contact',
+                  sortable: true,
+                  exportable: true,
+                  render: (opp: Opportunity) => {
+                    const contactName = opp.lead ? `${opp.lead.firstName} ${opp.lead.lastName}` : opp.account?.name || '-';
+                    const contactEmail = opp.lead?.email || opp.account?.email || '';
+                    return (
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{contactName}</div>
+                        <div className="text-sm text-gray-500">{contactEmail}</div>
+                      </div>
+                    );
+                  },
+                  exportFormat: (opp: Opportunity) => {
+                    const contactName = opp.lead ? `${opp.lead.firstName} ${opp.lead.lastName}` : opp.account?.name || '-';
+                    return contactName;
+                  }
+                },
+                {
+                  key: 'company',
+                  label: 'Company',
+                  sortable: true,
+                  exportable: true,
+                  render: (opp: Opportunity) => {
+                    const companyName = opp.lead?.company || opp.account?.name || '-';
+                    return <span className="text-sm text-gray-900">{companyName}</span>;
+                  },
+                  exportFormat: (opp: Opportunity) => opp.lead?.company || opp.account?.name || '-'
+                },
+                {
+                  key: 'stage',
+                  label: 'Stage',
+                  sortable: true,
+                  exportable: true,
+                  render: (opp: Opportunity) => {
+                    const stageInfo = getStageInfo(opp.stage);
+                    return (
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${stageInfo.color}`}>
+                        {stageInfo.label}
+                      </span>
+                    );
+                  },
+                  exportFormat: (opp: Opportunity) => {
+                    const stageInfo = getStageInfo(opp.stage);
+                    return stageInfo.label;
+                  }
+                },
+                {
+                  key: 'value',
+                  label: 'Deal Value',
+                  sortable: true,
+                  exportable: true,
+                  render: (opp: Opportunity) => (
+                    <span className="text-sm text-gray-900">{formatCurrencyAmount(opp.value)}</span>
+                  ),
+                  exportFormat: (opp: Opportunity) => formatCurrencyAmount(opp.value)
+                },
+                {
+                  key: 'probability',
+                  label: 'Probability',
+                  sortable: true,
+                  exportable: true,
+                  render: (opp: Opportunity) => (
+                    <span className="text-sm text-gray-900">{opp.probability ? `${opp.probability}%` : '-'}</span>
+                  ),
+                  exportFormat: (opp: Opportunity) => opp.probability ? `${opp.probability}%` : '-'
+                },
+                {
+                  key: 'actions',
+                  label: 'Actions',
+                  sortable: false,
+                  exportable: false,
+                  render: (opp: Opportunity) => (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
+                          <MoreHorizontal className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => router.push(`/crm/opportunities/${opp.id}`)}>
+                          <Eye className="w-4 h-4 mr-2" />
+                          View
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEditOpportunity(opp)}>
+                          <Edit className="w-4 h-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push(`/quotations?opportunityId=${opp.id}`)}>
+                          <FileBarChart className="w-4 h-4 mr-2" />
+                          Create Quote
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => handleDeleteOpportunity(opp)}
+                          className="text-red-600"
                         >
-                          {isAllSelected ? (
-                            <CheckSquare className="h-4 w-4 text-blue-600" />
-                          ) : (
-                            <Square className="h-4 w-4 text-gray-400" />
-                          )}
-                        </button>
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stage</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deal Value</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Probability</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {getPaginatedOpportunities().map((opportunity) => {
-                      const stageInfo = getStageInfo(opportunity.stage);
-                      const contactName = opportunity.lead ? `${opportunity.lead.firstName} ${opportunity.lead.lastName}` : opportunity.account?.name || '-';
-                      const contactEmail = opportunity.lead?.email || opportunity.account?.email || '';
-                      const companyName = opportunity.lead?.company || opportunity.account?.name || '-';
-                      
-                      return (
-                        <tr 
-                          key={opportunity.id} 
-                          className="hover:bg-gray-50 cursor-pointer"
-                          onClick={() => handleViewOpportunity(opportunity)}
-                        >
-                          <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => handleSelectOpportunity(opportunity.id)}
-                              className="flex items-center justify-center w-4 h-4"
-                            >
-                              {selectedOpportunities.has(opportunity.id) ? (
-                                <CheckSquare className="h-4 w-4 text-blue-600" />
-                              ) : (
-                                <Square className="h-4 w-4 text-gray-400" />
-                              )}
-                            </button>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {contactName}
-                              </div>
-                              <div className="text-sm text-gray-500">{contactEmail}</div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {companyName}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${stageInfo.color}`}>
-                              {stageInfo.label}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {formatCurrencyAmount(opportunity.value)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {opportunity.probability ? `${opportunity.probability}%` : '-'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium" onClick={(e) => e.stopPropagation()}>
-                            <DropdownMenu
-                              items={[
-                                {
-                                  label: 'View',
-                                  icon: <Eye className="w-4 h-4" />,
-                                  onClick: () => router.push(`/crm/opportunities/${opportunity.id}`),
-                                },
-                                {
-                                  label: 'Edit',
-                                  icon: <Edit className="w-4 h-4" />,
-                                  onClick: () => handleEditOpportunity(opportunity),
-                                },
-                                {
-                                  label: 'Create Quote',
-                                  icon: <FileBarChart className="w-4 h-4" />,
-                                  onClick: () => router.push(`/quotations?opportunityId=${opportunity.id}`),
-                                  className: 'text-green-600',
-                                },
-                                {
-                                  label: 'Delete',
-                                  icon: <Trash2 className="w-4 h-4" />,
-                                  onClick: () => handleDeleteOpportunity(opportunity),
-                                  className: 'text-red-600',
-                                },
-                              ]}
-                              trigger={
-                                <Button variant="ghost" size="sm">
-                                  <MoreHorizontal className="w-4 h-4" />
-                                </Button>
-                              }
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              
-              {/* Pagination Controls */}
-              {getTotalPages() > 1 && (
-                <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-                  <div className="flex items-center text-sm text-gray-700">
-                    <span>
-                      Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, getFilteredOpportunities().length)} of {getFilteredOpportunities().length} results
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                      Previous
-                    </Button>
-                    <div className="flex items-center space-x-1">
-                      {Array.from({ length: Math.min(5, getTotalPages()) }, (_, i) => {
-                        const pageNum = i + 1;
-                        const isActive = pageNum === currentPage;
-                        return (
-                          <Button
-                            key={pageNum}
-                            variant={isActive ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => setCurrentPage(pageNum)}
-                            className={isActive ? `bg-${theme.primary} text-white` : ''}
-                            style={isActive ? {
-                              backgroundColor: theme.primary,
-                              color: 'white'
-                            } : {}}
-                          >
-                            {pageNum}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, getTotalPages()))}
-                      disabled={currentPage === getTotalPages()}
-                    >
-                      Next
-                      <ChevronRight className="w-4 h-4" />
-                    </Button>
-                  </div>
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )
+                }
+              ]}
+              itemsPerPage={itemsPerPage}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              onPageChange={(page) => {
+                setCurrentPage(page);
+                fetchOpportunities(page);
+              }}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSortChange={handleSortChange}
+              searchValue={searchTerm}
+              onSearchChange={setSearchTerm}
+              searchPlaceholder="Search opportunities by name or customer..."
+              enableExport={true}
+              exportFilename="opportunities"
+              isLoading={loading}
+              enableSelection={true}
+              selectedItems={selectedOpportunities}
+              onSelectionChange={setSelectedOpportunities}
+              onRowClick={(opp) => handleViewOpportunity(opp)}
+              customFilters={
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Stages</option>
+                  {stages.map(stage => (
+                    <option key={stage.key} value={stage.key}>{stage.label}</option>
+                  ))}
+                </select>
+              }
+              bulkActions={
+                <div className="flex items-center space-x-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        Update Status
+                        <ChevronDown className="w-4 h-4 ml-2" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onClick={() => handleBulkStatusUpdate('NEW_OPPORTUNITY')}>
+                        New Opportunity
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleBulkStatusUpdate('QUOTE_SENT')}>
+                        Quote Sent
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleBulkStatusUpdate('NEGOTIATION')}>
+                        Negotiation
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleBulkStatusUpdate('CONTRACT_SIGNED')}>
+                        Contract Signed
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleBulkStatusUpdate('WON')}>
+                        Won
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleBulkStatusUpdate('LOST')}>
+                        Lost
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleBulkDelete}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </Button>
                 </div>
-              )}
-            </Card>
-          )}
-
-          {/* Loading State */}
-          {loading && (
-            <SkeletonTable rows={8} columns={6} />
-          )}
+              }
+            />
+            </CardContent>
+          </Card>
         </div>
       </div>
 

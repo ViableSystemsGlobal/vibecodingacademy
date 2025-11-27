@@ -15,7 +15,8 @@ import {
   ShoppingCart,
   AlertCircle,
   FileText,
-  ArrowLeft
+  ArrowLeft,
+  RefreshCw
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -180,6 +181,59 @@ export default function OrdersPage() {
     }
   };
 
+  const getPaymentStatusColor = (paymentStatus: string) => {
+    switch (paymentStatus.toUpperCase()) {
+      case "PAID":
+        return "text-green-600 bg-green-50";
+      case "PARTIALLY_PAID":
+        return "text-yellow-600 bg-yellow-50";
+      case "PENDING":
+      case "UNPAID":
+        return "text-red-600 bg-red-50";
+      case "REFUNDED":
+      case "PARTIALLY_REFUNDED":
+        return "text-gray-600 bg-gray-50";
+      default:
+        return "text-gray-600 bg-gray-50";
+    }
+  };
+
+  const getPaymentStatusIcon = (paymentStatus: string) => {
+    switch (paymentStatus.toUpperCase()) {
+      case "PAID":
+        return <CheckCircle className="h-4 w-4" />;
+      case "PARTIALLY_PAID":
+        return <AlertCircle className="h-4 w-4" />;
+      case "PENDING":
+      case "UNPAID":
+        return <XCircle className="h-4 w-4" />;
+      case "REFUNDED":
+      case "PARTIALLY_REFUNDED":
+        return <RefreshCw className="h-4 w-4" />;
+      default:
+        return <CreditCard className="h-4 w-4" />;
+    }
+  };
+
+  const formatPaymentStatus = (paymentStatus: string) => {
+    switch (paymentStatus.toUpperCase()) {
+      case "PAID":
+        return "Paid";
+      case "PARTIALLY_PAID":
+        return "Partially Paid";
+      case "PENDING":
+        return "Pending";
+      case "UNPAID":
+        return "Unpaid";
+      case "REFUNDED":
+        return "Refunded";
+      case "PARTIALLY_REFUNDED":
+        return "Partially Refunded";
+      default:
+        return paymentStatus;
+    }
+  };
+
   const formatCurrency = (amount: number, currency: string = "GHS") => {
     return new Intl.NumberFormat("en-GH", {
       style: "currency",
@@ -295,7 +349,7 @@ export default function OrdersPage() {
               <div className="p-6">
                 {/* Order Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
-                  <div className="flex items-center space-x-4 mb-2 sm:mb-0">
+                  <div className="flex flex-wrap items-center gap-3 mb-2 sm:mb-0">
                     <h3 className="font-semibold text-gray-900">
                       Order #{order.orderNumber}
                     </h3>
@@ -306,6 +360,14 @@ export default function OrdersPage() {
                     >
                       {getStatusIcon(order.status)}
                       <span>{order.status}</span>
+                    </span>
+                    <span
+                      className={`inline-flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-medium ${getPaymentStatusColor(
+                        order.paymentStatus
+                      )}`}
+                    >
+                      {getPaymentStatusIcon(order.paymentStatus)}
+                      <span>Payment: {formatPaymentStatus(order.paymentStatus)}</span>
                     </span>
                   </div>
                   <div className="flex items-center space-x-4 text-sm text-gray-500">
@@ -465,13 +527,14 @@ export default function OrdersPage() {
             <div className="p-6">
               {/* Order info */}
               <div className="mb-6">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                   <div>
                     <h3 className="text-lg font-semibold">Order #{selectedOrder.orderNumber}</h3>
                     <p className="text-sm text-gray-600">
                       Placed on {formatDate(selectedOrder.orderDate)}
                     </p>
                   </div>
+                  <div className="flex flex-wrap items-center gap-2">
                   <span
                     className={`inline-flex items-center space-x-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
                       selectedOrder.status
@@ -480,6 +543,46 @@ export default function OrdersPage() {
                     {getStatusIcon(selectedOrder.status)}
                     <span>{selectedOrder.status}</span>
                   </span>
+                    <span
+                      className={`inline-flex items-center space-x-1 px-3 py-1 rounded-full text-sm font-medium ${getPaymentStatusColor(
+                        selectedOrder.paymentStatus
+                      )}`}
+                    >
+                      {getPaymentStatusIcon(selectedOrder.paymentStatus)}
+                      <span>Payment: {formatPaymentStatus(selectedOrder.paymentStatus)}</span>
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Payment Information */}
+                <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                  <h4 className="font-semibold mb-3 text-sm text-gray-700">Payment Information</h4>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-gray-600">Payment Method:</span>
+                      <span className="ml-2 font-medium">{selectedOrder.paymentMethod || "N/A"}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Payment Status:</span>
+                      <span className={`ml-2 font-medium ${getPaymentStatusColor(selectedOrder.paymentStatus).split(' ')[0]}`}>
+                        {formatPaymentStatus(selectedOrder.paymentStatus)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Amount Paid:</span>
+                      <span className="ml-2 font-medium text-green-600">
+                        {formatCurrency(selectedOrder.amountPaid, selectedOrder.currency)}
+                      </span>
+                    </div>
+                    {selectedOrder.amountDue > 0 && (
+                      <div>
+                        <span className="text-gray-600">Amount Due:</span>
+                        <span className="ml-2 font-medium text-red-600">
+                          {formatCurrency(selectedOrder.amountDue, selectedOrder.currency)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

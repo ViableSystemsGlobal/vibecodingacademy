@@ -1,10 +1,64 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { parseTableQuery, buildWhereClause, buildOrderBy } from "@/lib/query-builder";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const suppliers = await prisma.supplier.findMany({ orderBy: { name: "asc" } });
-    return NextResponse.json(suppliers);
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const params = parseTableQuery(request);
+
+    // Custom filter handler
+    const customFilters = (filters: Record<string, string | string[] | null>) => {
+      const where: any = {};
+
+      if (filters.status) {
+        where.status = filters.status;
+      }
+
+      return where;
+    };
+
+    const where = buildWhereClause(params, {
+      searchFields: ['name', 'email', 'phone'],
+      customFilters,
+    });
+
+    const orderBy = buildOrderBy(params.sortBy, params.sortOrder);
+    const page = params.page || 1;
+    const limit = params.limit || 10;
+    const skip = (page - 1) * limit;
+
+    const [suppliers, total] = await Promise.all([
+      prisma.supplier.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limit,
+      }),
+      prisma.supplier.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      suppliers,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+      sort: params.sortBy
+        ? {
+            field: params.sortBy,
+            order: params.sortOrder || 'desc',
+          }
+        : undefined,
+    });
   } catch (error) {
     console.error("Error fetching suppliers:", error);
     return NextResponse.json({ error: "Failed to fetch suppliers" }, { status: 500 });

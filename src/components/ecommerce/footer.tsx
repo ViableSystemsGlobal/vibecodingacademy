@@ -4,11 +4,45 @@ import Link from "next/link";
 import Image from "next/image";
 import { Package, Mail, Phone, MapPin, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 import { useBranding } from "@/contexts/branding-context";
+import { useEffect, useState } from "react";
 
 export function EcommerceFooter() {
   const { branding } = useBranding();
   const currentYear = new Date().getFullYear();
   const footerColor = "#23185c";
+  const [footerContent, setFooterContent] = useState<{
+    description?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    facebookUrl?: string;
+    twitterUrl?: string;
+    instagramUrl?: string;
+    linkedinUrl?: string;
+    privacyPolicyLink?: string;
+    termsLink?: string;
+    isActive?: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    const loadFooterContent = async () => {
+      try {
+        const response = await fetch("/api/public/storefront/sections/footer_content");
+        if (response.ok) {
+          const data = await response.json();
+          if (data?.section?.content && data.section.isActive) {
+            const content = typeof data.section.content === 'string'
+              ? JSON.parse(data.section.content)
+              : data.section.content;
+            setFooterContent(content);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load footer content:", error);
+      }
+    };
+    void loadFooterContent();
+  }, []);
 
   return (
     <footer
@@ -31,24 +65,24 @@ export function EcommerceFooter() {
               ) : (
                 <>
                   <Package className="h-8 w-8 text-white" />
-                  <span className="text-xl font-bold">{branding.companyName || "The POOLSHOP"}</span>
+              <span className="text-xl font-bold">{branding.companyName || "The POOLSHOP"}</span>
                 </>
               )}
             </div>
             <p className="text-white/80 text-sm mb-4">
-              {branding.description || "Your one-stop shop for premium pool products, accessories, and expert solutions"}
+              {footerContent?.description || branding.description || "Your one-stop shop for premium pool products, accessories, and expert solutions"}
             </p>
             <div className="flex space-x-4">
-              <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
+              <a href={footerContent?.facebookUrl || "https://facebook.com"} target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
                 <Facebook className="h-5 w-5" />
               </a>
-              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
+              <a href={footerContent?.twitterUrl || "https://twitter.com"} target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
                 <Twitter className="h-5 w-5" />
               </a>
-              <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
+              <a href={footerContent?.instagramUrl || "https://instagram.com"} target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
                 <Instagram className="h-5 w-5" />
               </a>
-              <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
+              <a href={footerContent?.linkedinUrl || "https://linkedin.com"} target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
                 <Linkedin className="h-5 w-5" />
               </a>
             </div>
@@ -124,21 +158,20 @@ export function EcommerceFooter() {
             <ul className="space-y-3">
               <li className="flex items-start space-x-3">
                 <MapPin className="h-5 w-5 text-white flex-shrink-0 mt-0.5" />
-                <span className="text-white/75 text-sm">
-                  123 Pool Street<br />
-                  Accra, Ghana
+                <span className="text-white/75 text-sm whitespace-pre-line">
+                  {footerContent?.address || "123 Pool Street\nAccra, Ghana"}
                 </span>
               </li>
               <li className="flex items-center space-x-3">
                 <Phone className="h-5 w-5 text-white flex-shrink-0" />
-                <a href="tel:+233123456789" className="text-white/75 hover:text-white transition text-sm">
-                  +233 123 456 789
+                <a href={`tel:${footerContent?.phone || "+233123456789"}`} className="text-white/75 hover:text-white transition text-sm">
+                  {footerContent?.phone || "+233 123 456 789"}
                 </a>
               </li>
               <li className="flex items-center space-x-3">
                 <Mail className="h-5 w-5 text-white flex-shrink-0" />
-                <a href="mailto:info@thepoolshop.africa" className="text-white/75 hover:text-white transition text-sm">
-                  info@thepoolshop.africa
+                <a href={`mailto:${footerContent?.email || "info@thepoolshop.africa"}`} className="text-white/75 hover:text-white transition text-sm">
+                  {footerContent?.email || "info@thepoolshop.africa"}
                 </a>
               </li>
             </ul>
@@ -151,10 +184,10 @@ export function EcommerceFooter() {
               © {currentYear} {branding.companyName || "The POOLSHOP"}. All rights reserved.
             </p>
             <div className="flex space-x-6">
-              <Link href="/shop/privacy" className="text-white/75 hover:text-white transition text-sm">
+              <Link href={footerContent?.privacyPolicyLink || "/shop/privacy"} className="text-white/75 hover:text-white transition text-sm">
                 Privacy Policy
               </Link>
-              <Link href="/shop/terms" className="text-white/75 hover:text-white transition text-sm">
+              <Link href={footerContent?.termsLink || "/shop/terms"} className="text-white/75 hover:text-white transition text-sm">
                 Terms of Service
               </Link>
             </div>

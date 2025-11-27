@@ -1360,6 +1360,7 @@ CREATE TABLE "public"."sales_orders" (
     "deliveryDate" TIMESTAMP(3),
     "deliveryNotes" TEXT,
     "deliveredAt" TIMESTAMP(3),
+    "source" TEXT NOT NULL DEFAULT 'INTERNAL',
     "notes" TEXT,
     "ownerId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

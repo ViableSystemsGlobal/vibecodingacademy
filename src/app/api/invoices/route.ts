@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { parseTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
 
 // Helper function to generate invoice number
 async function generateInvoiceNumber(): Promise<string> {
@@ -24,67 +25,83 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
-    const customerId = searchParams.get('customerId');
-    const paymentStatus = searchParams.get('paymentStatus');
-    const dateFrom = searchParams.get('dateFrom');
-    const dateTo = searchParams.get('dateTo');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const params = parseTableQuery(request);
 
-    console.log('🔍 Invoices API: Filters:', { status, customerId, paymentStatus, dateFrom, dateTo });
+    // Custom filter handler
+    const customFilters = (filters: Record<string, string | string[] | null>) => {
+      const where: any = {};
 
-    // Build where clause
-    const where: any = {};
-    
-    if (status) {
-      where.status = status;
-    }
-    
-    if (paymentStatus) {
-      // Handle comma-separated payment statuses (e.g., "UNPAID,PARTIALLY_PAID")
-      if (paymentStatus.includes(',')) {
-        where.paymentStatus = {
-          in: paymentStatus.split(',').map(s => s.trim())
-        };
-      } else {
-        where.paymentStatus = paymentStatus;
+      if (filters.status) {
+        where.status = filters.status;
       }
-    }
-    
-    if (customerId) {
+      
+      if (filters.paymentStatus) {
+        // Handle comma-separated payment statuses (e.g., "UNPAID,PARTIALLY_PAID")
+        const paymentStatus = filters.paymentStatus;
+        if (typeof paymentStatus === 'string' && paymentStatus.includes(',')) {
+          where.paymentStatus = {
+            in: paymentStatus.split(',').map(s => s.trim())
+          };
+        } else {
+          where.paymentStatus = paymentStatus;
+        }
+      }
+      
+      if (filters.customerId) {
+        where.OR = [
+          { accountId: filters.customerId },
+          { distributorId: filters.customerId },
+          { leadId: filters.customerId }
+        ];
+      }
+
+      return where;
+    };
+
+    const where = buildWhereClause(params, {
+      searchFields: ['number', 'subject'],
+      customFilters,
+      dateField: 'issueDate',
+    });
+
+    // Add customer name search if search term exists
+    if (params.search) {
       where.OR = [
-        { accountId: customerId },
-        { distributorId: customerId },
-        { leadId: customerId }
+        ...(where.OR || []), // Preserve existing OR conditions from buildWhereClause
+        {
+          account: {
+            name: { contains: params.search, mode: 'insensitive' }
+          }
+        },
+        {
+          distributor: {
+            businessName: { contains: params.search, mode: 'insensitive' }
+          }
+        },
+        {
+          lead: {
+            OR: [
+              { firstName: { contains: params.search, mode: 'insensitive' } },
+              { lastName: { contains: params.search, mode: 'insensitive' } },
+              { company: { contains: params.search, mode: 'insensitive' } }
+            ]
+          }
+        }
       ];
     }
-    
-    if (dateFrom || dateTo) {
-      where.issueDate = {};
-      if (dateFrom) {
-        where.issueDate.gte = new Date(dateFrom);
-      }
-      if (dateTo) {
-        where.issueDate.lte = new Date(dateTo);
-      }
-    }
 
-    console.log('🔍 Invoices API: Where clause:', where);
-
-    // Get total count
-    const total = await prisma.invoice.count({ where });
-
-    // Calculate pagination
+    const orderBy = buildOrderBy(params.sortBy, params.sortOrder);
+    const page = params.page || 1;
+    const limit = params.limit || 10;
     const skip = (page - 1) * limit;
 
-    // Get paginated invoices
-    let invoices = await prisma.invoice.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip,
-      take: limit,
+    // Get total count and paginated invoices
+    const [invoices, total] = await Promise.all([
+      prisma.invoice.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limit,
       select: {
         id: true,
         number: true,
@@ -125,8 +142,10 @@ export async function GET(request: NextRequest) {
         _count: {
           select: { lines: true },
         },
-      } as any,
-    });
+      },
+      }),
+      prisma.invoice.count({ where })
+    ]);
 
     // Recalculate payment status for invoices on this page (fixes stale data)
     // Run in parallel for better performance
@@ -210,14 +229,20 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' }
     });
 
-    console.log('🔍 Invoices API: Found', invoices.length, 'invoices');
-
     return NextResponse.json({ 
       invoices, 
-      total,
-      page,
-      limit,
-      allInvoices 
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+      sort: params.sortBy
+        ? {
+            field: params.sortBy,
+            order: params.sortOrder || 'desc',
+          }
+        : undefined,
     });
   } catch (error) {
     console.error('❌ Invoices API Error:', error);

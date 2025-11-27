@@ -102,6 +102,7 @@ async function createSalesOrderFromInvoice(invoiceId: string, ownerId: string): 
       accountId: invoice.accountId,
       ownerId: ownerId,
       status: 'PENDING',
+      source: 'INTERNAL',
       subtotal: invoice.subtotal,
       tax: invoice.tax,
       discount: invoice.discount || 0,

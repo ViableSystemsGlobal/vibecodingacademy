@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendResourceRequestEmail } from "@/lib/resource-request-email";
 
 export async function GET(
   request: NextRequest,
@@ -55,6 +56,17 @@ export async function GET(
             name: true,
             color: true,
             order: true,
+          },
+        },
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+              },
+            },
           },
         },
         statusHistory: {
@@ -118,6 +130,7 @@ export async function PUT(
     const {
       title,
       details,
+      items, // New: array of items for update
       sku,
       quantity,
       unit,
@@ -131,6 +144,8 @@ export async function PUT(
       stageId,
       taskId,
       incidentId,
+      emailTo,
+      emailCc,
     } = body;
 
     const updateData: any = {};
@@ -150,6 +165,8 @@ export async function PUT(
     if (stageId !== undefined) updateData.stageId = stageId || null;
     if (taskId !== undefined) updateData.taskId = taskId || null;
     if (incidentId !== undefined) updateData.incidentId = incidentId || null;
+    if (emailTo !== undefined) updateData.emailTo = emailTo || null;
+    if (emailCc !== undefined) updateData.emailCc = emailCc || null;
 
     // Handle status changes
     if (status !== undefined && status !== resourceRequest.status) {
@@ -182,6 +199,85 @@ export async function PUT(
           { status: 400 }
         );
       }
+    }
+
+    // Handle items update if provided
+    if (items !== undefined && Array.isArray(items)) {
+      // Validate items
+      if (items.length === 0) {
+        return NextResponse.json(
+          { error: "At least one product/item is required" },
+          { status: 400 }
+        );
+      }
+
+      // Validate all items have product names
+      const invalidItems = items.filter((item: any) => !item.productName || !item.productName.trim());
+      if (invalidItems.length > 0) {
+        return NextResponse.json(
+          { error: "All products must have a name" },
+          { status: 400 }
+        );
+      }
+
+      // Try to find products by name (optional linking)
+      const itemsWithProducts = await Promise.all(
+        items.map(async (item: any) => {
+          const productName = item.productName.trim();
+          if (!productName) {
+            throw new Error("Product name is required");
+          }
+
+          // Try to find product by name (exact match first)
+          let product = await prisma.product.findFirst({
+            where: {
+              name: productName,
+              active: true,
+            },
+          });
+
+          // If not found, try case-insensitive search (for PostgreSQL/MySQL)
+          if (!product) {
+            try {
+              product = await prisma.product.findFirst({
+                where: {
+                  name: {
+                    contains: productName,
+                    mode: "insensitive",
+                  },
+                  active: true,
+                },
+              });
+            } catch (e) {
+              // SQLite doesn't support mode: "insensitive", skip
+            }
+          }
+
+          return {
+            productName: productName,
+            productId: product?.id || null,
+            quantity: parseFloat(item.quantity) || 1,
+            unit: item.unit || "unit",
+            estimatedCost: item.estimatedCost ? parseFloat(item.estimatedCost) : null,
+            notes: item.notes || null,
+          };
+        })
+      );
+
+      // Calculate total estimated cost from items if not provided
+      const calculatedCost = itemsWithProducts.reduce((sum, item) => {
+        return sum + (item.estimatedCost || 0);
+      }, 0);
+
+      if (estimatedCost === undefined) {
+        updateData.estimatedCost = calculatedCost > 0 ? calculatedCost : null;
+      }
+
+      // Delete all existing items and create new ones
+      updateData.items = {
+        deleteMany: {}, // Delete all existing items
+        create: itemsWithProducts, // Create new items
+      };
     }
 
     const updatedRequest = await prisma.resourceRequest.update({
@@ -226,6 +322,26 @@ export async function PUT(
             order: true,
           },
         },
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+              },
+            },
+          },
+        },
+        order: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            totalAmount: true,
+            createdAt: true,
+          },
+        },
       },
     });
 
@@ -239,6 +355,29 @@ export async function PUT(
           notes: `Status changed to ${status}`,
         },
       });
+
+      // Send email when status changes to APPROVED or SUBMITTED
+      if (status === "APPROVED" || status === "SUBMITTED") {
+        try {
+          // Get project and requester details for email
+          const project = await prisma.project.findUnique({
+            where: { id: params.id },
+            select: { id: true, name: true },
+          });
+
+          const requester = await prisma.user.findUnique({
+            where: { id: updatedRequest.requestedBy },
+            select: { id: true, name: true, email: true },
+          });
+
+          if (project && requester) {
+            await sendResourceRequestEmail(updatedRequest, project, requester);
+          }
+        } catch (emailError) {
+          // Don't fail the update if email fails
+          console.error("Error sending resource request email:", emailError);
+        }
+      }
     }
 
     return NextResponse.json({ resourceRequest: updatedRequest });

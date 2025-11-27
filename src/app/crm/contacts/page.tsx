@@ -47,6 +47,12 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalContacts, setTotalContacts] = useState(0);
+  const [sortBy, setSortBy] = useState<string | undefined>(undefined);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const itemsPerPage = 10;
   const [showAddModal, setShowAddModal] = useState(false);
   const [metrics, setMetrics] = useState({
     total: 0,
@@ -90,25 +96,51 @@ export default function ContactsPage() {
     }
   }, [status, router]);
 
-  const fetchContacts = async () => {
+  const fetchContacts = async (page: number = currentPage) => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: itemsPerPage.toString(),
+        ...(searchTerm && { search: searchTerm }),
+        ...(sortBy && { sortBy }),
+        ...(sortOrder && { sortOrder }),
+      });
 
       const response = await fetch(`/api/contacts?${params}`, {
         credentials: 'include',
       });
       if (response.ok) {
         const data = await response.json();
-        setContacts(data);
-        calculateMetrics(data);
+        setContacts(data.contacts || []);
+        setTotalPages(data.pagination?.pages || 1);
+        setTotalContacts(data.pagination?.total || 0);
+        setCurrentPage(page);
+        calculateMetrics(data.contacts || []);
       }
     } catch (error) {
       console.error('Error fetching contacts:', error);
     } finally {
       setLoading(false);
     }
+  };
+  
+  // Handle sorting change
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
+  };
+  
+  // Handle search change
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+  
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    fetchContacts(page);
   };
 
   const calculateMetrics = (contactsData: Contact[]) => {
@@ -129,11 +161,23 @@ export default function ContactsPage() {
     });
   };
 
+  // Immediate effect for sorting
   useEffect(() => {
     if (session?.user) {
-      fetchContacts();
+      fetchContacts(1);
     }
-  }, [session, searchTerm]);
+  }, [session, sortBy, sortOrder]);
+
+  // Debounced search effect (only for search term)
+  useEffect(() => {
+    if (session?.user) {
+      const timeoutId = setTimeout(() => {
+        fetchContacts(1);
+      }, 500); // 500ms debounce
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [searchTerm]);
 
   // Don't show loading skeleton during navigation - just redirect if needed
 
@@ -295,20 +339,6 @@ export default function ContactsPage() {
 
         {/* Contacts Table */}
         <Card className="p-6">
-          <div className="flex gap-4 mb-6">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Search contacts..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-          </div>
-
           {loading ? (
             <SkeletonTable rows={8} columns={6} />
           ) : (
@@ -318,6 +348,20 @@ export default function ContactsPage() {
               selectedItems={selectedContacts}
               onSelectionChange={setSelectedContacts}
               onRowClick={handleViewContact}
+              itemsPerPage={itemsPerPage}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalContacts}
+              onPageChange={handlePageChange}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSortChange={handleSortChange}
+              searchValue={searchTerm}
+              onSearchChange={handleSearchChange}
+              searchPlaceholder="Search contacts by name, email, phone, or position..."
+              enableExport={true}
+              exportFilename="contacts"
+              isLoading={loading}
               bulkActions={
                 <div className="flex gap-2">
                   <Button
@@ -361,6 +405,7 @@ export default function ContactsPage() {
                 {
                   key: 'account',
                   label: 'Account',
+                  sortable: true,
                   render: (contact) => (
                     <div>
                       <div className="font-medium">{contact.account.name}</div>

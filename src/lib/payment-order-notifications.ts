@@ -271,9 +271,19 @@ ${await getCompanyName()}`;
  */
 export async function sendOrderCreatedNotifications(
   order: any,
-  customer: any
+  customer: any,
+  isEcommerce: boolean = false
 ): Promise<void> {
   try {
+    // Check ecommerce email settings if this is an ecommerce order
+    if (isEcommerce) {
+      const sendOrderConfirmation = (await getSettingValue("ECOMMERCE_SEND_ORDER_CONFIRMATION", "true")) === "true";
+      if (!sendOrderConfirmation) {
+        console.log('Order confirmation emails are disabled in ecommerce settings');
+        return;
+      }
+    }
+
     // Get customer email and phone
     const customerEmail = customer?.email || null;
     const customerPhone = customer?.phone || null;
@@ -348,9 +358,30 @@ export async function sendOrderStatusChangeNotifications(
   order: any,
   oldStatus: string,
   newStatus: string,
-  customer: any
+  customer: any,
+  isEcommerce: boolean = false
 ): Promise<void> {
   try {
+    // Check ecommerce email settings if this is an ecommerce order
+    if (isEcommerce) {
+      const sendOrderStatusUpdates = (await getSettingValue("ECOMMERCE_SEND_ORDER_STATUS_UPDATES", "true")) === "true";
+      const sendShippingNotifications = (await getSettingValue("ECOMMERCE_SEND_SHIPPING_NOTIFICATIONS", "true")) === "true";
+      
+      // Check if we should send notification based on status change
+      const isShipping = newStatus.toUpperCase().includes('SHIPPED') || newStatus.toUpperCase() === 'READY_TO_SHIP';
+      const isStatusUpdate = !isShipping;
+      
+      if (isShipping && !sendShippingNotifications) {
+        console.log('Shipping notifications are disabled in ecommerce settings');
+        return;
+      }
+      
+      if (isStatusUpdate && !sendOrderStatusUpdates) {
+        console.log('Order status update emails are disabled in ecommerce settings');
+        return;
+      }
+    }
+
     // Get customer email and phone
     const customerEmail = customer?.email || null;
     const customerPhone = customer?.phone || null;

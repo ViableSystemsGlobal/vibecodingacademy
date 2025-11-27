@@ -26,7 +26,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     const hostname = window.location.hostname
     const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80')
     const isAdminDomain = hostname.includes('sms.') || hostname.includes('admin.')
-    const isAdminPort = port === '3001'
+    const adminPorts = new Set(['3001', '3003'])
+    const isAdminPort = adminPorts.has(port)
     setIsShopDomain(port === '3000' || (!isAdminDomain && !isAdminPort))
   }, [])
   
@@ -42,21 +43,24 @@ export function AppLayout({ children }: AppLayoutProps) {
   
   // Don't show admin layout on:
   // - Auth pages
-  // - Shop pages (/shop/*)
+  // - Shop pages (/shop/*, /blog/*)
   // - Root path (/) when on shop domain (only after mounted)
-  const isShopRoute = pathname.startsWith('/shop') || (pathname === '/' && mounted && isShopDomain)
+  const shopRoutePrefixes = ['/shop', '/blog']
+  const isShopRoute =
+    shopRoutePrefixes.some((prefix) => pathname.startsWith(prefix)) ||
+    (pathname === '/' && mounted && isShopDomain)
   const isAuthRoute = pathname.startsWith('/auth/')
   
   // Before mounted, assume we're not on shop domain to match server render
   // This prevents hydration mismatch
   if (!mounted) {
     // On server or initial render, check if it's a shop route (without domain check)
-    if (pathname.startsWith('/shop') || isAuthRoute) {
+    if (pathname.startsWith('/shop') || pathname.startsWith('/blog') || isAuthRoute) {
       return <>{children}</>
     }
-    // Default to admin layout for root path until we know the domain
+    // For root path, always skip admin layout on initial render
+    // The page itself will handle whether to show shop or admin content
     if (pathname === '/') {
-      // Show a simple loading state that matches what the page will show
       return <>{children}</>
     }
     // For other routes, show admin layout
@@ -68,6 +72,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     )
   }
   
+  // After mounting, check if we should skip admin layout
   if (isAuthRoute || isShopRoute) {
     return <>{children}</>
   }

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -13,8 +13,9 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { id } = await params;
     const project = await prisma.project.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         owner: {
           select: {
@@ -131,7 +132,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -144,17 +145,15 @@ export async function PUT(
       return NextResponse.json({ error: "Missing user context" }, { status: 401 });
     }
 
+    const { id } = await params;
     const body = await request.json();
-    const name = (body?.name || "").trim();
 
-    if (!name) {
-      return NextResponse.json({ error: "Project name is required" }, { status: 400 });
-    }
+    console.log('PUT /api/projects/[id] - Updating project:', id, 'with data:', JSON.stringify(body));
 
     // Check if project exists and user has permission
     const existingProject = await prisma.project.findUnique({
-      where: { id: params.id },
-      select: { ownerId: true, createdBy: true },
+      where: { id },
+      select: { ownerId: true, createdBy: true, name: true },
     });
 
     if (!existingProject) {
@@ -167,26 +166,78 @@ export async function PUT(
       return NextResponse.json({ error: "You don't have permission to edit this project" }, { status: 403 });
     }
 
+    // Allow partial updates - only validate name if it's being updated
+    const name = body?.name !== undefined ? (body.name || "").trim() : existingProject.name;
+    if (!name) {
+      return NextResponse.json({ error: "Project name is required" }, { status: 400 });
+    }
+
     const startDate = body?.startDate ? new Date(body.startDate) : null;
     const dueDate = body?.dueDate ? new Date(body.dueDate) : null;
     const budgetValue = typeof body?.budget === "number" && !Number.isNaN(body.budget)
       ? body.budget
       : null;
 
+    // Build update data object - only include fields that are being updated
+    const updateData: any = {};
+    
+    if (body?.name !== undefined) {
+      updateData.name = name;
+    }
+    if (body?.code !== undefined) {
+      updateData.code = body.code?.trim() || null;
+    }
+    if (body?.description !== undefined) {
+      updateData.description = body.description?.trim() || null;
+    }
+    if (body?.scope !== undefined) {
+      updateData.scope = body.scope?.trim() || null;
+    }
+    if (body?.status !== undefined) {
+      updateData.status = body.status;
+    }
+    if (body?.visibility !== undefined) {
+      updateData.visibility = body.visibility;
+    }
+    if (body?.startDate !== undefined) {
+      updateData.startDate = startDate;
+    }
+    if (body?.dueDate !== undefined) {
+      updateData.dueDate = dueDate;
+    }
+    if (body?.budget !== undefined) {
+      updateData.budget = budgetValue;
+    }
+    if (body?.budgetCurrency !== undefined) {
+      updateData.budgetCurrency = body.budgetCurrency?.trim() || null;
+    }
+    if (body?.latitude !== undefined) {
+      const latValue = typeof body.latitude === 'number' && !isNaN(body.latitude) ? body.latitude : null;
+      updateData.latitude = latValue;
+      console.log('Setting latitude:', latValue, 'from input:', body.latitude);
+    }
+    if (body?.longitude !== undefined) {
+      const lngValue = typeof body.longitude === 'number' && !isNaN(body.longitude) ? body.longitude : null;
+      updateData.longitude = lngValue;
+      console.log('Setting longitude:', lngValue, 'from input:', body.longitude);
+    }
+    if (body?.ownerId !== undefined) {
+      updateData.ownerId = body.ownerId;
+    }
+
+    // Ensure we have at least one field to update
+    if (Object.keys(updateData).length === 0) {
+      console.error('No fields to update');
+      return NextResponse.json({ error: "No fields provided for update" }, { status: 400 });
+    }
+
+    console.log('Updating project with data:', JSON.stringify(updateData, null, 2));
+    console.log('Project ID:', id);
+    
+    try {
     const project = await prisma.project.update({
-      where: { id: params.id },
-      data: {
-        name,
-        code: body?.code?.trim() || null,
-        description: body?.description?.trim() || null,
-        status: body?.status || "ACTIVE",
-        visibility: body?.visibility || "INTERNAL",
-        startDate,
-        dueDate,
-        budget: budgetValue,
-        budgetCurrency: body?.budgetCurrency?.trim() || null,
-        ...(body?.ownerId && { ownerId: body.ownerId }),
-      },
+        where: { id },
+        data: updateData,
       include: {
         owner: {
           select: {
@@ -206,9 +257,21 @@ export async function PUT(
       },
     });
 
+      console.log('Project updated successfully');
     return NextResponse.json({ project });
+    } catch (prismaError: any) {
+      console.error('Prisma update error:', prismaError);
+      console.error('Error code:', prismaError?.code);
+      console.error('Error meta:', prismaError?.meta);
+      throw prismaError;
+    }
   } catch (error) {
     console.error("❌ Failed to update project:", error);
+    console.error("Error details:", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined,
+    });
     return NextResponse.json(
       {
         error: "Failed to update project",
@@ -221,7 +284,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -234,9 +297,11 @@ export async function DELETE(
       return NextResponse.json({ error: "Missing user context" }, { status: 401 });
     }
 
+    const { id } = await params;
+
     // Check if project exists and user has permission
     const existingProject = await prisma.project.findUnique({
-      where: { id: params.id },
+      where: { id },
       select: { ownerId: true, createdBy: true },
     });
 
@@ -251,7 +316,7 @@ export async function DELETE(
     }
 
     await prisma.project.delete({
-      where: { id: params.id },
+      where: { id },
     });
 
     return NextResponse.json({ success: true });

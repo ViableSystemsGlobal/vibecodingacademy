@@ -2,7 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
 import crypto from "crypto";
+import { verify } from "jsonwebtoken";
 import { convertCurrency } from "@/lib/currency";
+
+// Helper function to get setting value from database
+async function getSettingValue(key: string, defaultValue: string = ''): Promise<string> {
+  try {
+    const setting = await prisma.systemSettings.findUnique({
+      where: { key },
+      select: { value: true }
+    });
+    return setting?.value || defaultValue;
+  } catch (error) {
+    console.error(`Error fetching setting ${key}:`, error);
+    return defaultValue;
+  }
+}
 
 // Helper function to get or create cart session
 async function getCartSession() {
@@ -20,6 +35,96 @@ async function getCartSession() {
   }
 
   return cartId;
+}
+
+// Helper function to track/update abandoned cart
+async function trackAbandonedCart(cartId: string, cart: any) {
+  try {
+    // Skip if cart is empty
+    if (!cart.items || cart.items.length === 0) {
+      // If cart is empty, mark as converted to stop tracking
+      try {
+        await prisma.abandonedCart.updateMany({
+          where: { cartSessionId: cartId },
+          data: { convertedToOrder: true }
+        });
+      } catch (e) {
+        // Ignore errors if cart doesn't exist
+      }
+      return;
+    }
+
+    // Try to get customer email if logged in
+    const cookieStore = await cookies();
+    const customerToken = cookieStore.get("customer_token")?.value;
+    let customerId: string | null = null;
+    let customerEmail: string | null = null;
+    let customerName: string | null = null;
+
+    if (customerToken) {
+      try {
+        const decoded: any = verify(
+          customerToken,
+          process.env.NEXTAUTH_SECRET || "adpools-secret-key-2024-production-change-me"
+        );
+        if (decoded?.type === "customer") {
+          customerId = decoded.id;
+          
+          // Try to get customer details
+          try {
+            const customer = await prisma.customer.findUnique({
+              where: { id: customerId },
+              select: { email: true, firstName: true, lastName: true }
+            });
+            if (customer) {
+              customerEmail = customer.email;
+              customerName = `${customer.firstName} ${customer.lastName}`;
+            }
+          } catch (e) {
+            // Customer table might not exist, continue without email
+          }
+        }
+      } catch (error) {
+        // Token invalid, continue as guest
+      }
+    }
+
+    // Use passed totals if available, otherwise calculate
+    const subtotal = cart.subtotal !== undefined ? cart.subtotal : 0;
+    const tax = cart.tax !== undefined ? cart.tax : 0;
+    const total = cart.total !== undefined ? cart.total : 0;
+
+    // Upsert abandoned cart record (only if not already converted)
+    await prisma.abandonedCart.upsert({
+      where: { cartSessionId: cartId },
+      update: {
+        items: cart.items,
+        subtotal,
+        tax,
+        total,
+        lastActivityAt: new Date(),
+        customerId: customerId || null,
+        customerEmail: customerEmail || null,
+        customerName: customerName || null,
+        // Don't update reminder fields on activity update
+      },
+      create: {
+        cartSessionId: cartId,
+        customerId: customerId || null,
+        customerEmail: customerEmail || null,
+        customerName: customerName || null,
+        items: cart.items,
+        subtotal,
+        tax,
+        total,
+        currency: "GHS",
+        lastActivityAt: new Date(),
+      },
+    });
+  } catch (error) {
+    // Don't fail cart operations if tracking fails
+    console.error("Error tracking abandoned cart:", error);
+  }
 }
 
 // GET /api/public/shop/cart - Get cart contents
@@ -82,13 +187,32 @@ export async function GET() {
             }
           }
 
-          let priceInGHS = product.price || 0;
-          const priceCurrency = product.originalPriceCurrency || product.baseCurrency || "GHS";
-          
-          if (priceCurrency !== "GHS" && product.price) {
-            const priceConversion = await convertCurrency(priceCurrency, "GHS", product.price);
-            if (priceConversion) {
-              priceInGHS = priceConversion.convertedAmount;
+          // Check for bestDealPrice (always in GHS)
+          let bestDealPrice: number | null = null;
+          try {
+            const bestDealRow = await (prisma as any).$queryRaw`
+              SELECT "bestDealPrice" FROM products WHERE id = ${product.id}
+            `;
+            bestDealPrice = bestDealRow?.[0]?.bestDealPrice || null;
+          } catch (e) {
+            // If query fails, continue without bestDealPrice
+          }
+
+          // Use bestDealPrice if available, otherwise use regular price
+          let priceInGHS: number;
+          if (bestDealPrice) {
+            // bestDealPrice is already in GHS
+            priceInGHS = bestDealPrice;
+          } else {
+            // Convert regular price to GHS
+            priceInGHS = product.price || 0;
+            const priceCurrency = product.originalPriceCurrency || product.baseCurrency || "GHS";
+            
+            if (priceCurrency !== "GHS" && product.price) {
+              const priceConversion = await convertCurrency(priceCurrency, "GHS", product.price);
+              if (priceConversion) {
+                priceInGHS = priceConversion.convertedAmount;
+              }
             }
           }
           
@@ -110,7 +234,10 @@ export async function GET() {
       }
     }
 
-    const tax = subtotal * 0.125; // 12.5% VAT
+    // Get tax rate from ecommerce settings (defaults to 12.5%)
+    const taxRateSetting = await getSettingValue("ECOMMERCE_TAX_RATE", "12.5");
+    const taxRate = parseFloat(taxRateSetting) || 12.5;
+    const tax = subtotal * (taxRate / 100);
     const total = subtotal + tax;
 
     return NextResponse.json({
@@ -195,12 +322,71 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Recalculate cart totals for tracking
+    const taxRate = parseFloat(await getSettingValue("ECOMMERCE_TAX_RATE", "12.5")) || 12.5;
+    let cartSubtotal = 0;
+    
+    for (const item of cart.items) {
+      try {
+        const product = await prisma.product.findUnique({
+          where: { id: item.productId },
+          select: { price: true, baseCurrency: true, originalPriceCurrency: true }
+        });
+        
+        if (product) {
+          // Check for bestDealPrice (always in GHS)
+          let bestDealPrice: number | null = null;
+          try {
+            const bestDealRow = await (prisma as any).$queryRaw`
+              SELECT "bestDealPrice" FROM products WHERE id = ${item.productId}
+            `;
+            bestDealPrice = bestDealRow?.[0]?.bestDealPrice || null;
+          } catch (e) {
+            // If query fails, continue without bestDealPrice
+          }
+
+          // Use bestDealPrice if available, otherwise convert regular price
+          let price: number;
+          if (bestDealPrice) {
+            price = bestDealPrice; // Already in GHS
+          } else {
+            price = product.price || 0;
+            const baseCurrency = product.baseCurrency || "GHS";
+            
+            if (baseCurrency !== "GHS" && price) {
+              const priceConversion = await convertCurrency(baseCurrency, "GHS", price);
+              if (priceConversion) {
+                price = priceConversion.convertedAmount;
+              }
+            }
+          }
+          
+          cartSubtotal += price * (item.quantity || 1);
+        }
+      } catch (e) {
+        // Skip items with errors
+      }
+    }
+    
+    const cartTax = cartSubtotal * (taxRate / 100);
+    const cartTotal = cartSubtotal + cartTax;
+
     // Save cart
     cookieStore.set(`cart_${cartId}`, JSON.stringify(cart), {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7, // 7 days
+    });
+
+    // Track abandoned cart (async, don't wait)
+    trackAbandonedCart(cartId, {
+      ...cart,
+      subtotal: cartSubtotal,
+      tax: cartTax,
+      total: cartTotal
+    }).catch(error => {
+      console.error("Error tracking abandoned cart:", error);
     });
 
     return NextResponse.json({
@@ -272,12 +458,71 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Recalculate cart totals for tracking
+    const taxRate = parseFloat(await getSettingValue("ECOMMERCE_TAX_RATE", "12.5")) || 12.5;
+    let cartSubtotal = 0;
+    
+    for (const item of cart.items) {
+      try {
+        const product = await prisma.product.findUnique({
+          where: { id: item.productId },
+          select: { price: true, baseCurrency: true, originalPriceCurrency: true }
+        });
+        
+        if (product) {
+          // Check for bestDealPrice (always in GHS)
+          let bestDealPrice: number | null = null;
+          try {
+            const bestDealRow = await (prisma as any).$queryRaw`
+              SELECT "bestDealPrice" FROM products WHERE id = ${item.productId}
+            `;
+            bestDealPrice = bestDealRow?.[0]?.bestDealPrice || null;
+          } catch (e) {
+            // If query fails, continue without bestDealPrice
+          }
+
+          // Use bestDealPrice if available, otherwise convert regular price
+          let price: number;
+          if (bestDealPrice) {
+            price = bestDealPrice; // Already in GHS
+          } else {
+            price = product.price || 0;
+            const baseCurrency = product.baseCurrency || "GHS";
+            
+            if (baseCurrency !== "GHS" && price) {
+              const priceConversion = await convertCurrency(baseCurrency, "GHS", price);
+              if (priceConversion) {
+                price = priceConversion.convertedAmount;
+              }
+            }
+          }
+          
+          cartSubtotal += price * (item.quantity || 1);
+        }
+      } catch (e) {
+        // Skip items with errors
+      }
+    }
+    
+    const cartTax = cartSubtotal * (taxRate / 100);
+    const cartTotal = cartSubtotal + cartTax;
+
     // Save cart
     cookieStore.set(`cart_${cartId}`, JSON.stringify(cart), {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7,
+    });
+
+    // Track abandoned cart (async, don't wait)
+    trackAbandonedCart(cartId, {
+      ...cart,
+      subtotal: cartSubtotal,
+      tax: cartTax,
+      total: cartTotal
+    }).catch(error => {
+      console.error("Error tracking abandoned cart:", error);
     });
 
     return NextResponse.json({
@@ -293,13 +538,53 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE /api/public/shop/cart - Clear cart
-export async function DELETE() {
+// DELETE /api/public/shop/cart - Clear cart or remove item
+export async function DELETE(request: NextRequest) {
   try {
     const cartId = await getCartSession();
     const cookieStore = await cookies();
+    const { searchParams } = new URL(request.url);
+    const productId = searchParams.get("productId");
     
+    if (productId) {
+      // Remove specific item from cart
+      const cartData = cookieStore.get(`cart_${cartId}`)?.value;
+      
+      if (cartData) {
+        let cart = JSON.parse(cartData);
+        cart.items = cart.items.filter((item: any) => item.productId !== productId);
+        
+        cookieStore.set(`cart_${cartId}`, JSON.stringify(cart), {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          maxAge: 60 * 60 * 24 * 7,
+        });
+
+        // Track abandoned cart (async, don't wait)
+        trackAbandonedCart(cartId, cart).catch(error => {
+          console.error("Error tracking abandoned cart:", error);
+        });
+
+        return NextResponse.json({
+          success: true,
+          message: "Item removed from cart",
+        });
+      }
+    } else {
+      // Clear entire cart
     cookieStore.delete(`cart_${cartId}`);
+      
+      // Mark cart as converted (empty = no longer abandoned)
+      try {
+        await prisma.abandonedCart.updateMany({
+          where: { cartSessionId: cartId },
+          data: { convertedToOrder: true }
+        });
+      } catch (e) {
+        // Ignore errors if cart doesn't exist
+      }
+    }
     
     return NextResponse.json({
       success: true,

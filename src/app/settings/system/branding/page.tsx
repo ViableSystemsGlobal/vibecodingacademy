@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Upload, Star, Image, Globe, Mail, Video } from "lucide-react";
+import { ArrowLeft, Upload, Star, Image, Globe, Mail, Video, Sparkles, Wand2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/contexts/toast-context";
 import { isYouTubeUrl, getYouTubeEmbedUrl } from "@/lib/youtube-utils";
+import { DEFAULT_STOREFRONT_CONTENT } from "@/lib/storefront-content";
 
 interface BrandingSettings {
   companyName: string;
@@ -26,6 +27,43 @@ interface BrandingSettings {
   emailTemplateFooter: string;
   heroVideo: string;
 }
+
+interface PromoBannerContent {
+  eyebrow?: string;
+  title?: string;
+  description?: string;
+  ctaText?: string;
+  ctaHref?: string;
+  gradient?: string;
+}
+
+interface HeroSlideContent {
+  id: string;
+  eyebrow?: string;
+  heading: string;
+  subheading?: string;
+  description?: string;
+  ctaText?: string;
+  ctaLink?: string;
+  image?: string;
+  accentColor?: string;
+}
+
+interface ProductPromoContent {
+  eyebrow?: string;
+  title?: string;
+  description?: string;
+  ctaText?: string;
+  ctaHref?: string;
+  gradient?: string;
+}
+
+const DEFAULT_PROMO_BANNER = DEFAULT_STOREFRONT_CONTENT.home_promo_banner as PromoBannerContent;
+const DEFAULT_HERO_SLIDES = (
+  (DEFAULT_STOREFRONT_CONTENT.home_hero as unknown as { slides: HeroSlideContent[] })?.slides || []
+) as HeroSlideContent[];
+const DEFAULT_PRODUCT_PROMO =
+  (DEFAULT_STOREFRONT_CONTENT.product_promo_banner as ProductPromoContent) || {};
 
 export default function BrandingSettingsPage() {
   const [settings, setSettings] = useState<BrandingSettings>({
@@ -44,6 +82,9 @@ export default function BrandingSettingsPage() {
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [promoBanner, setPromoBanner] = useState<PromoBannerContent>(DEFAULT_PROMO_BANNER);
+  const [heroSlides, setHeroSlides] = useState<HeroSlideContent[]>(DEFAULT_HERO_SLIDES);
+  const [productPromo, setProductPromo] = useState<ProductPromoContent>(DEFAULT_PRODUCT_PROMO);
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
   const { success, error } = useToast();
@@ -55,10 +96,41 @@ export default function BrandingSettingsPage() {
   const loadSettings = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/settings/branding');
-      if (response.ok) {
-        const data = await response.json();
+      const [brandingResponse, contentResponse] = await Promise.all([
+        fetch('/api/settings/branding'),
+        fetch(
+          '/api/settings/storefront/content?keys=home_promo_banner,home_hero,product_promo_banner'
+        ),
+      ]);
+
+      if (brandingResponse.ok) {
+        const data = await brandingResponse.json();
         setSettings(data);
+      }
+
+      if (contentResponse.ok) {
+        const contentData = await contentResponse.json();
+        const promo = contentData?.content?.home_promo_banner;
+        const hero = contentData?.content?.home_hero?.slides;
+        const productBanner = contentData?.content?.product_promo_banner;
+
+        if (promo) {
+          setPromoBanner(promo);
+        } else {
+          setPromoBanner(DEFAULT_PROMO_BANNER);
+        }
+
+        if (Array.isArray(hero) && hero.length > 0) {
+          setHeroSlides(hero);
+        } else {
+          setHeroSlides(DEFAULT_HERO_SLIDES);
+        }
+
+        if (productBanner) {
+          setProductPromo(productBanner);
+        } else {
+          setProductPromo(DEFAULT_PRODUCT_PROMO);
+        }
       }
     } catch (error) {
       console.error('Error loading branding settings:', error);
@@ -70,22 +142,48 @@ export default function BrandingSettingsPage() {
   const handleSave = async () => {
     try {
       setSaving(true);
-      const response = await fetch('/api/settings/branding', {
+      const [brandingResponse, cmsResponse] = await Promise.all([
+        fetch('/api/settings/branding', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(settings),
-      });
+        }),
+        fetch('/api/settings/storefront/content', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sections: [
+              {
+                key: 'home_promo_banner',
+                data: promoBanner,
+              },
+              {
+                key: 'home_hero',
+                data: {
+                  slides: heroSlides,
+                },
+              },
+              {
+                key: 'product_promo_banner',
+                data: productPromo,
+              },
+            ],
+          }),
+        }),
+      ]);
 
-      if (response.ok) {
+      if (!brandingResponse.ok || !cmsResponse.ok) {
+        error('Failed to save branding settings');
+        return;
+      }
+
         success('Branding settings saved successfully!');
-        // Update favicon if changed
         if (settings.favicon) {
           updateFavicon(settings.favicon);
-        }
-      } else {
-        error('Failed to save branding settings');
       }
     } catch (err) {
       console.error('Error saving branding settings:', err);
@@ -143,6 +241,46 @@ export default function BrandingSettingsPage() {
       console.error(`Error uploading ${field}:`, err);
       error(`Failed to upload ${field}`);
     }
+  };
+
+  const generateSlideId = () =>
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `slide-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  const updateHeroSlide = (index: number, patch: Partial<HeroSlideContent>) => {
+    setHeroSlides((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  };
+
+  const addHeroSlide = () => {
+    setHeroSlides((prev) => [
+      ...prev,
+      {
+        id: generateSlideId(),
+        eyebrow: 'New Highlight',
+        heading: 'Add a bold headline',
+        description: 'Describe what makes this offer special.',
+        ctaText: 'Shop now',
+        ctaLink: '/shop',
+        image: '',
+        accentColor: '#23185c',
+      },
+    ]);
+  };
+
+  const removeHeroSlide = (index: number) => {
+    setHeroSlides((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const updateProductPromo = (patch: Partial<ProductPromoContent>) => {
+    setProductPromo((prev) => ({ ...prev, ...patch }));
   };
 
   if (loading) {
@@ -660,6 +798,302 @@ export default function BrandingSettingsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Storefront Hero Slider */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Wand2 className="h-5 w-5" />
+              <span>Homepage Hero Slider</span>
+            </CardTitle>
+            <CardDescription>
+              Manage the primary hero carousel on the storefront home page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              {heroSlides.map((slide, index) => (
+                <div key={slide.id ?? index} className="rounded-2xl border border-gray-200 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-gray-900">Slide {index + 1}</h4>
+                    {heroSlides.length > 1 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => removeHeroSlide(index)}
+                      >
+                        <XCircle className="mr-1 h-4 w-4" /> Remove
+                      </Button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>Eyebrow</Label>
+                      <Input
+                        value={slide.eyebrow || ''}
+                        onChange={(e) => updateHeroSlide(index, { eyebrow: e.target.value })}
+                        placeholder="Summer Essentials"
+                      />
+                    </div>
+                    <div>
+                      <Label>Accent Color</Label>
+                      <Input
+                        value={slide.accentColor || ''}
+                        onChange={(e) => updateHeroSlide(index, { accentColor: e.target.value })}
+                        placeholder="#23185c"
+                      />
+                    </div>
+                    <div>
+                      <Label>Heading</Label>
+                      <Input
+                        value={slide.heading}
+                        onChange={(e) => updateHeroSlide(index, { heading: e.target.value })}
+                        placeholder="Everything You Need for a Sparkling Pool"
+                      />
+                    </div>
+                    <div>
+                      <Label>Subheading</Label>
+                      <Input
+                        value={slide.subheading || ''}
+                        onChange={(e) => updateHeroSlide(index, { subheading: e.target.value })}
+                        placeholder="Expert curated essentials"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>Description</Label>
+                      <Textarea
+                        value={slide.description || ''}
+                        onChange={(e) => updateHeroSlide(index, { description: e.target.value })}
+                        rows={3}
+                        placeholder="Shop pumps, filters, chemicals, and accessories curated by professionals."
+                      />
+                    </div>
+                    <div>
+                      <Label>CTA Text</Label>
+                      <Input
+                        value={slide.ctaText || ''}
+                        onChange={(e) => updateHeroSlide(index, { ctaText: e.target.value })}
+                        placeholder="Shop All Products"
+                      />
+                    </div>
+                    <div>
+                      <Label>CTA Link</Label>
+                      <Input
+                        value={slide.ctaLink || ''}
+                        onChange={(e) => updateHeroSlide(index, { ctaLink: e.target.value })}
+                        placeholder="/shop"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>Image URL</Label>
+                      <Input
+                        value={slide.image || ''}
+                        onChange={(e) => updateHeroSlide(index, { image: e.target.value })}
+                        placeholder="https://…"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Use a hosted image (JPG/PNG/WebP). Recommended aspect ratio 16:9.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button variant="outline" type="button" onClick={addHeroSlide}>
+              <Sparkles className="mr-2 h-4 w-4" /> Add Slide
+            </Button>
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+              <p className="text-sm font-semibold text-gray-700 mb-2">Preview</p>
+              <div className="grid gap-3">
+                {heroSlides.map((slide, index) => (
+                  <div key={`preview-${slide.id ?? index}`} className="rounded-xl bg-white p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase text-gray-500">{slide.eyebrow || 'Eyebrow'}</p>
+                    <p className="text-lg font-bold text-gray-900">{slide.heading || 'Heading goes here'}</p>
+                    <p className="text-sm text-gray-600">{slide.description || 'Description preview'}</p>
+                    <p className="text-xs text-gray-400">CTA: {slide.ctaText || 'N/A'} → {slide.ctaLink || 'N/A'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Product Page Promo Banner */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Sparkles className="h-5 w-5" />
+              <span>Product Page Promo Banner</span>
+            </CardTitle>
+            <CardDescription>
+              Controls the promotional banner displayed beneath the product details page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <Label htmlFor="productPromoEyebrow">Eyebrow Text</Label>
+              <Input
+                id="productPromoEyebrow"
+                value={productPromo.eyebrow ?? ''}
+                onChange={(e) => updateProductPromo({ eyebrow: e.target.value })}
+                placeholder="Poolside Upgrade"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="productPromoTitle">Title</Label>
+              <Input
+                id="productPromoTitle"
+                value={productPromo.title ?? ''}
+                onChange={(e) => updateProductPromo({ title: e.target.value })}
+                placeholder="Bundle & Save on Spa Accessories"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="productPromoDescription">Description</Label>
+              <Textarea
+                id="productPromoDescription"
+                value={productPromo.description ?? ''}
+                onChange={(e) => updateProductPromo({ description: e.target.value })}
+                placeholder="Complete your relaxation setup with curated accessories. Members enjoy an extra 10% off when buying two or more."
+                rows={3}
+              />
+            </div>
+            <div>
+              <Label htmlFor="productPromoCtaText">CTA Text</Label>
+              <Input
+                id="productPromoCtaText"
+                value={productPromo.ctaText ?? ''}
+                onChange={(e) => updateProductPromo({ ctaText: e.target.value })}
+                placeholder="Explore Accessories"
+              />
+            </div>
+            <div>
+              <Label htmlFor="productPromoCtaHref">CTA Link</Label>
+              <Input
+                id="productPromoCtaHref"
+                value={productPromo.ctaHref ?? ''}
+                onChange={(e) => updateProductPromo({ ctaHref: e.target.value })}
+                placeholder="/shop?category=accessories"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="productPromoGradient">Background Gradient</Label>
+              <Input
+                id="productPromoGradient"
+                value={productPromo.gradient ?? ''}
+                onChange={(e) => updateProductPromo({ gradient: e.target.value })}
+                placeholder="from-sky-500 via-cyan-500 to-emerald-500"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Tailwind gradient classes. Example: <code>from-emerald-500 via-teal-500 to-sky-500</code>
+              </p>
+            </div>
+            <div className="md:col-span-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setProductPromo(DEFAULT_PRODUCT_PROMO)}
+              >
+                Reset to Default
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Storefront Promo Banner */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Sparkles className="h-5 w-5" />
+              <span>Storefront Promo Banner</span>
+            </CardTitle>
+            <CardDescription>
+              Control the promotional banner shown on the home and product pages.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Eyebrow</Label>
+                <Input
+                  value={promoBanner.eyebrow || ''}
+                  onChange={(e) => setPromoBanner({ ...promoBanner, eyebrow: e.target.value })}
+                  placeholder="Limited Time Offer"
+                />
+              </div>
+              <div>
+                <Label>Background Gradient</Label>
+                <Input
+                  value={promoBanner.gradient || ''}
+                  onChange={(e) => setPromoBanner({ ...promoBanner, gradient: e.target.value })}
+                  placeholder="from-indigo-600 via-purple-500 to-pink-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Provide Tailwind gradient classes.</p>
+              </div>
+            </div>
+            <div>
+              <Label>Title</Label>
+              <Input
+                value={promoBanner.title || ''}
+                onChange={(e) => setPromoBanner({ ...promoBanner, title: e.target.value })}
+                placeholder="Turn Your Backyard into a Paradise"
+              />
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Textarea
+                value={promoBanner.description || ''}
+                onChange={(e) => setPromoBanner({ ...promoBanner, description: e.target.value })}
+                rows={3}
+                placeholder="Pool floats, lights, speakers, and more—bundle and save…"
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>CTA Text</Label>
+                <Input
+                  value={promoBanner.ctaText || ''}
+                  onChange={(e) => setPromoBanner({ ...promoBanner, ctaText: e.target.value })}
+                  placeholder="Shop Backyard Kits"
+                />
+              </div>
+              <div>
+                <Label>CTA Link</Label>
+                <Input
+                  value={promoBanner.ctaHref || ''}
+                  onChange={(e) => setPromoBanner({ ...promoBanner, ctaHref: e.target.value })}
+                  placeholder="/shop?category=accessories"
+                />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+              <p className="text-sm font-semibold text-gray-700 mb-2">Preview</p>
+              <div
+                className={`flex flex-col overflow-hidden rounded-2xl bg-gradient-to-r ${promoBanner.gradient || 'from-indigo-600 via-purple-500 to-pink-500'} p-6 text-white shadow-lg md:flex-row md:items-center md:justify-between`}
+              >
+                <div className="max-w-xl">
+                  {promoBanner.eyebrow ? (
+                    <span className="inline-flex items-center rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
+                      {promoBanner.eyebrow}
+                    </span>
+                  ) : null}
+                  <h3 className="mt-4 text-2xl font-bold leading-tight">
+                    {promoBanner.title || 'Add a headline'}
+                  </h3>
+                  <p className="mt-3 text-sm text-white/80">
+                    {promoBanner.description || 'Describe the promotion or message you want to highlight.'}
+                  </p>
+                </div>
+                <div className="mt-4 md:mt-0">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-semibold text-indigo-600 shadow">
+                    {promoBanner.ctaText || 'Shop now'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Save Button */}
         <div className="flex justify-end">

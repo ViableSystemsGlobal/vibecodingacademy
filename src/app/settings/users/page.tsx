@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useSession } from "next-auth/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,15 +22,30 @@ import {
   Eye,
   EyeOff,
   Grid,
-  List
+  List,
+  MoreHorizontal
 } from "lucide-react";
-import { DropdownMenu } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DataTable } from "@/components/ui/data-table";
 import AddUserModal from "@/components/modals/add-user-modal";
 import { EditUserModal } from "@/components/modals/edit-user-modal";
 import { ChangePasswordModal } from "@/components/modals/change-password-modal";
 import { UserDetailsModal } from "@/components/modals/user-details-modal";
 import { ConfirmationModal } from "@/components/modals/confirmation-modal";
 import { useAsyncConfirmation } from "@/hooks/use-async-confirmation";
+
+interface Role {
+  id: string;
+  name: string;
+  description?: string;
+  isSystem?: boolean;
+}
+
+interface UserRoleAssignment {
+  id: string;
+  roleId: string;
+  role?: Role;
+}
 
 interface User {
   id: string;
@@ -42,13 +58,7 @@ interface User {
   lastLogin?: string;
   createdAt: string;
   avatar?: string;
-}
-
-interface Role {
-  id: string;
-  name: string;
-  description?: string;
-  isSystem?: boolean;
+  userRoles?: UserRoleAssignment[];
 }
 
 // Mock data for users - only the admin user
@@ -69,15 +79,56 @@ export default function UserManagementPage() {
   const { success, error: showError } = useToast();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
+  const { data: session, update: updateSession } = useSession();
+  
+  const formatRoleLabel = (value: string) => {
+    if (!value) return "";
+    if (/[a-z]/.test(value)) {
+      return value
+        .split(" ")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+    }
+    return value
+      .split("_")
+      .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+      .join(" ");
+  };
+
+  const normalizeRoleValue = (value: string) =>
+    value ? value.replace(/\s+/g, "_").toUpperCase() : "";
+
+  const getUserRoleLabels = (user: User) => {
+    if (user.userRoles && user.userRoles.length > 0) {
+      return user.userRoles
+        .map((assignment) => assignment.role?.name)
+        .filter(Boolean)
+        .map((name) => formatRoleLabel(name as string));
+    }
+    return [formatRoleLabel(user.role)];
+  };
+
+  const getPrimaryRoleLabel = (user: User) => {
+    const labels = getUserRoleLabels(user);
+    return labels[0] || '';
+  };
   
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [roleFilter, setRoleFilter] = useState("All");
-  const [nameFilter, setNameFilter] = useState("");
-  const [emailFilter, setEmailFilter] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState<string>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showEditUserModal, setShowEditUserModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -86,24 +137,63 @@ export default function UserManagementPage() {
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const deleteConfirmation = useAsyncConfirmation();
 
+  const systemRoleOptions = useMemo(() => {
+    const unique = new Set<string>();
+    roles.forEach((role) => {
+      if (role.name && /^[A-Z_]+$/.test(role.name)) {
+        unique.add(role.name);
+      }
+    });
+    return Array.from(unique).map((value) => ({
+      value,
+      label: formatRoleLabel(value),
+    }));
+  }, [roles]);
+
+  // Initial load on mount
   useEffect(() => {
-    loadData();
+    loadRoles();
+    if (viewMode === 'list') {
+      fetchUsers(1);
+    } else {
+      loadData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadData = async () => {
-    setIsLoading(true);
-    try {
-      // Load users from API
-      const usersResponse = await fetch('/api/users/public');
-      if (usersResponse.ok) {
-        const usersData = await usersResponse.json();
-        setUsers(usersData.users || []);
-      } else {
-        console.error('Failed to fetch users');
-        setUsers(MOCK_USERS); // Fallback to mock data
+  // Effect for sorting and filters (list view only)
+  useEffect(() => {
+    if (viewMode === 'list') {
+      const isInitialMount = currentPage === 1 && !searchTerm && !roleFilter && !sortBy;
+      if (isInitialMount) {
+        return;
+      }
+      fetchUsers(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roleFilter, sortBy, sortOrder, viewMode]);
+
+  // Debounced search effect (list view only)
+  const isMountedRef = useRef(false);
+  useEffect(() => {
+    if (viewMode === 'list') {
+      if (!isMountedRef.current) {
+        isMountedRef.current = true;
+        return;
       }
       
-      // Load roles from API
+      const timeoutId = setTimeout(() => {
+        setCurrentPage(1);
+        fetchUsers(1);
+      }, searchTerm ? 500 : 0);
+
+      return () => clearTimeout(timeoutId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, viewMode]);
+
+  const loadRoles = async () => {
+    try {
       const rolesResponse = await fetch('/api/roles/public');
       if (rolesResponse.ok) {
         const rolesData = await rolesResponse.json();
@@ -113,11 +203,80 @@ export default function UserManagementPage() {
         setRoles([]);
       }
     } catch (error) {
-      console.error('Error loading data:', error);
-      setUsers(MOCK_USERS); // Fallback to mock data
+      console.error('Error loading roles:', error);
       setRoles([]);
     }
+  };
+
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      // Load users from API (for grid view)
+      const usersResponse = await fetch('/api/users/public');
+      if (usersResponse.ok) {
+        const usersData = await usersResponse.json();
+        setUsers(usersData.users || []);
+      } else {
+        console.error('Failed to fetch users');
+        setUsers(MOCK_USERS); // Fallback to mock data
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+      setUsers(MOCK_USERS); // Fallback to mock data
+    }
     setIsLoading(false);
+  };
+
+  const fetchUsers = async (page: number = currentPage) => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('limit', itemsPerPage.toString());
+      
+      if (searchTerm) {
+        params.append('search', searchTerm);
+      }
+      if (roleFilter) {
+        params.append('role', roleFilter);
+      }
+      if (sortBy) {
+        params.append('sortBy', sortBy);
+      }
+      if (sortOrder) {
+        params.append('sortOrder', sortOrder);
+      }
+      
+      const response = await fetch(`/api/users?${params.toString()}`, {
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(Array.isArray(data.users) ? data.users : []);
+        setTotalPages(data.pagination?.pages || 1);
+        setTotalItems(data.pagination?.total || 0);
+        setCurrentPage(page);
+      } else {
+        console.error('Failed to fetch users');
+        setUsers([]);
+        setTotalPages(1);
+        setTotalItems(0);
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setUsers([]);
+      setTotalPages(1);
+      setTotalItems(0);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
   };
 
 
@@ -149,9 +308,13 @@ export default function UserManagementPage() {
         });
 
         if (response.ok) {
-          setUsers(prev => prev.filter(u => u.id !== user.id));
+          if (viewMode === 'list') {
+            await fetchUsers(currentPage);
+          } else {
+            setUsers(prev => prev.filter(u => u.id !== user.id));
+            await loadData();
+          }
           success('User deleted successfully');
-          await loadData(); // Reload to update metrics
           setUserToDelete(null);
         } else {
           console.error('User deletion response status:', response.status);
@@ -222,6 +385,7 @@ export default function UserManagementPage() {
   };
 
   const handleUpdateUser = async (userId: string, userData: Partial<User>) => {
+    let wasSuccessful = false;
     try {
       setIsLoading(true);
       
@@ -245,15 +409,28 @@ export default function UserManagementPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(mappedUserData),
+        body: JSON.stringify({
+          ...mappedUserData,
+          roleIds: userData.roleIds || [],
+        }),
       });
 
       if (response.ok) {
         const data = await response.json();
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...data.user } : u));
+        
+        // If updating the current user's role, refresh the session
+        if (session?.user?.id === userId && userData.roleIds) {
+          // Trigger session refresh by calling update
+          await updateSession();
+          success('User updated successfully. Your session has been refreshed. Please refresh the page to see your updated role.');
+        } else {
         success('User updated successfully');
+        }
+        
         setShowEditUserModal(false);
         await loadData(); // Reload to update metrics
+        wasSuccessful = true;
       } else {
         const error = await response.json();
         showError(error.error || 'Failed to update user');
@@ -264,6 +441,7 @@ export default function UserManagementPage() {
     } finally {
       setIsLoading(false);
     }
+    return wasSuccessful;
   };
 
   const handleChangeUserPassword = async (userId: string, newPassword: string) => {
@@ -292,7 +470,8 @@ export default function UserManagementPage() {
     }
   };
 
-  const handleAddUser = async (newUser: Partial<User>) => {
+  const handleAddUser = async (newUser: Partial<User> & { roleIds?: string[] }) => {
+    let wasSuccessful = false;
     try {
       setIsLoading(true);
       
@@ -309,12 +488,17 @@ export default function UserManagementPage() {
           password: newUser.password,
           role: newUser.role,
           isActive: newUser.isActive ?? true,
+          roleIds: newUser.roleIds || [],
         }),
       });
 
       if (response.ok) {
-        const createdUser = await response.json();
-        
+        const { user: createdUser } = await response.json();
+
+        if (!createdUser?.id) {
+          throw new Error('User creation response missing user payload');
+        }
+
         // Ensure created user has all required fields
         const safeUser = {
           ...createdUser,
@@ -324,14 +508,21 @@ export default function UserManagementPage() {
           role: createdUser.role || 'SALES_REP',
           isActive: createdUser.isActive ?? true
         };
-        
-        // Add to local state
-        setUsers(prev => [safeUser, ...prev]);
+
+        // Add to local state (avoid duplicates by id)
+        if (viewMode === 'list') {
+          await fetchUsers(1);
+        } else {
+          setUsers(prev => [safeUser, ...prev.filter(u => u.id !== safeUser.id)]);
+        }
         success('User created successfully');
         setShowAddUserModal(false);
+        wasSuccessful = true;
         
         // Reload data to get updated metrics
-        await loadData();
+        if (viewMode === 'grid') {
+          await loadData();
+        }
       } else {
         const error = await response.json();
         showError(error.error || 'Failed to create user');
@@ -342,26 +533,30 @@ export default function UserManagementPage() {
     } finally {
       setIsLoading(false);
     }
+    return wasSuccessful;
   };
 
-  // Map enum roles to display names
-  const getRoleDisplayName = (role: string) => {
-    const roleMapping: { [key: string]: string } = {
-      'ADMIN': 'Super Admin',
-      'SALES_MANAGER': 'Sales Manager',
-      'SALES_REP': 'Sales Rep',
-      'INVENTORY_MANAGER': 'Inventory Manager',
-      'FINANCE_OFFICER': 'Finance Officer',
-      'EXECUTIVE_VIEWER': 'Executive Viewer'
-    };
-    return roleMapping[role] || role;
-  };
+  const getRoleDisplayName = (role: string) => formatRoleLabel(role);
 
-  const getRoleColor = (role: string) => {
-    if (role === "Super Admin") return `bg-red-100 text-red-800`;
-    if (role === "Administrator") return `bg-purple-100 text-purple-800`;
-    if (role === "Staff") return `bg-${theme.primary} text-white`;
-    return `bg-gray-100 text-gray-800`;
+  const getRoleColor = (roleLabel: string) => {
+    switch (roleLabel) {
+      case "Super Admin":
+        return "bg-red-100 text-red-800";
+      case "Admin":
+        return "bg-purple-100 text-purple-800";
+      case "Sales Manager":
+        return "bg-blue-100 text-blue-800";
+      case "Sales Rep":
+        return "bg-green-100 text-green-800";
+      case "Inventory Manager":
+        return "bg-amber-100 text-amber-800";
+      case "Finance Officer":
+        return "bg-indigo-100 text-indigo-800";
+      case "Executive Viewer":
+        return "bg-gray-100 text-gray-800";
+      default:
+        return "bg-slate-100 text-slate-800";
+    }
   };
 
   const getInitials = (name: string) => {
@@ -369,19 +564,23 @@ export default function UserManagementPage() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  const filteredUsers = users.filter(user => {
+  // Only filter for grid view (list view uses server-side filtering)
+  const filteredUsers = viewMode === 'grid' ? users.filter(user => {
     // Safely handle undefined/null values
     const userName = user.name || '';
     const userEmail = user.email || '';
     
     const matchesSearch = userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          userEmail.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === "All" || getRoleDisplayName(user.role) === roleFilter;
-    const matchesName = !nameFilter || userName.toLowerCase().includes(nameFilter.toLowerCase());
-    const matchesEmail = !emailFilter || userEmail.toLowerCase().includes(emailFilter.toLowerCase());
+    const matchesRole =
+      !roleFilter ||
+      user.role === roleFilter ||
+      (user.userRoles?.some(
+        (assignment) => normalizeRoleValue(assignment.role?.name || "") === roleFilter
+      ) ?? false);
     
-    return matchesSearch && matchesRole && matchesName && matchesEmail;
-  });
+    return matchesSearch && matchesRole;
+  }) : users;
 
   return (
     <>
@@ -437,55 +636,26 @@ export default function UserManagementPage() {
           </Card>
         </div>
 
-        {/* Search and Filter Bar */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <Input
-                  placeholder="Enter Name"
-                  value={nameFilter}
-                  onChange={(e) => setNameFilter(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <Input
-                  placeholder="Enter Email"
-                  value={emailFilter}
-                  onChange={(e) => setEmailFilter(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                <select
-                  value={roleFilter}
-                  onChange={(e) => setRoleFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="All">All</option>
-                  {roles.map((role) => (
-                    <option key={role.id} value={role.name}>
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setViewMode(viewMode === "grid" ? "list" : "grid")}
-                  className="flex items-center space-x-2"
-                >
-                  {viewMode === "grid" ? <List className="h-4 w-4" /> : <Grid className="h-4 w-4" />}
-                  <span>{viewMode === "grid" ? "List View" : "Grid View"}</span>
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* View Mode Toggle */}
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const newMode = viewMode === "grid" ? "list" : "grid";
+              setViewMode(newMode);
+              if (newMode === 'list') {
+                fetchUsers(1);
+              } else {
+                loadData();
+              }
+            }}
+            className="flex items-center space-x-2"
+          >
+            {viewMode === "grid" ? <List className="h-4 w-4" /> : <Grid className="h-4 w-4" />}
+            <span>{viewMode === "grid" ? "Table View" : "Grid View"}</span>
+          </Button>
+        </div>
 
         {/* Users Display */}
         {viewMode === "grid" ? (
@@ -569,9 +739,16 @@ export default function UserManagementPage() {
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getRoleColor(getRoleDisplayName(user.role))}`}>
-                      {getRoleDisplayName(user.role)}
+                    <div className="flex flex-wrap gap-1">
+                      {getUserRoleLabels(user).map((label, index) => (
+                        <span
+                          key={`${label}-${index}`}
+                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getRoleColor(label)}`}
+                        >
+                          {label}
                     </span>
+                      ))}
+                    </div>
                     <div className="flex items-center space-x-1">
                       <button
                         onClick={() => handleEditUser(user)}
@@ -620,118 +797,188 @@ export default function UserManagementPage() {
           ))}
           </div>
         ) : (
-          /* List View */
-          <div className="space-y-4">
-            {/* Add New User Button */}
-            <Card 
-              className="cursor-pointer hover:shadow-lg transition-shadow border-dashed border-2 border-gray-300 hover:border-gray-400"
-              onClick={() => setShowAddUserModal(true)}
-            >
-              <CardContent className="flex items-center justify-center p-6">
-                <div className={`w-12 h-12 rounded-full bg-${theme.primary} flex items-center justify-center mr-4`}>
-                  <Plus className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Add New User</h3>
-                  <p className="text-sm text-gray-600">Click here to create a new user</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* User List */}
-            {filteredUsers.map((user) => (
-              <Card key={user.id} className="hover:shadow-lg transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
-                        {user.avatar ? (
-                          <img 
-                            src={user.avatar} 
-                            alt={user.name || 'User'}
-                            className="w-12 h-12 rounded-full object-cover"
-                          />
-                        ) : (
-                          <span className="text-sm font-medium text-gray-600">
-                            {getInitials(user.name || '')}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <h3 className="font-semibold text-gray-900">{user.name || 'Unnamed User'}</h3>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getRoleColor(getRoleDisplayName(user.role))}`}>
-                            {getRoleDisplayName(user.role)}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-4 text-sm text-gray-600">
-                          <div className="flex items-center">
-                            <Mail className="h-4 w-4 mr-1" />
-                            {user.email}
-                          </div>
-                          {user.phone && (
-                            <div className="flex items-center">
-                              <Phone className="h-4 w-4 mr-1" />
-                              {user.phone}
-                            </div>
+          /* Table View */
+          <Card>
+            <CardContent className="p-6">
+              <DataTable
+                data={users}
+                columns={[
+                  {
+                    key: 'name',
+                    label: 'Name',
+                    sortable: true,
+                    exportable: true,
+                    render: (user: User) => (
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          {user.avatar ? (
+                            <img 
+                              src={user.avatar} 
+                              alt={user.name || 'User'}
+                              className="w-10 h-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-sm font-medium text-gray-600">
+                              {getInitials(user.name || '')}
+                            </span>
                           )}
-                          <div className="flex items-center">
-                            <User className="h-4 w-4 mr-1" />
-                            {user.isActive ? (
-                              <span className="text-green-600 flex items-center">
-                                <Check className="h-3 w-3 mr-1" />
-                                Active
-                              </span>
-                            ) : (
-                              <span className="text-red-600 flex items-center">
-                                <EyeOff className="h-3 w-3 mr-1" />
-                                Inactive
-                              </span>
-                            )}
-                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">{user.name || 'Unnamed User'}</div>
+                          <div className="text-sm text-gray-500">{user.email}</div>
                         </div>
                       </div>
-                    </div>
-                    <DropdownMenu
-                      trigger={
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      }
-                      items={[
-                        {
-                          label: "View Details",
-                          icon: <Eye className="h-4 w-4" />,
-                          onClick: () => handleViewUser(user)
-                        },
-                        {
-                          label: "Edit User",
-                          icon: <Edit className="h-4 w-4" />,
-                          onClick: () => handleEditUser(user)
-                        },
-                        {
-                          label: "Change Password",
-                          icon: <Key className="h-4 w-4" />,
-                          onClick: () => handleChangePassword(user)
-                        },
-                        {
-                          label: user.isActive ? "Deactivate" : "Activate",
-                          icon: user.isActive ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />,
-                          onClick: () => handleToggleUserStatus(user)
-                        },
-                        {
-                          label: "Delete User",
-                          icon: <Trash2 className="h-4 w-4" />,
-                          onClick: () => handleDeleteUser(user),
-                          className: "text-red-600 hover:text-red-700"
-                        }
-                      ]}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    ),
+                    exportFormat: (user: User) => user.name || 'Unnamed User'
+                  },
+                  {
+                    key: 'phone',
+                    label: 'Phone',
+                    sortable: true,
+                    exportable: true,
+                    render: (user: User) => (
+                      <span className="text-sm text-gray-900">{user.phone || '-'}</span>
+                    ),
+                    exportFormat: (user: User) => user.phone || '-'
+                  },
+                  {
+                    key: 'role',
+                    label: 'Role',
+                    sortable: true,
+                    exportable: true,
+                    render: (user: User) => {
+                      const labels = getUserRoleLabels(user);
+                      return (
+                        <div className="flex flex-wrap gap-1">
+                          {labels.map((label, index) => (
+                            <span
+                              key={`${label}-${index}`}
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getRoleColor(label)}`}
+                            >
+                              {label}
+                        </span>
+                          ))}
+                        </div>
+                      );
+                    },
+                    exportFormat: (user: User) => getUserRoleLabels(user).join(', ')
+                  },
+                  {
+                    key: 'isActive',
+                    label: 'Status',
+                    sortable: true,
+                    exportable: true,
+                    render: (user: User) => (
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        user.isActive 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {user.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    ),
+                    exportFormat: (user: User) => user.isActive ? 'Active' : 'Inactive'
+                  },
+                  {
+                    key: 'lastLoginAt',
+                    label: 'Last Login',
+                    sortable: true,
+                    exportable: true,
+                    render: (user: User) => (
+                      <span className="text-sm text-gray-900">
+                        {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}
+                      </span>
+                    ),
+                    exportFormat: (user: User) => user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'
+                  },
+                  {
+                    key: 'actions',
+                    label: 'Actions',
+                    sortable: false,
+                    exportable: false,
+                    render: (user: User) => (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleViewUser(user)}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleEditUser(user)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit User
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleChangePassword(user)}>
+                            <Key className="h-4 w-4 mr-2" />
+                            Change Password
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleToggleUserStatus(user)}>
+                            {user.isActive ? (
+                              <>
+                                <EyeOff className="h-4 w-4 mr-2" />
+                                Deactivate
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="h-4 w-4 mr-2" />
+                                Activate
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteUser(user)}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete User
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )
+                  }
+                ]}
+                itemsPerPage={itemsPerPage}
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                onPageChange={(page) => {
+                  setCurrentPage(page);
+                  fetchUsers(page);
+                }}
+                sortBy={sortBy}
+                sortOrder={sortOrder}
+                onSortChange={handleSortChange}
+                searchValue={searchTerm}
+                onSearchChange={setSearchTerm}
+                searchPlaceholder="Search users by name, email, or phone..."
+                enableExport={true}
+                exportFilename="users"
+                isLoading={isLoading}
+                onRowClick={(user) => handleViewUser(user)}
+                customFilters={
+                  <select
+                    value={roleFilter}
+                    onChange={(e) => {
+                      setRoleFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All Roles</option>
+                    {systemRoleOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                        </option>
+                    ))}
+                  </select>
+                }
+              />
+            </CardContent>
+          </Card>
         )}
 
         {/* Add User Modal */}

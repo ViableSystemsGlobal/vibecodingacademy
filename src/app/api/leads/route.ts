@@ -3,76 +3,75 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NotificationService, SystemNotificationTriggers } from '@/lib/notification-service';
+import { parseTableQuery, buildTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('🔍 Leads API: GET request received');
     const session = await getServerSession(authOptions);
-    console.log('🔍 Leads API: Session exists:', !!session);
-    console.log('🔍 Leads API: User exists:', !!session?.user);
     
     if (!session?.user) {
-      console.log('❌ Leads API: No session or user');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const userId = (session.user as any).id;
     const userRole = (session.user as any).role;
-    console.log('🔍 Leads API: User ID:', userId);
-    console.log('🔍 Leads API: User Role:', userRole);
     
     if (!userId) {
-      console.log('❌ Leads API: No user ID');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
-    const search = searchParams.get('search');
-
+    const params = parseTableQuery(request);
+    
     // Super Admins and Admins can see all leads, others see only their own
     const isSuperAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
     
-    const where: any = {};
-    
-    // Only filter by owner if user is not Super Admin or Admin
+    // Custom filter handler
+    const customFilters = (filters: Record<string, string | string[] | null>) => {
+      const where: any = {};
+
+      if (filters.status) {
+        // If a specific status is requested, use it
+        where.status = filters.status;
+      } else if (!params.filters?.status) {
+        // If no status filter, exclude leads that have been converted to opportunities
+        // Keep QUOTE_SENT leads visible since they haven't been fully converted yet
+        where.status = {
+          notIn: ['CONVERTED_TO_OPPORTUNITY', 'NEW_OPPORTUNITY', 'NEGOTIATION', 'CONTRACT_SIGNED', 'WON', 'LOST']
+        };
+      }
+
+      return where;
+    };
+
+    const where = buildWhereClause(params, {
+      searchFields: ['firstName', 'lastName', 'email', 'company', 'phone', 'subject'],
+      customFilters,
+    });
+
+    // Ensure owner filter is applied for non-admins
     if (!isSuperAdmin) {
       where.ownerId = userId;
     }
 
-    if (status) {
-      // If a specific status is requested, use it
-      where.status = status;
-    } else {
-      // If no status filter, exclude leads that have been converted to opportunities
-      // Keep QUOTE_SENT leads visible since they haven't been fully converted yet
-      where.status = {
-        notIn: ['CONVERTED_TO_OPPORTUNITY', 'NEW_OPPORTUNITY', 'NEGOTIATION', 'CONTRACT_SIGNED', 'WON', 'LOST']
-      };
-    }
+    const orderBy = buildOrderBy(params.sortBy, params.sortOrder);
+    const page = params.page || 1;
+    const limit = params.limit || 10;
+    const skip = (page - 1) * limit;
 
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search } },
-        { lastName: { contains: search } },
-        { email: { contains: search } },
-        { company: { contains: search } },
-      ];
-    }
-
-    console.log('🔍 Leads API: Where clause:', JSON.stringify(where, null, 2));
-    
-    const leads = await prisma.lead.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        owner: {
-          select: { id: true, name: true, email: true },
+    const [leads, total] = await Promise.all([
+      prisma.lead.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limit,
+        include: {
+          owner: {
+            select: { id: true, name: true, email: true },
+          },
         },
-      },
-    });
-
-    console.log('🔍 Leads API: Found leads:', leads.length);
+      }),
+      prisma.lead.count({ where }),
+    ]);
 
     // Parse JSON fields for each lead
     const parsedLeads = leads.map(lead => ({
@@ -95,7 +94,21 @@ export async function GET(request: NextRequest) {
       })() : null,
     }));
 
-    return NextResponse.json(parsedLeads);
+    return NextResponse.json({
+      leads: parsedLeads,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+      sort: params.sortBy
+        ? {
+            field: params.sortBy,
+            order: params.sortOrder || 'desc',
+          }
+        : undefined,
+    });
   } catch (error) {
     console.error('Error fetching leads:', error);
     return NextResponse.json(

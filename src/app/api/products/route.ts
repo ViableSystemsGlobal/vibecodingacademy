@@ -4,111 +4,187 @@ import { NotificationService, SystemNotificationTriggers } from "@/lib/notificat
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { generateBarcode, validateBarcode, detectBarcodeType } from "@/lib/barcode-utils";
+import { parseTableQuery, buildTableQuery, buildWhereClause, buildOrderBy } from "@/lib/query-builder";
+import { Prisma } from "@prisma/client";
 
 // GET /api/products - List all products
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const search = searchParams.get("search");
-    const category = searchParams.get("category");
-    const status = searchParams.get("status");
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "10");
+    const params = parseTableQuery(request);
     
-    // Check if pagination is requested
-    const isPaginated = searchParams.has("page") || searchParams.has("limit");
+    // Custom filter handler for category (nested relation)
+    const customFilters = (filters: Record<string, string | string[] | null>) => {
+      const where: any = {};
+      
+      if (filters.category && filters.category !== 'all') {
+        where.category = { name: filters.category };
+      }
+      
+      if (filters.status && filters.status !== 'all') {
+        where.status = filters.status;
+      }
+      
+      if (filters.type && filters.type !== 'all') {
+        where.type = filters.type;
+      }
+      
+      if (filters.active !== undefined && filters.active !== null) {
+        where.active = filters.active === 'true' || filters.active === true;
+      }
+      
+      return where;
+    };
 
-    const where: any = {};
-
-    if (search) {
-      where.OR = [
-        { name: { contains: search } },
-        { sku: { contains: search } },
-        { serviceCode: { contains: search } },
-        { description: { contains: search } },
-      ];
+    // Handle category sorting specially (nested relation)
+    let orderBy = buildOrderBy(params.sortBy, params.sortOrder);
+    if (params.sortBy === 'category') {
+      orderBy = { category: { name: params.sortOrder || 'asc' } };
     }
+    // 'active' field is handled by buildOrderBy, no special case needed
 
-    if (category && category !== "all") {
-      where.category = { name: category };
-    }
+    const where = buildWhereClause(params, {
+      searchFields: ['name', 'sku', 'serviceCode', 'description'],
+      customFilters,
+    });
 
-    if (status && status !== "all") {
-      where.status = status;
-    }
+    const page = params.page || 1;
+    const limit = params.limit || 10;
+    const skip = (page - 1) * limit;
 
-    const products = await prisma.product.findMany({
-      where,
-      include: {
-        category: true,
-        stockItems: {
-          include: {
-            warehouse: true
-          }
-        },
-      },
-      ...(isPaginated && {
-        skip: (page - 1) * limit,
+    const [data, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        orderBy,
+        skip,
         take: limit,
+        include: {
+          category: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          stockItems: {
+            include: {
+              warehouse: true
+            }
+          },
+        },
       }),
-      orderBy: { createdAt: "desc" },
+      prisma.product.count({ where }),
+    ]);
+
+    const result = {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+      sort: params.sortBy
+        ? {
+            field: params.sortBy,
+            order: params.sortOrder || 'desc',
+          }
+        : undefined,
+    };
+
+    // Get total counts for metrics (using base where clause without pagination)
+    const baseWhere = buildWhereClause(params, {
+      searchFields: ['name', 'sku', 'serviceCode', 'description'],
+      customFilters,
     });
 
-    const total = await prisma.product.count({ where });
-
-    // Get total counts for metrics (without pagination filters)
-    const totalActive = await prisma.product.count({ 
-      where: { 
-        ...where, 
-        active: true 
-      } 
-    });
-
-    // For stock-related metrics, we need to check stock items
-    const totalLowStock = await prisma.product.count({
-      where: {
-        ...where,
-        stockItems: {
-          some: {
-            available: {
-              lte: 10 // Assuming 10 is the low stock threshold
+    const [totalActive, totalLowStock, totalOutOfStock] = await Promise.all([
+      prisma.product.count({ 
+        where: { 
+          ...baseWhere, 
+          active: true 
+        } 
+      }),
+      prisma.product.count({
+        where: {
+          ...baseWhere,
+          stockItems: {
+            some: {
+              available: {
+                lte: 10 // Assuming 10 is the low stock threshold
+              }
             }
           }
         }
-      }
-    });
-
-    const totalOutOfStock = await prisma.product.count({
-      where: {
-        ...where,
-        stockItems: {
-          some: {
-            available: 0
+      }),
+      prisma.product.count({
+        where: {
+          ...baseWhere,
+          stockItems: {
+            some: {
+              available: 0
+            }
           }
         }
+      }),
+    ]);
+
+    // Manually add bestDealPrice and currency info to each product since Prisma client may not recognize some fields
+    // Fetch all additional fields in one query for efficiency
+    const productIds = result.data.map((p: any) => p.id);
+    let bestDealPricesMap: Record<string, number | null> = {};
+    let currencyInfoMap: Record<string, { originalPriceCurrency?: string; baseCurrency?: string }> = {};
+    
+    if (productIds.length > 0) {
+      try {
+        const placeholders = productIds.map(() => '?').join(',');
+        const [pricesRaw, currencyRaw] = await Promise.all([
+          (prisma as any).$queryRawUnsafe(
+            `SELECT id, "bestDealPrice" FROM products WHERE id IN (${placeholders})`,
+            ...productIds
+          ),
+          (prisma as any).$queryRawUnsafe(
+            `SELECT id, "originalPriceCurrency", "baseCurrency" FROM products WHERE id IN (${placeholders})`,
+            ...productIds
+          ),
+        ]);
+        
+        bestDealPricesMap = (pricesRaw as any[]).reduce((acc: Record<string, number | null>, row: any) => {
+          acc[row.id] = row.bestDealPrice;
+          return acc;
+        }, {});
+        
+        currencyInfoMap = (currencyRaw as any[]).reduce((acc: Record<string, any>, row: any) => {
+          acc[row.id] = {
+            originalPriceCurrency: row.originalPriceCurrency,
+            baseCurrency: row.baseCurrency,
+          };
+          return acc;
+        }, {});
+      } catch (error) {
+        console.error("Error fetching product metadata:", error);
+        // Continue without metadata if query fails
       }
+    }
+
+    const productsWithBestDealPrice = result.data.map((product: any) => {
+      const currencyInfo = currencyInfoMap[product.id] || {};
+      return {
+        ...product,
+        bestDealPrice: bestDealPricesMap[product.id] || null,
+        originalPriceCurrency: currencyInfo.originalPriceCurrency || product.originalPriceCurrency,
+        baseCurrency: currencyInfo.baseCurrency || product.baseCurrency,
+      };
     });
 
-    const response: any = {
-      products,
+    return NextResponse.json({
+      products: productsWithBestDealPrice,
+      pagination: result.pagination,
       metrics: {
         totalActive,
         totalLowStock,
         totalOutOfStock,
       },
-    };
-
-    // Only include pagination data if pagination was requested
-    if (isPaginated) {
-      response.pagination = {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      };
-    }
-
-    return NextResponse.json(response);
+      sort: result.sort,
+    });
   } catch (error) {
     console.error("Error fetching products:", error);
     return NextResponse.json(

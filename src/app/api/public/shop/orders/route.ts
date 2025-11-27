@@ -2,44 +2,217 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
 import { verify } from "jsonwebtoken";
-import { convertCurrency } from "@/lib/currency";
 
-const JWT_SECRET = process.env.NEXTAUTH_SECRET || "adpools-secret-key-2024-production-change-me";
+const JWT_SECRET =
+  process.env.NEXTAUTH_SECRET || "adpools-secret-key-2024-production-change-me";
 
-// GET /api/public/shop/orders - Get customer orders
-export async function GET(request: NextRequest) {
+type CustomerSummary = {
+  id?: string | null;
+  email?: string | null;
+};
+
+function buildCustomerFilter(customer: CustomerSummary) {
+  const emailCandidates = Array.from(
+    new Set(
+      [
+        customer.email,
+        customer.email?.trim(),
+        customer.email?.toLowerCase(),
+        customer.email?.trim().toLowerCase(),
+        customer.email?.toUpperCase(),
+        customer.email?.trim().toUpperCase(),
+      ].filter(Boolean) as string[]
+    )
+  );
+
+  const conditions: any[] = [];
+
+  if (customer.id) {
+    conditions.push({ customerId: customer.id });
+  }
+
+  if (emailCandidates.length > 0) {
+    conditions.push({
+      customerEmail: {
+        in: emailCandidates,
+      },
+    });
+  }
+
+  if (conditions.length === 0) {
+    return null;
+  }
+
+  return conditions.length === 1 ? conditions[0] : { OR: conditions };
+}
+
+function parseJsonValue(value: any) {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+}
+
+function extractImages(value?: string | null) {
+  if (!value) return [];
   try {
-    // Get customer token from cookies
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item) => typeof item === "string");
+    }
+    if (typeof parsed === "string") {
+      return [parsed];
+    }
+  } catch {
+    // ignore JSON parse error; treat as raw string
+  }
+  return [value];
+}
+
+function mapDisplayStatus(rawStatus: string, paymentStatus: string) {
+  const normalizedStatus = rawStatus.toUpperCase();
+  const normalizedPayment = paymentStatus.toUpperCase();
+
+  if (["CANCELLED", "REFUNDED"].includes(normalizedStatus)) {
+    return "CANCELLED";
+  }
+
+  // COMPLETED should only be shown when order is actually delivered
+  if (["DELIVERED", "COMPLETED"].includes(normalizedStatus)) {
+    return "COMPLETED";
+  }
+
+  // Processing status - order is being prepared/shipped
+  if (["PROCESSING", "SHIPPED", "CONFIRMED"].includes(normalizedStatus)) {
+    return "PROCESSING";
+  }
+
+  // Paid but still pending processing (should show as PROCESSING)
+  if (normalizedPayment === "PAID" && normalizedStatus === "PENDING") {
+    return "PROCESSING";
+  }
+
+  // Default to PENDING
+  return "PENDING";
+}
+
+function calculatePaymentAmounts(total: number, paymentStatus: string) {
+  const normalized = paymentStatus.toUpperCase();
+  const isPaid = ["PAID", "REFUNDED", "PARTIALLY_REFUNDED"].includes(normalized);
+
+  const amountPaid = isPaid ? total : 0;
+  const amountDue = Math.max(total - amountPaid, 0);
+
+  return { amountPaid, amountDue };
+}
+
+function transformOrder(order: any) {
+  const subtotal = Number(order.subtotal ?? 0);
+  const tax = Number(order.tax ?? 0);
+  const discount = Number(order.discount ?? 0);
+  const total = Number(order.total ?? 0);
+
+  const items = (order.items ?? []).map((item: any) => {
+    const unitPrice = Number(item.unitPrice ?? 0);
+    const lineTotal = Number(item.totalPrice ?? unitPrice * (item.quantity ?? 0));
+    const images = extractImages(item.product?.images);
+
+    return {
+      id: item.id,
+      productId: item.productId,
+      productName: item.productName || item.product?.name || "Product",
+      productSku: item.sku || item.product?.sku || "",
+      quantity: item.quantity ?? 0,
+      unitPrice,
+      discount: 0,
+      lineTotal,
+      image: images[0] || null,
+    };
+  });
+
+  const paymentStatus = (order.paymentStatus || "PENDING").toString().toUpperCase();
+  const displayStatus = mapDisplayStatus(
+    (order.status || "PENDING").toString(),
+    paymentStatus
+  );
+  const paymentInfo = calculatePaymentAmounts(total, paymentStatus);
+
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    quotationNumber: undefined,
+    status: displayStatus,
+    paymentStatus,
+    paymentMethod: order.paymentMethod || "Online Payment",
+    orderDate: order.createdAt,
+    dueDate: null,
+    currency: order.currency || "GHS",
+    subtotal,
+    tax,
+    discount,
+    total,
+    amountPaid: paymentInfo.amountPaid,
+    amountDue: paymentInfo.amountDue,
+    items,
+    itemCount: items.length,
+    customer: {
+      name: order.customerName,
+      email: order.customerEmail,
+      phone: order.customerPhone,
+      company: null,
+    },
+    shippingAddress: parseJsonValue(order.shippingAddress),
+    billingAddress: parseJsonValue(order.billingAddress),
+    notes: order.notes,
+  };
+}
+
+function buildStatusFilter(statusParam?: string | null) {
+  if (!statusParam || statusParam.toLowerCase() === "all") {
+    return null;
+  }
+
+  const normalized = statusParam.toUpperCase();
+
+  const statusFilterMap: Record<string, any> = {
+    PENDING: { status: { in: ["PENDING", "CONFIRMED"] } },
+    PROCESSING: { status: { in: ["PROCESSING", "SHIPPED"] } },
+    COMPLETED: {
+      OR: [{ status: { in: ["DELIVERED"] } }, { paymentStatus: "PAID" }],
+    },
+    CANCELLED: { status: { in: ["CANCELLED", "REFUNDED"] } },
+  };
+
+  return statusFilterMap[normalized] ?? null;
+}
+
+async function getAuthenticatedCustomer() {
     const cookieStore = await cookies();
     const token = cookieStore.get("customer_token")?.value;
 
     if (!token) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
+    return { error: "Authentication required", status: 401 } as const;
     }
 
-    // Verify token
     let decoded: any;
     try {
       decoded = verify(token, JWT_SECRET);
     } catch (error) {
       console.error("Token verification failed:", error);
-      return NextResponse.json(
-        { error: "Invalid token" },
-        { status: 401 }
-      );
+    return { error: "Invalid token", status: 401 } as const;
     }
 
     if (decoded.type !== "customer") {
-      return NextResponse.json(
-        { error: "Invalid token type" },
-        { status: 401 }
-      );
+    return { error: "Invalid token type", status: 401 } as const;
     }
 
-    // Get customer from database
     const customer = await prisma.customer.findUnique({
       where: { id: decoded.id },
       select: {
@@ -52,69 +225,59 @@ export async function GET(request: NextRequest) {
     });
 
     if (!customer) {
-      console.error("Customer not found for ID:", decoded.id);
+    return { error: "Customer not found", status: 404 } as const;
+  }
+
+  return { customer };
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const authResult = await getAuthenticatedCustomer();
+    if ("error" in authResult) {
       return NextResponse.json(
-        { error: "Customer not found" },
-        { status: 404 }
+        { error: authResult.error },
+        { status: authResult.status }
       );
     }
 
-    console.log("Fetching orders for customer:", customer.email);
+    const { customer } = authResult;
 
-    // Get search params
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "10");
-    const status = searchParams.get("status");
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+    const limit = Math.max(1, parseInt(searchParams.get("limit") || "10", 10));
+    const statusFilter = buildStatusFilter(searchParams.get("status"));
 
-    // Build where clause
-    const where: any = {
-      lead: {
+    const identityFilter = buildCustomerFilter({
+      id: customer.id,
         email: customer.email,
-      },
-    };
+    });
 
-    if (status && status !== "all") {
-      where.status = status;
+    if (!identityFilter) {
+      return NextResponse.json(
+        { orders: [], pagination: { page, limit, total: 0, pages: 1 } },
+        { status: 200 }
+      );
     }
 
-    // Fetch invoices (orders) for this customer
-    console.log("Querying invoices with where clause:", JSON.stringify(where, null, 2));
-    let invoices = [];
-    try {
-      invoices = await prisma.invoice.findMany({
+    const where =
+      statusFilter && identityFilter
+        ? { AND: [identityFilter, statusFilter] }
+        : identityFilter;
+
+    const [ordersRaw, total] = await Promise.all([
+      prisma.ecommerceOrder.findMany({
         where,
         include: {
-          quotation: {
-            include: {
-              lines: {
-                include: {
-                  product: true,
-                },
-              },
-            },
-          },
-          lines: {
+          items: {
             include: {
               product: {
                 select: {
-                  id: true,
+                  images: true,
                   name: true,
                   sku: true,
-                  images: true,
-                  baseCurrency: true,
                 },
               },
-            },
-          },
-          lead: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-              phone: true,
-              company: true,
             },
           },
         },
@@ -123,214 +286,81 @@ export async function GET(request: NextRequest) {
         },
         skip: (page - 1) * limit,
         take: limit,
-      });
-      
-      console.log(`Found ${invoices.length} invoices for customer`);
-    } catch (dbError) {
-      console.error("Database error fetching invoices:", dbError);
-      throw new Error(`Database query failed: ${dbError instanceof Error ? dbError.message : String(dbError)}`);
-    }
+      }),
+      prisma.ecommerceOrder.count({ where }),
+    ]);
 
-    // Get total count
-    const total = await prisma.invoice.count({ where });
-
-    // Transform invoices to orders format
-    const orders = await Promise.all(invoices.map(async (invoice) => {
+    // Sync status from Sales Orders for all orders in the list
+    const syncPromises = ordersRaw.map(async (order) => {
       try {
-        const invoiceCurrency = invoice.currency || "GHS";
-        
-        // Parse images for products and convert prices
-        const items = await Promise.all((invoice.lines || []).map(async (line) => {
-          try {
-            let images = [];
-            if (line.product?.images) {
-              try {
-                images = JSON.parse(line.product.images);
-              } catch {
-                images = [line.product.images];
-              }
+        // Find the invoice by orderNumber (ecommerce order orderNumber = invoice number)
+        const invoice = await prisma.invoice.findUnique({
+          where: { number: order.orderNumber },
+          select: { id: true }
+        });
+
+        if (invoice) {
+          // Find the Sales Order linked to this invoice
+          const salesOrder = await prisma.salesOrder.findFirst({
+            where: { invoiceId: invoice.id },
+            select: { status: true }
+          });
+
+          if (salesOrder && salesOrder.status !== order.status) {
+            // Map Sales Order status to Ecommerce Order status
+            let ecommerceStatus: string;
+            switch (salesOrder.status.toUpperCase()) {
+              case 'DELIVERED':
+                ecommerceStatus = 'DELIVERED';
+                break;
+              case 'COMPLETED':
+                ecommerceStatus = 'DELIVERED'; // Completed = Delivered for ecommerce
+                break;
+              case 'SHIPPED':
+              case 'READY_TO_SHIP':
+                ecommerceStatus = 'SHIPPED';
+                break;
+              case 'PROCESSING':
+                ecommerceStatus = 'PROCESSING';
+                break;
+              case 'CONFIRMED':
+                ecommerceStatus = 'CONFIRMED';
+                break;
+              case 'CANCELLED':
+                ecommerceStatus = 'CANCELLED';
+                break;
+              default:
+                ecommerceStatus = order.status;
+                break;
             }
 
-            // Convert unit price to GHS
-            // Check product's base currency first, then fall back to invoice currency
-            let unitPriceInGHS = line.unitPrice || 0;
-            const productBaseCurrency = line.product?.baseCurrency || invoiceCurrency;
-            const sourceCurrency = productBaseCurrency || invoiceCurrency || "GHS";
-            
-            if (sourceCurrency !== "GHS" && line.unitPrice) {
-              try {
-                const priceConversion = await convertCurrency(sourceCurrency, "GHS", line.unitPrice);
-                if (priceConversion) {
-                  unitPriceInGHS = priceConversion.convertedAmount;
-                } else {
-                  console.warn(`Failed to convert unit price from ${sourceCurrency} to GHS for product ${line.productId}, using original price`);
+            // Only update if different
+            if (ecommerceStatus !== order.status) {
+              await prisma.ecommerceOrder.update({
+                where: { id: order.id },
+                data: {
+                  status: ecommerceStatus as any,
+                  ...(salesOrder.status.toUpperCase() === 'DELIVERED' || salesOrder.status.toUpperCase() === 'COMPLETED'
+                    ? { deliveredAt: order.deliveredAt || new Date() }
+                    : {})
                 }
-              } catch (conversionError) {
-                console.error(`Currency conversion error for product ${line.productId}:`, conversionError);
-                // Continue with original price if conversion fails
-              }
+              });
+              // Update the local order object for response
+              order.status = ecommerceStatus as any;
             }
-
-            // Convert discount using same currency as unit price
-            let discountInGHS = line.discount || 0;
-            if (sourceCurrency !== "GHS" && line.discount) {
-              try {
-                const discountConversion = await convertCurrency(sourceCurrency, "GHS", line.discount);
-                if (discountConversion) {
-                  discountInGHS = discountConversion.convertedAmount;
-                }
-              } catch (conversionError) {
-                console.error(`Discount conversion error:`, conversionError);
-                // Continue with original discount if conversion fails
-              }
-            }
-
-            // Calculate line total in GHS
-            const lineTotalInGHS = (unitPriceInGHS * line.quantity) - discountInGHS;
-
-            return {
-              id: line.id,
-              productId: line.productId,
-              productName: line.product?.name || "Product",
-              productSku: line.product?.sku || "",
-              quantity: line.quantity,
-              unitPrice: unitPriceInGHS,
-              discount: discountInGHS,
-              lineTotal: lineTotalInGHS,
-              image: images[0] || null,
-            };
-          } catch (lineError) {
-            console.error(`Error processing line ${line.id}:`, lineError);
-            // Return a minimal line item if processing fails
-            return {
-              id: line.id,
-              productId: line.productId,
-              productName: line.product?.name || "Product",
-              productSku: line.product?.sku || "",
-              quantity: line.quantity || 0,
-              unitPrice: line.unitPrice || 0,
-              discount: line.discount || 0,
-              lineTotal: ((line.unitPrice || 0) * (line.quantity || 0)) - (line.discount || 0),
-              image: null,
-            };
-          }
-        }));
-
-      // Determine order status
-      let orderStatus = "PENDING";
-      if (invoice.status === "PAID" || invoice.paymentStatus === "PAID") {
-        orderStatus = "COMPLETED";
-      } else if (invoice.status === "SENT") {
-        orderStatus = "PROCESSING";
-      } else if (invoice.status === "CANCELLED") {
-        orderStatus = "CANCELLED";
-      }
-
-      // Recalculate totals from converted line items (more accurate than converting invoice totals)
-      const recalculatedSubtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
-      const recalculatedTax = recalculatedSubtotal * 0.125; // 12.5% VAT
-      const recalculatedTotal = recalculatedSubtotal + recalculatedTax;
-      
-      // Use recalculated totals from converted line items (more accurate)
-      let subtotalInGHS = recalculatedSubtotal;
-      let taxInGHS = recalculatedTax;
-      let discountInGHS = invoice.discount || 0;
-      let totalInGHS = recalculatedTotal;
-      let amountPaidInGHS = invoice.amountPaid || 0;
-      let amountDueInGHS = invoice.amountDue || 0;
-
-      // Convert payment-related amounts if invoice currency is not GHS
-      if (invoiceCurrency !== "GHS") {
-        if (invoice.discount) {
-          const discountConversion = await convertCurrency(invoiceCurrency, "GHS", invoice.discount);
-          if (discountConversion) {
-            discountInGHS = discountConversion.convertedAmount;
           }
         }
-        if (invoice.amountPaid) {
-          const amountPaidConversion = await convertCurrency(invoiceCurrency, "GHS", invoice.amountPaid);
-          if (amountPaidConversion) {
-            amountPaidInGHS = amountPaidConversion.convertedAmount;
-          }
-        }
-        if (invoice.amountDue) {
-          const amountDueConversion = await convertCurrency(invoiceCurrency, "GHS", invoice.amountDue);
-          if (amountDueConversion) {
-            amountDueInGHS = amountDueConversion.convertedAmount;
-          }
-        }
+      } catch (syncError) {
+        // Don't fail the request if sync fails for one order, just log it
+        console.error(`Error syncing order ${order.orderNumber} status from Sales Order:`, syncError);
       }
+      return order;
+    });
 
-      // Parse addresses
-      let shippingAddress = null;
-      let billingAddress = null;
-      
-      try {
-        if (invoice.shippingAddressSnapshot) {
-          shippingAddress = typeof invoice.shippingAddressSnapshot === 'string' 
-            ? JSON.parse(invoice.shippingAddressSnapshot)
-            : invoice.shippingAddressSnapshot;
-        }
-        if (invoice.billingAddressSnapshot) {
-          billingAddress = typeof invoice.billingAddressSnapshot === 'string'
-            ? JSON.parse(invoice.billingAddressSnapshot) 
-            : invoice.billingAddressSnapshot;
-        }
-      } catch (e) {
-        console.error("Error parsing addresses:", e);
-      }
+    // Wait for all syncs to complete
+    const syncedOrders = await Promise.all(syncPromises);
 
-      return {
-        id: invoice.id,
-        orderNumber: invoice.number,
-        quotationNumber: invoice.quotation?.number,
-        status: orderStatus,
-        paymentStatus: invoice.paymentStatus,
-        paymentMethod: invoice.paymentTerms || "CASH",
-        orderDate: invoice.issueDate || invoice.createdAt,
-        dueDate: invoice.dueDate,
-        currency: "GHS", // Always return in GHS
-        subtotal: subtotalInGHS,
-        tax: taxInGHS,
-        discount: discountInGHS,
-        total: totalInGHS,
-        amountPaid: amountPaidInGHS,
-        amountDue: amountDueInGHS,
-        items: items,
-        itemCount: items.length,
-        customer: {
-          name: `${invoice.lead?.firstName || ""} ${invoice.lead?.lastName || ""}`.trim() || invoice.lead?.email,
-          email: invoice.lead?.email,
-          phone: invoice.lead?.phone,
-          company: invoice.lead?.company,
-        },
-        shippingAddress,
-        billingAddress,
-        notes: invoice.notes,
-      };
-      } catch (invoiceError) {
-        console.error(`Error processing invoice ${invoice.id}:`, invoiceError);
-        // Return a simplified version if processing fails
-        return {
-          id: invoice.id,
-          orderNumber: invoice.number,
-          status: "ERROR",
-          paymentStatus: invoice.paymentStatus,
-          paymentMethod: invoice.paymentTerms || "CASH",
-          orderDate: invoice.issueDate || invoice.createdAt,
-          currency: invoice.currency || "GHS",
-          subtotal: invoice.subtotal || 0,
-          tax: invoice.tax || 0,
-          total: invoice.total || 0,
-          items: [],
-          itemCount: 0,
-          customer: {
-            name: `${invoice.lead?.firstName || ""} ${invoice.lead?.lastName || ""}`.trim() || invoice.lead?.email || "Unknown",
-            email: invoice.lead?.email || "",
-          },
-        };
-      }
-    }));
+    const orders = syncedOrders.map(transformOrder);
 
     return NextResponse.json({
       orders,
@@ -338,58 +368,40 @@ export async function GET(request: NextRequest) {
         page,
         limit,
         total,
-        pages: Math.ceil(total / limit),
+        pages: Math.max(1, Math.ceil(total / limit)),
       },
     });
   } catch (error) {
-    console.error("Error fetching orders:", error);
-    console.error("Error details:", error instanceof Error ? error.stack : String(error));
+    console.error("Error fetching ecommerce orders:", error);
     return NextResponse.json(
       { 
         error: "Failed to fetch orders",
-        details: process.env.NODE_ENV === "development" ? (error instanceof Error ? error.message : String(error)) : undefined
+        details:
+          process.env.NODE_ENV === "development"
+            ? error instanceof Error
+              ? error.message
+              : String(error)
+            : undefined,
       },
       { status: 500 }
     );
   }
 }
 
-// GET order by ID (via POST for body support)
 export async function POST(request: NextRequest) {
   try {
-    // Get customer token from cookies
-    const cookieStore = await cookies();
-    const token = cookieStore.get("customer_token")?.value;
-
-    if (!token) {
+    const authResult = await getAuthenticatedCustomer();
+    if ("error" in authResult) {
       return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
+        { error: authResult.error },
+        { status: authResult.status }
       );
     }
 
-    // Verify token
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch (error) {
-      console.error("Token verification failed:", error);
-      return NextResponse.json(
-        { error: "Invalid token" },
-        { status: 401 }
-      );
-    }
+    const { customer } = authResult;
 
-    if (decoded.type !== "customer") {
-      return NextResponse.json(
-        { error: "Invalid token type" },
-        { status: 401 }
-      );
-    }
-
-    // Get order ID from body
-    const body = await request.json();
-    const { orderId } = body;
+    const body = await request.json().catch(() => null);
+    const orderId = body?.orderId;
 
     if (!orderId) {
       return NextResponse.json(
@@ -398,260 +410,116 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch invoice (order) with customer validation
-    const invoice = await prisma.invoice.findFirst({
+    const identityFilter = buildCustomerFilter({
+      id: customer.id,
+      email: customer.email,
+    });
+
+    if (!identityFilter) {
+      return NextResponse.json(
+        { error: "Customer context missing" },
+        { status: 400 }
+      );
+    }
+
+    const order = await prisma.ecommerceOrder.findFirst({
       where: {
         id: orderId,
-        lead: {
-          email: decoded.email,
-        },
+        AND: [identityFilter],
       },
       include: {
-        quotation: {
+        items: {
           include: {
-            lines: {
-              include: {
-                product: true,
+            product: {
+              select: {
+                images: true,
+                name: true,
+                sku: true,
               },
             },
-          },
-        },
-        lines: {
-          include: {
-            product: true,
-          },
-        },
-        lead: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            phone: true,
-            company: true,
-            billingAddress: true,
-            shippingAddress: true,
-          },
-        },
-        payments: {
-          orderBy: {
-            createdAt: "desc",
           },
         },
       },
     });
 
-    if (!invoice) {
+    if (!order) {
       return NextResponse.json(
         { error: "Order not found" },
         { status: 404 }
       );
     }
 
-    // Transform invoice to detailed order format
-    const invoiceCurrency = invoice.currency || "GHS";
-    const items = await Promise.all((invoice.lines || []).map(async (line) => {
-      let images = [];
-      if (line.product?.images) {
-        try {
-          images = JSON.parse(line.product.images);
-        } catch {
-          images = [line.product.images];
+    // Sync status from Sales Order if available (for orders that might be out of sync)
+    try {
+      // Find the invoice by orderNumber (ecommerce order orderNumber = invoice number)
+      const invoice = await prisma.invoice.findUnique({
+        where: { number: order.orderNumber },
+        select: { id: true }
+      });
+
+      if (invoice) {
+        // Find the Sales Order linked to this invoice
+        const salesOrder = await prisma.salesOrder.findFirst({
+          where: { invoiceId: invoice.id },
+          select: { status: true }
+        });
+
+        if (salesOrder && salesOrder.status !== order.status) {
+          // Map Sales Order status to Ecommerce Order status
+          let ecommerceStatus: string;
+          switch (salesOrder.status.toUpperCase()) {
+            case 'DELIVERED':
+              ecommerceStatus = 'DELIVERED';
+              break;
+            case 'COMPLETED':
+              ecommerceStatus = 'DELIVERED'; // Completed = Delivered for ecommerce
+              break;
+            case 'SHIPPED':
+            case 'READY_TO_SHIP':
+              ecommerceStatus = 'SHIPPED';
+              break;
+            case 'PROCESSING':
+              ecommerceStatus = 'PROCESSING';
+              break;
+            case 'CONFIRMED':
+              ecommerceStatus = 'CONFIRMED';
+              break;
+            case 'CANCELLED':
+              ecommerceStatus = 'CANCELLED';
+              break;
+            default:
+              ecommerceStatus = order.status;
+              break;
+          }
+
+          // Only update if different
+          if (ecommerceStatus !== order.status) {
+            await prisma.ecommerceOrder.update({
+              where: { id: order.id },
+              data: {
+                status: ecommerceStatus as any,
+                ...(salesOrder.status.toUpperCase() === 'DELIVERED' || salesOrder.status.toUpperCase() === 'COMPLETED'
+                  ? { deliveredAt: new Date() }
+                  : {})
+              }
+            });
+            // Update the local order object for response
+            order.status = ecommerceStatus as any;
+          }
         }
       }
-
-      let attributes = {};
-      if (line.product?.attributes) {
-        try {
-          attributes = JSON.parse(line.product.attributes as string);
-        } catch {
-          attributes = {};
-        }
-      }
-
-      // Convert unit price to GHS
-      // Check product's base currency first, then fall back to invoice currency
-      let unitPriceInGHS = line.unitPrice || 0;
-      const productBaseCurrency = line.product?.baseCurrency || invoiceCurrency;
-      const sourceCurrency = productBaseCurrency || invoiceCurrency || "GHS";
-      
-      if (sourceCurrency !== "GHS" && line.unitPrice) {
-        const priceConversion = await convertCurrency(sourceCurrency, "GHS", line.unitPrice);
-        if (priceConversion) {
-          unitPriceInGHS = priceConversion.convertedAmount;
-        } else {
-          console.warn(`Failed to convert unit price from ${sourceCurrency} to GHS for product ${line.productId}`);
-        }
-      }
-
-      // Convert discount using same currency as unit price
-      let discountInGHS = line.discount || 0;
-      if (sourceCurrency !== "GHS" && line.discount) {
-        const discountConversion = await convertCurrency(sourceCurrency, "GHS", line.discount);
-        if (discountConversion) {
-          discountInGHS = discountConversion.convertedAmount;
-        }
-      }
-
-      // Calculate line total in GHS
-      const lineTotalInGHS = (unitPriceInGHS * line.quantity) - discountInGHS;
-
-      return {
-        id: line.id,
-        productId: line.productId,
-        productName: line.product?.name || "Product",
-        productDescription: line.product?.description,
-        productSku: line.product?.sku || "",
-        quantity: line.quantity,
-        unitPrice: unitPriceInGHS,
-        discount: discountInGHS,
-        lineTotal: lineTotalInGHS,
-        images: images,
-        attributes: attributes,
-      };
-    }));
-
-    // Determine order status
-    let orderStatus = "PENDING";
-    if (invoice.status === "PAID" || invoice.paymentStatus === "PAID") {
-      orderStatus = "COMPLETED";
-    } else if (invoice.status === "SENT") {
-      orderStatus = "PROCESSING";
-    } else if (invoice.status === "CANCELLED") {
-      orderStatus = "CANCELLED";
+    } catch (syncError) {
+      // Don't fail the request if sync fails, just log it
+      console.error('Error syncing order status from Sales Order:', syncError);
     }
 
-    // Recalculate totals from converted line items (more accurate than converting invoice totals)
-    const recalculatedSubtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
-    const recalculatedTax = recalculatedSubtotal * 0.125; // 12.5% VAT
-    const recalculatedTotal = recalculatedSubtotal + recalculatedTax;
-    
-    // Use recalculated totals from converted line items (more accurate)
-    let subtotalInGHS = recalculatedSubtotal;
-    let taxInGHS = recalculatedTax;
-    let discountInGHS = invoice.discount || 0;
-    let totalInGHS = recalculatedTotal;
-    let amountPaidInGHS = invoice.amountPaid || 0;
-    let amountDueInGHS = invoice.amountDue || 0;
-
-    // Convert payment-related amounts if invoice currency is not GHS
-    if (invoiceCurrency !== "GHS") {
-        if (invoice.discount) {
-          const discountConversion = await convertCurrency(invoiceCurrency, "GHS", invoice.discount);
-          if (discountConversion) {
-            discountInGHS = discountConversion.convertedAmount;
-          }
-        }
-        if (invoice.amountPaid) {
-          const amountPaidConversion = await convertCurrency(invoiceCurrency, "GHS", invoice.amountPaid);
-          if (amountPaidConversion) {
-            amountPaidInGHS = amountPaidConversion.convertedAmount;
-          }
-        }
-        if (invoice.amountDue) {
-          const amountDueConversion = await convertCurrency(invoiceCurrency, "GHS", invoice.amountDue);
-          if (amountDueConversion) {
-            amountDueInGHS = amountDueConversion.convertedAmount;
-          }
-        }
-      }
-
-      // Convert payment amounts
-      const paymentsInGHS = await Promise.all((invoice.payments || []).map(async (payment) => {
-        let amountInGHS = payment.amount || 0;
-        if (invoiceCurrency !== "GHS" && payment.amount) {
-          const paymentConversion = await convertCurrency(invoiceCurrency, "GHS", payment.amount);
-          if (paymentConversion) {
-            amountInGHS = paymentConversion.convertedAmount;
-          }
-        }
-        return {
-          id: payment.id,
-          amount: amountInGHS,
-          method: payment.method,
-          reference: payment.reference,
-          date: payment.createdAt,
-          notes: payment.notes,
-        };
-      }));
-
-      // Parse addresses
-      let shippingAddress = null;
-      let billingAddress = null;
-      
-      try {
-        if (invoice.shippingAddressSnapshot) {
-          shippingAddress = typeof invoice.shippingAddressSnapshot === 'string' 
-            ? JSON.parse(invoice.shippingAddressSnapshot)
-            : invoice.shippingAddressSnapshot;
-        }
-        if (invoice.billingAddressSnapshot) {
-          billingAddress = typeof invoice.billingAddressSnapshot === 'string'
-            ? JSON.parse(invoice.billingAddressSnapshot) 
-            : invoice.billingAddressSnapshot;
-        }
-      } catch (e) {
-        console.error("Error parsing addresses:", e);
-      }
-
-      const order = {
-        id: invoice.id,
-        orderNumber: invoice.number,
-        quotationNumber: invoice.quotation?.number,
-        status: orderStatus,
-        paymentStatus: invoice.paymentStatus,
-        paymentMethod: invoice.paymentTerms || "CASH",
-        orderDate: invoice.issueDate || invoice.createdAt,
-        dueDate: invoice.dueDate,
-        currency: "GHS", // Always return in GHS
-        subtotal: subtotalInGHS,
-        tax: taxInGHS,
-        discount: discountInGHS,
-        total: totalInGHS,
-        amountPaid: amountPaidInGHS,
-        amountDue: amountDueInGHS,
-      items: items,
-      itemCount: items.length,
-      customer: {
-        name: `${invoice.lead?.firstName || ""} ${invoice.lead?.lastName || ""}`.trim() || invoice.lead?.email,
-        email: invoice.lead?.email,
-        phone: invoice.lead?.phone,
-        company: invoice.lead?.company,
-      },
-        shippingAddress,
-        billingAddress,
-        notes: invoice.notes,
-        payments: paymentsInGHS,
-      timeline: [
-        {
-          status: "ORDER_PLACED",
-          date: invoice.createdAt,
-          description: "Order was placed",
-        },
-        ...(invoice.status === "SENT" || invoice.status === "PAID" ? [{
-          status: "PROCESSING",
-          date: invoice.issueDate || invoice.createdAt,
-          description: "Order is being processed",
-        }] : []),
-        ...(invoice.paymentStatus === "PAID" ? [{
-          status: "PAYMENT_RECEIVED",
-          date: invoice.payments[0]?.createdAt || invoice.updatedAt,
-          description: "Payment has been received",
-        }] : []),
-        ...(invoice.status === "PAID" ? [{
-          status: "COMPLETED",
-          date: invoice.updatedAt,
-          description: "Order has been completed",
-        }] : []),
-      ],
-    };
-
-    return NextResponse.json(order);
+    return NextResponse.json(transformOrder(order));
   } catch (error) {
-    console.error("Error fetching order details:", error);
+    console.error("Error fetching ecommerce order:", error);
     return NextResponse.json(
-      { error: "Failed to fetch order details" },
+      { error: "Failed to fetch order" },
       { status: 500 }
     );
   }
 }
+

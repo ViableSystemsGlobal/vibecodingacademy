@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { parseTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,15 +17,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search');
-    const accountId = searchParams.get('accountId');
+    const params = parseTableQuery(request);
 
     // Super Admins and Admins can see all contacts, others see only contacts from their accounts
     const isSuperAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
     
-    const where: any = {};
-    
+    // Custom filter handler
+    const customFilters = (filters: Record<string, string | string[] | null>) => {
+      const where: any = {};
+
+      if (filters.accountId) {
+        where.accountId = filters.accountId;
+      }
+
+      return where;
+    };
+
+    const where = buildWhereClause(params, {
+      searchFields: ['firstName', 'lastName', 'email', 'phone', 'position'],
+      customFilters,
+    });
+
     // Only filter by account owner if user is not Super Admin or Admin
     if (!isSuperAdmin) {
       where.account = {
@@ -32,31 +45,41 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    if (accountId) {
-      where.accountId = accountId;
-    }
+    const orderBy = buildOrderBy(params.sortBy, params.sortOrder);
+    const page = params.page || 1;
+    const limit = params.limit || 10;
+    const skip = (page - 1) * limit;
 
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search } },
-        { lastName: { contains: search } },
-        { email: { contains: search } },
-        { phone: { contains: search } },
-        { position: { contains: search } },
-      ];
-    }
-
-    const contacts = await prisma.contact.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        account: {
-          select: { id: true, name: true, type: true },
+    const [contacts, total] = await Promise.all([
+      prisma.contact.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limit,
+        include: {
+          account: {
+            select: { id: true, name: true, type: true },
+          },
         },
-      },
-    });
+      }),
+      prisma.contact.count({ where }),
+    ]);
 
-    return NextResponse.json(contacts);
+    return NextResponse.json({
+      contacts,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+      sort: params.sortBy
+        ? {
+            field: params.sortBy,
+            order: params.sortOrder || 'desc',
+          }
+        : undefined,
+    });
   } catch (error) {
     console.error('Error fetching contacts:', error);
     return NextResponse.json(

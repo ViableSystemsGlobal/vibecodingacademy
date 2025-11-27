@@ -45,10 +45,11 @@ export function useAbilities(): UserAbilities {
 
         if (response.ok) {
           const data = await response.json();
+          console.log('🔍 useAbilities - Session role:', session.user.role);
           console.log('🔍 useAbilities - Fetched abilities from database:', data.abilities?.length || 0, 'abilities');
-          console.log('🔍 useAbilities - Has ai_analyst.access:', data.abilities?.includes('ai_analyst.access'));
-          console.log('🔍 useAbilities - Has agents.view:', data.abilities?.includes('agents.view'));
-          console.log('🔍 useAbilities - Has commissions.view:', data.abilities?.includes('commissions.view'));
+          console.log('🔍 useAbilities - All abilities:', data.abilities);
+          console.log('🔍 useAbilities - Source:', data.source);
+          console.log('🔍 useAbilities - Debug info:', data.debug);
           setAbilities(data.abilities || []);
         } else {
           console.error('Failed to fetch abilities:', response.status);
@@ -85,21 +86,65 @@ export function useAbilities(): UserAbilities {
   };
 
   const canAccess = (module: string): boolean => {
-    // While abilities are loading, don't hide navigation to avoid flicker
-    if (loading) {
+    const userRole = session?.user?.role as string | undefined;
+    
+    // SUPER_ADMIN and ADMIN always have access (check both enum and string values)
+    // Also check for common variations
+    const isSuperAdmin = userRole === 'SUPER_ADMIN' || 
+                         userRole === 'ADMIN' || 
+                         userRole === 'Super Admin' ||
+                         userRole?.toUpperCase() === 'SUPER_ADMIN' ||
+                         userRole?.toUpperCase() === 'ADMIN';
+    
+    if (isSuperAdmin) {
+      console.log(`✅ canAccess(${module}): SUPER_ADMIN/ADMIN access granted for role: ${userRole}`);
       return true;
     }
+    
+    // Log role for debugging
+    if (module === 'dashboard' || module === 'distributor-leads') {
+      console.log(`🔍 canAccess(${module}): Checking access for role: ${userRole}`);
+    }
+
+    // While abilities are loading, return false to prevent showing unauthorized modules
+    // The sidebar will wait for abilities to load before calling this
+    if (loading) {
+      console.log(`⏳ canAccess(${module}): Still loading abilities, returning false`);
+      return false;
+    }
+    
     const moduleAbilities = MODULE_ACCESS[module as keyof typeof MODULE_ACCESS] || [];
+    if (moduleAbilities.length === 0) {
+      // If no abilities required for this module, deny access by default
+      console.log(`⚠️ canAccess(${module}): No abilities defined for module, denying access`);
+      return false;
+    }
+    
     const hasAccess = moduleAbilities.some(ability => abilities.includes(ability));
     
-    // Debug logging for ai_analyst and agents
-    if (module === 'ai_analyst' || module === 'agents' || module === 'commissions') {
-      console.log(`🔍 ${module} Access Check:`, {
+    // Debug logging for all modules (especially CRM and leads)
+    if (module === 'crm' || module === 'leads' || module === 'accounts') {
+      console.log(`🔍 canAccess(${module}):`, {
         module,
-        moduleAbilities,
-        abilities: abilities.slice(0, 10), // Show first 10 abilities
+        requiredAbilities: moduleAbilities,
+        userAbilities: abilities,
         hasAccess,
-        loading
+        matchingAbilities: moduleAbilities.filter(a => abilities.includes(a)),
+      });
+    }
+    
+    if (!hasAccess) {
+      console.log(`🚫 canAccess(${module}): DENIED`, {
+        module,
+        requiredAbilities: moduleAbilities,
+        userAbilities: abilities.slice(0, 10), // Show first 10 abilities
+        hasRequired: moduleAbilities.some(a => abilities.includes(a)),
+      });
+    } else {
+      console.log(`✅ canAccess(${module}): ALLOWED`, {
+        module,
+        requiredAbilities: moduleAbilities,
+        matchingAbility: moduleAbilities.find(a => abilities.includes(a)),
       });
     }
     

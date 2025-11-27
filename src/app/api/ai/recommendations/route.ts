@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { AIService, BUSINESS_ANALYST_PROMPT } from '@/lib/ai-service';
 import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 import { getExchangeRate } from '@/lib/currency';
 import crypto from 'crypto';
 
@@ -50,6 +51,12 @@ Provide 5 recommendations in priority order (highest impact first). Each should 
   
   'orders': `You are analyzing order fulfillment and delivery data. Focus on order processing times, fulfillment rates, delivery efficiency, and order status optimization. Provide 3 actionable recommendations for improving order management, reducing processing times, and optimizing fulfillment processes.`,
   
+  'ecommerce-orders': `You are analyzing ecommerce order operations with an emphasis on COD (cash on delivery) reconciliation. Focus on fulfillment readiness, delivery scheduling, COD collection, and customer communication for online orders. Provide 3 actionable recommendations grounded in the provided ecommerce metrics.`,
+  
+  'ecommerce-customers': `You are analyzing ecommerce customer operations. Focus on customer lifecycle value, repeat purchase behaviour, COD risk, and proactive communication. Provide 3 actionable recommendations to strengthen customer retention, accelerate cash collection, and improve delivery success.`,
+  
+  'ecommerce-categories': `You are analyzing ecommerce merchandising categories. Focus on category preparedness, featured placement, product coverage, merchandising metadata, and operational guidance. Provide 3 actionable recommendations to improve storefront relevancy, campaign readiness, and fulfilment playbooks based on the provided category metrics.`,
+  
   'payments': `You are analyzing payment and cash flow data. Focus on payment collection, cash flow patterns, outstanding invoices, and payment method optimization. Provide 3 actionable recommendations for improving payment management, reducing outstanding amounts, and optimizing cash flow.`,
   
   'returns': `You are analyzing product returns and refund data. Focus on return rates, return reasons, processing times, and prevention strategies. Provide 3 actionable recommendations for reducing returns, improving return processing efficiency, and addressing common return causes.`,
@@ -62,7 +69,9 @@ Provide 5 recommendations in priority order (highest impact first). Each should 
   
   'distributors': `You are analyzing active distributor network and performance data. Focus on distributor engagement, sales performance, territory optimization, and network growth. Provide 3 actionable recommendations for improving distributor management, increasing sales volume, and optimizing distributor network efficiency.`,
   
-  'routes-mapping': `You are analyzing route planning, zone management, and driver efficiency data. Focus on route optimization, delivery efficiency, zone coverage, and driver utilization. Provide 3 actionable recommendations for improving route planning, reducing delivery times, optimizing zone coverage, and enhancing driver productivity.`
+  'routes-mapping': `You are analyzing route planning, zone management, and driver efficiency data. Focus on route optimization, delivery efficiency, zone coverage, and driver utilization. Provide 3 actionable recommendations for improving route planning, reducing delivery times, optimizing zone coverage, and enhancing driver productivity.`,
+  
+  'projects': `You are analyzing project management data. Focus on project delivery, task completion, incident resolution, resource allocation, and deadline management. Provide 5 actionable recommendations for improving project delivery, reducing risks, optimizing resource utilization, and ensuring on-time completion.`
 };
 
 export async function POST(request: NextRequest) {
@@ -516,7 +525,27 @@ Current Order Metrics:
 - Delivered Orders Value: ${(businessData as any).deliveredValue || 0}
 - Average Processing Time: ${(businessData as any).averageProcessingDays || 0} days
 
-Use these EXACT numbers in your recommendations. Reference specific counts of pending orders, processing orders, delivery efficiency, and order status optimization when making recommendations.` : page === 'payments' ? `
+Use these EXACT numbers in your recommendations. Reference specific counts of pending orders, processing orders, delivery efficiency, and order status optimization when making recommendations.` : page === 'ecommerce-orders' ? `
+CRITICAL: Use ONLY the actual ecommerce metrics provided below. Do NOT invent or estimate numbers. If a metric is missing or zero, acknowledge it in your recommendation.
+
+Current Ecommerce Order Metrics:
+- Total Ecommerce Orders: ${(businessData as any).totalOrders || 0}
+- Status Breakdown:
+  - Pending: ${(businessData as any).pendingOrders || 0}
+  - Confirmed: ${(businessData as any).confirmedOrders || 0}
+  - Processing: ${(businessData as any).processingOrders || 0}
+  - Ready to Ship: ${(businessData as any).readyToShipOrders || 0}
+  - Shipped: ${(businessData as any).shippedOrders || 0}
+  - Delivered: ${(businessData as any).deliveredOrders || 0}
+  - Completed: ${(businessData as any).completedOrders || 0}
+  - Cancelled: ${(businessData as any).cancelledOrders || 0}
+- Recent Volume: ${(businessData as any).ordersLast7Days || 0} in last 7 days, ${(businessData as any).ordersLast30Days || 0} in last 30 days, ${(businessData as any).ordersThisMonth || 0} this month, ${(businessData as any).todaysOrders || 0} today
+- Fulfillment Value: Ready-to-Ship ${currencySymbol}${Number((businessData as any).readyToShipValue || 0).toFixed(2)}, In Transit ${currencySymbol}${Number((businessData as any).inTransitValue || 0).toFixed(2)}, Delivered ${currencySymbol}${Number((businessData as any).deliveredValue || 0).toFixed(2)}
+- COD Snapshot: Outstanding ${currencySymbol}${Number((businessData as any).outstandingCodValue || 0).toFixed(2)}, Collected ${currencySymbol}${Number((businessData as any).collectedCodValue || 0).toFixed(2)}, Delivered but Unpaid ${(businessData as any).deliveredButUnpaid || 0} orders
+- Overdue COD: ${(businessData as any).overdueCODCount || 0} orders worth ${currencySymbol}${Number((businessData as any).overdueCODValue || 0).toFixed(2)}
+- Fulfillment Timing: Average fulfillment ${(businessData as any).averageFulfillmentHours || 0} hours, Oldest ready-to-ship ${(businessData as any).readyToShipOldestHours || 0} hours, Oldest processing ${(businessData as any).processingOldestHours || 0} hours
+
+Use these EXACT numbers in your recommendations. Reference specific counts of ready-to-ship orders, shipped orders, delivered-but-unpaid orders, outstanding COD value, overdue CODs, and fulfillment timing when making recommendations.` : page === 'payments' ? `
 CRITICAL: Use ONLY the actual numbers provided below. Do NOT invent or estimate numbers. If a metric is missing or zero, acknowledge it in your recommendation.
 
 Current Payment Metrics:
@@ -549,10 +578,44 @@ Current Return Metrics:
 - Refunded Amount: ${(businessData as any).refundedValue || 0}
 - Average Processing Time: ${(businessData as any).averageProcessingDays || 0} days
 
-Use these EXACT numbers in your recommendations. Reference specific return rates, processing times, return reasons, and prevention strategies when making recommendations.` : '';
+Use these EXACT numbers in your recommendations. Reference specific return rates, processing times, return reasons, and prevention strategies when making recommendations.` : page === 'projects' ? `
+CRITICAL: Use ONLY the actual numbers provided below. Do NOT invent or estimate numbers. If a metric is missing or zero, acknowledge it in your recommendation.
+
+Current Project Metrics:
+- Total Projects: ${(businessData as any).total || 0}
+- Status Breakdown:
+  - Active: ${(businessData as any).activeProjects || 0}
+  - On Hold: ${(businessData as any).onHoldProjects || 0}
+  - Completed: ${(businessData as any).completedProjects || 0}
+  - Cancelled: ${(businessData as any).cancelledProjects || 0}
+  - Draft: ${(businessData as any).draftProjects || 0}
+- Deadlines:
+  - Upcoming (within 14 days): ${(businessData as any).upcomingDeadlines || 0}
+  - Overdue: ${(businessData as any).overdueProjects || 0}
+- Tasks:
+  - Total Tasks: ${(businessData as any).totalTasks || 0}
+  - Completed: ${(businessData as any).completedTasks || 0}
+  - Pending/In Progress: ${(businessData as any).pendingTasks || 0}
+  - Overdue: ${(businessData as any).overdueTasks || 0}
+- Incidents:
+  - Total Incidents: ${(businessData as any).totalIncidents || 0}
+  - Open: ${(businessData as any).openIncidents || 0}
+  - High/Critical Severity: ${(businessData as any).highSeverityIncidents || 0}
+  - Overdue: ${(businessData as any).overdueIncidents || 0}
+- Resource Requests: ${(businessData as any).totalResourceRequests || 0} total
+- Project Health:
+  - Projects without members: ${(businessData as any).projectsWithoutMembers || 0}
+  - Projects without tasks: ${(businessData as any).projectsWithoutTasks || 0}
+  - Projects with overdue tasks: ${(businessData as any).projectsWithOverdueTasks || 0}
+  - Projects with high severity incidents: ${(businessData as any).projectsWithHighSeverityIncidents || 0}
+- Recent Activity:
+  - New projects (last 7 days): ${(businessData as any).newProjectsLast7Days || 0}
+  - New projects (last 30 days): ${(businessData as any).newProjectsLast30Days || 0}
+
+Use these EXACT numbers in your recommendations. Reference specific counts of overdue projects, overdue tasks, open incidents, projects at risk, and resource needs when making recommendations.` : '';
 
     // Create a formatted data summary for the prompt
-    const formattedDataForAI = (page === 'dashboard' || page === 'leads' || page === 'opportunities' || page === 'accounts' || page === 'products' || page === 'stock' || page === 'stock-movements' || page === 'backorders' || page === 'warehouses' || page === 'invoices' || page === 'quotations' || page === 'orders' || page === 'payments' || page === 'returns') ? JSON.stringify(businessData, null, 2) : '';
+    const formattedDataForAI = (page === 'dashboard' || page === 'leads' || page === 'opportunities' || page === 'accounts' || page === 'products' || page === 'stock' || page === 'stock-movements' || page === 'backorders' || page === 'warehouses' || page === 'invoices' || page === 'quotations' || page === 'orders' || page === 'payments' || page === 'returns' || page === 'ecommerce-orders' || page === 'ecommerce-customers' || page === 'ecommerce-categories' || page === 'projects') ? JSON.stringify(businessData, null, 2) : '';
     
     // Log the data being sent to AI for debugging
     if (page === 'dashboard') {
@@ -600,8 +663,10 @@ ${page === 'products' ? 'Focus on product management, inventory optimization, pr
 ${page === 'invoices' ? 'Focus on invoice management, payment collection, cash flow optimization, and overdue reduction based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of overdue invoices, unpaid amounts, average days overdue, etc. Reference specific payment statuses, cash flow metrics, and collection opportunities from the data.' : ''}
 ${page === 'quotations' ? 'Focus on quotation management, conversion optimization, follow-up effectiveness, and sales process improvement based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of sent quotations, accepted quotations, conversion rates, pending values, quotations needing follow-up, etc. Reference specific status breakdowns, conversion metrics, and sales pipeline data.' : ''}
 ${page === 'orders' ? 'Focus on order fulfillment, processing efficiency, delivery optimization, and status management based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of pending orders, processing orders, average processing time, delivery efficiency, etc. Reference specific order statuses, fulfillment rates, and processing metrics from the data.' : ''}
+${page === 'ecommerce-orders' ? 'Focus on ecommerce fulfillment, rider scheduling, and COD reconciliation using the REAL metrics provided. Reference specific counts of ready-to-ship orders, shipped orders, delivered-but-unpaid orders, outstanding COD amounts, overdue COD invoices, and average fulfillment times. Recommend concrete next steps for ops and finance coordination (e.g., batching deliveries, chasing COD balances, updating customer communication).' : ''}
 ${page === 'payments' ? 'Focus on payment collection, cash flow optimization, outstanding invoice management, and payment method analysis based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of overdue invoices, unpaid amounts, payment trends, collection rates, etc. Reference specific payment amounts, methods, and cash flow patterns from the data.' : ''}
 ${page === 'returns' ? 'Focus on return reduction, processing efficiency, reason analysis, and prevention strategies based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of pending returns, return rates, processing times, top return reasons, etc. Reference specific return statuses, reasons, and processing metrics from the data.' : ''}
+${page === 'projects' ? 'Focus on project delivery, deadline management, task completion, incident resolution, and resource allocation based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of overdue projects, overdue tasks, open incidents, projects at risk, resource needs, etc. Reference specific project statuses, task completion rates, incident severity, and deadline metrics from the data.' : ''}
 
 Format your response as a JSON array:
 [
@@ -819,6 +884,12 @@ async function getBusinessDataForPage(page: string, userId: string, context?: an
         return await getQuotationsData();
       case 'orders':
         return await getOrdersData();
+      case 'ecommerce-orders':
+        return await getEcommerceOrdersData();
+      case 'ecommerce-customers':
+        return await getEcommerceCustomersData();
+      case 'ecommerce-categories':
+        return await getEcommerceCategoriesData();
       case 'payments':
         return await getPaymentsData();
       case 'returns':
@@ -831,6 +902,8 @@ async function getBusinessDataForPage(page: string, userId: string, context?: an
         return await getDistributorLeadsData();
       case 'routes-mapping':
         return await getRoutesMappingData();
+      case 'projects':
+        return await getProjectsData(userId);
       default:
         return await getDashboardData(userId);
     }
@@ -838,6 +911,27 @@ async function getBusinessDataForPage(page: string, userId: string, context?: an
     console.error('Error fetching business data:', error);
     return {};
   }
+}
+
+function buildEcommerceSalesOrderFilter(): Prisma.SalesOrderWhereInput {
+  return {
+    OR: [
+      {
+        invoice: {
+          lead: {
+            source: "ECOMMERCE",
+          },
+        },
+      },
+      {
+        quotation: {
+          lead: {
+            source: "ECOMMERCE",
+          },
+        },
+      },
+    ],
+  };
 }
 
 async function getDashboardData(userId: string) {
@@ -1677,6 +1771,141 @@ async function getTasksData() {
   return { total, completed, overdue, pending };
 }
 
+async function getProjectsData(userId: string) {
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const fourteenDaysFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+  // Get all projects with their related data
+  const projects = await prisma.project.findMany({
+    include: {
+      _count: {
+        select: {
+          members: true,
+          tasks: true,
+          incidents: true,
+          resourceRequests: true,
+          stages: true
+        }
+      },
+      tasks: {
+        select: {
+          id: true,
+          status: true,
+          dueDate: true,
+          priority: true
+        }
+      },
+      incidents: {
+        select: {
+          id: true,
+          status: true,
+          severity: true,
+          dueDate: true
+        }
+      }
+    }
+  });
+
+  // Calculate metrics
+  const total = projects.length;
+  const activeProjects = projects.filter(p => p.status === 'ACTIVE').length;
+  const onHoldProjects = projects.filter(p => p.status === 'ON_HOLD').length;
+  const completedProjects = projects.filter(p => p.status === 'COMPLETED').length;
+  const cancelledProjects = projects.filter(p => p.status === 'CANCELLED').length;
+  const draftProjects = projects.filter(p => p.status === 'DRAFT').length;
+
+  // Calculate upcoming deadlines (within 14 days)
+  const upcomingDeadlines = projects.filter(p => {
+    if (!p.dueDate) return false;
+    const due = new Date(p.dueDate);
+    return due > now && due <= fourteenDaysFromNow && p.status !== 'COMPLETED' && p.status !== 'CANCELLED';
+  }).length;
+
+  // Calculate overdue projects
+  const overdueProjects = projects.filter(p => {
+    if (!p.dueDate) return false;
+    const due = new Date(p.dueDate);
+    return due < now && p.status !== 'COMPLETED' && p.status !== 'CANCELLED' && p.status !== 'ARCHIVED';
+  }).length;
+
+  // Calculate project tasks metrics
+  const allTasks = projects.flatMap(p => p.tasks);
+  const totalTasks = allTasks.length;
+  const completedTasks = allTasks.filter(t => t.status === 'COMPLETED').length;
+  const pendingTasks = allTasks.filter(t => t.status === 'PENDING' || t.status === 'IN_PROGRESS').length;
+  const overdueTasks = allTasks.filter(t => {
+    if (!t.dueDate) return false;
+    const due = new Date(t.dueDate);
+    return due < now && t.status !== 'COMPLETED';
+  }).length;
+
+  // Calculate incidents metrics
+  const allIncidents = projects.flatMap(p => p.incidents);
+  const totalIncidents = allIncidents.length;
+  const openIncidents = allIncidents.filter(i => i.status !== 'RESOLVED' && i.status !== 'CLOSED').length;
+  const highSeverityIncidents = allIncidents.filter(i => i.severity === 'HIGH' || i.severity === 'CRITICAL').length;
+  const overdueIncidents = allIncidents.filter(i => {
+    if (!i.dueDate) return false;
+    const due = new Date(i.dueDate);
+    return due < now && i.status !== 'RESOLVED' && i.status !== 'CLOSED';
+  }).length;
+
+  // Calculate resource requests
+  const totalResourceRequests = projects.reduce((sum, p) => sum + p._count.resourceRequests, 0);
+
+  // Projects with no members
+  const projectsWithoutMembers = projects.filter(p => p._count.members === 0).length;
+
+  // Projects with no tasks
+  const projectsWithoutTasks = projects.filter(p => p._count.tasks === 0).length;
+
+  // Projects created recently
+  const newProjectsLast7Days = projects.filter(p => new Date(p.createdAt) >= sevenDaysAgo).length;
+  const newProjectsLast30Days = projects.filter(p => new Date(p.createdAt) >= thirtyDaysAgo).length;
+
+  // Projects with overdue tasks
+  const projectsWithOverdueTasks = projects.filter(p => {
+    return p.tasks.some(t => {
+      if (!t.dueDate) return false;
+      const due = new Date(t.dueDate);
+      return due < now && t.status !== 'COMPLETED';
+    });
+  }).length;
+
+  // Projects with high priority incidents
+  const projectsWithHighSeverityIncidents = projects.filter(p => {
+    return p.incidents.some(i => i.severity === 'HIGH' || i.severity === 'CRITICAL');
+  }).length;
+
+  return {
+    total,
+    activeProjects,
+    onHoldProjects,
+    completedProjects,
+    cancelledProjects,
+    draftProjects,
+    upcomingDeadlines,
+    overdueProjects,
+    totalTasks,
+    completedTasks,
+    pendingTasks,
+    overdueTasks,
+    totalIncidents,
+    openIncidents,
+    highSeverityIncidents,
+    overdueIncidents,
+    totalResourceRequests,
+    projectsWithoutMembers,
+    projectsWithoutTasks,
+    newProjectsLast7Days,
+    newProjectsLast30Days,
+    projectsWithOverdueTasks,
+    projectsWithHighSeverityIncidents
+  };
+}
+
 async function getDistributorsData() {
   const [total, active, inactive] = await Promise.all([
     prisma.distributor.count(),
@@ -2247,6 +2476,730 @@ async function getOrdersData() {
   };
 }
 
+async function getEcommerceOrdersData() {
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const ecommerceFilter: Prisma.SalesOrderWhereInput = {
+    OR: [
+      { invoice: { lead: { source: 'ECOMMERCE' } } },
+      { quotation: { lead: { source: 'ECOMMERCE' } } },
+      { notes: { contains: 'Ecommerce order' } }
+    ]
+  };
+
+  const statusList = [
+    'PENDING',
+    'CONFIRMED',
+    'PROCESSING',
+    'READY_TO_SHIP',
+    'SHIPPED',
+    'DELIVERED',
+    'COMPLETED',
+    'CANCELLED'
+  ] as const;
+
+  const statusCounts = await Promise.all(
+    statusList.map(async (status) => ({
+      status,
+      count: await prisma.salesOrder.count({
+        where: {
+          AND: [ecommerceFilter, { status }]
+        }
+      })
+    }))
+  );
+
+  const [
+    ordersLast7Days,
+    ordersLast30Days,
+    ordersThisMonth,
+    totalValue,
+    readyToShipValue,
+    inTransitValue,
+    deliveredValue,
+    outstandingCOD,
+    codCollected,
+    unpaidInvoiceCount,
+    partiallyPaidInvoiceCount,
+    overdueCODCount,
+    overdueCODValue,
+    deliveredButUnpaid,
+    readyToShipAging,
+    awaitingProcessingAging,
+    fulfillmentSamples,
+    todaysOrders
+  ] = await Promise.all([
+    prisma.salesOrder.count({
+      where: {
+        AND: [ecommerceFilter, { createdAt: { gte: sevenDaysAgo } }]
+      }
+    }),
+    prisma.salesOrder.count({
+      where: {
+        AND: [ecommerceFilter, { createdAt: { gte: thirtyDaysAgo } }]
+      }
+    }),
+    prisma.salesOrder.count({
+      where: {
+        AND: [ecommerceFilter, { createdAt: { gte: startOfMonth } }]
+      }
+    }),
+    prisma.salesOrder.aggregate({
+      _sum: { total: true },
+      where: ecommerceFilter
+    }),
+    prisma.salesOrder.aggregate({
+      _sum: { total: true },
+      where: {
+        AND: [ecommerceFilter, { status: 'READY_TO_SHIP' }]
+      }
+    }),
+    prisma.salesOrder.aggregate({
+      _sum: { total: true },
+      where: {
+        AND: [ecommerceFilter, { status: 'SHIPPED' }]
+      }
+    }),
+    prisma.salesOrder.aggregate({
+      _sum: { total: true },
+      where: {
+        AND: [ecommerceFilter, { status: { in: ['DELIVERED', 'COMPLETED'] } }]
+      }
+    }),
+    prisma.invoice.aggregate({
+      _sum: { amountDue: true },
+      where: {
+        lead: { source: 'ECOMMERCE' },
+        paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] }
+      }
+    }),
+    prisma.invoice.aggregate({
+      _sum: { amountPaid: true },
+      where: {
+        lead: { source: 'ECOMMERCE' },
+        paymentStatus: 'PAID'
+      }
+    }),
+    prisma.invoice.count({
+      where: {
+        lead: { source: 'ECOMMERCE' },
+        paymentStatus: 'UNPAID'
+      }
+    }),
+    prisma.invoice.count({
+      where: {
+        lead: { source: 'ECOMMERCE' },
+        paymentStatus: 'PARTIALLY_PAID'
+      }
+    }),
+    prisma.invoice.count({
+      where: {
+        lead: { source: 'ECOMMERCE' },
+        paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] },
+        dueDate: { lt: now }
+      }
+    }),
+    prisma.invoice.aggregate({
+      _sum: { amountDue: true },
+      where: {
+        lead: { source: 'ECOMMERCE' },
+        paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] },
+        dueDate: { lt: now }
+      }
+    }),
+    prisma.salesOrder.count({
+      where: {
+        AND: [
+          ecommerceFilter,
+          { status: { in: ['DELIVERED', 'COMPLETED'] } },
+          {
+            invoice: {
+              paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] }
+            }
+          }
+        ]
+      }
+    }),
+    prisma.salesOrder.findMany({
+      where: {
+        AND: [ecommerceFilter, { status: 'READY_TO_SHIP' }]
+      },
+      select: {
+        createdAt: true
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 25
+    }),
+    prisma.salesOrder.findMany({
+      where: {
+        AND: [ecommerceFilter, { status: { in: ['PENDING', 'CONFIRMED', 'PROCESSING'] } }]
+      },
+      select: {
+        createdAt: true
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 25
+    }),
+    prisma.salesOrder.findMany({
+      where: {
+        AND: [
+          ecommerceFilter,
+          { status: { in: ['DELIVERED', 'COMPLETED'] } }
+        ]
+      },
+      select: {
+        createdAt: true,
+        updatedAt: true
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 100
+    }),
+    prisma.salesOrder.count({
+      where: {
+        AND: [
+          ecommerceFilter,
+          {
+            createdAt: {
+              gte: new Date(now.getFullYear(), now.getMonth(), now.getDate())
+            }
+          }
+        ]
+      }
+    })
+  ]);
+
+  let averageFulfillmentHours = 0;
+  if (fulfillmentSamples.length > 0) {
+    const totalHours = fulfillmentSamples.reduce((sum, order) => {
+      const diff = order.updatedAt.getTime() - order.createdAt.getTime();
+      return sum + diff / (1000 * 60 * 60);
+    }, 0);
+    averageFulfillmentHours = totalHours / fulfillmentSamples.length;
+  }
+
+  const totalOrders =
+    statusCounts.reduce((sum, entry) => sum + entry.count, 0) || 0;
+
+  const getStatusCount = (status: typeof statusList[number]) =>
+    statusCounts.find((entry) => entry.status === status)?.count || 0;
+
+  const readyToShipOrders = getStatusCount('READY_TO_SHIP');
+  const shippedOrders = getStatusCount('SHIPPED');
+  const deliveredOrders = getStatusCount('DELIVERED');
+  const completedOrders = getStatusCount('COMPLETED');
+
+  return {
+    totalOrders,
+    ordersByStatus: statusCounts.reduce<Record<string, number>>((acc, entry) => {
+      acc[entry.status] = entry.count;
+      return acc;
+    }, {}),
+    pendingOrders: getStatusCount('PENDING'),
+    confirmedOrders: getStatusCount('CONFIRMED'),
+    processingOrders: getStatusCount('PROCESSING'),
+    readyToShipOrders,
+    shippedOrders,
+    deliveredOrders,
+    completedOrders,
+    cancelledOrders: getStatusCount('CANCELLED'),
+    awaitingDispatchOrders: readyToShipOrders + shippedOrders,
+    ordersLast7Days,
+    ordersLast30Days,
+    ordersThisMonth,
+    todaysOrders,
+    totalOrderValue: Number(totalValue._sum.total || 0),
+    readyToShipValue: Number(readyToShipValue._sum.total || 0),
+    inTransitValue: Number(inTransitValue._sum.total || 0),
+    deliveredValue: Number(deliveredValue._sum.total || 0),
+    outstandingCodValue: Number(outstandingCOD._sum.amountDue || 0),
+    collectedCodValue: Number(codCollected._sum.amountPaid || 0),
+    unpaidInvoiceCount,
+    partiallyPaidInvoiceCount,
+    overdueCODCount,
+    overdueCODValue: Number(overdueCODValue._sum.amountDue || 0),
+    deliveredButUnpaid,
+    readyToShipOldestHours: readyToShipAging.length
+      ? Math.max(
+          ...readyToShipAging.map((order) =>
+            (now.getTime() - order.createdAt.getTime()) / (1000 * 60 * 60)
+          )
+        )
+      : 0,
+    processingOldestHours: awaitingProcessingAging.length
+      ? Math.max(
+          ...awaitingProcessingAging.map((order) =>
+            (now.getTime() - order.createdAt.getTime()) / (1000 * 60 * 60)
+          )
+        )
+      : 0,
+    averageFulfillmentHours: Math.round(averageFulfillmentHours * 10) / 10,
+    snapshotGeneratedAt: now.toISOString()
+  };
+}
+
+async function getEcommerceCategoriesData() {
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+  const [
+    categories,
+    productCounts,
+    activeCounts,
+    newCounts,
+    featuredConfigs,
+  ] = await Promise.all([
+    prisma.category.findMany({
+      include: {
+        ecommerceConfig: true,
+      },
+    }),
+    prisma.product.groupBy({
+      by: ["categoryId"],
+      _count: { _all: true },
+    }),
+    prisma.product.groupBy({
+      by: ["categoryId"],
+      where: { active: true },
+      _count: { _all: true },
+    }),
+    prisma.product.groupBy({
+      by: ["categoryId"],
+      where: {
+        createdAt: {
+          gte: thirtyDaysAgo,
+        },
+      },
+      _count: { _all: true },
+    }),
+    prisma.ecommerceCategoryConfig.findMany({
+      where: {
+        isFeatured: true,
+      },
+      select: {
+        categoryId: true,
+        updatedAt: true,
+      },
+    }),
+  ]);
+
+  const productCountMap = new Map(
+    productCounts.map((item) => [item.categoryId, item._count._all])
+  );
+  const activeCountMap = new Map(
+    activeCounts.map((item) => [item.categoryId, item._count._all])
+  );
+  const newCountMap = new Map(
+    newCounts.map((item) => [item.categoryId, item._count._all])
+  );
+
+  const totalCategories = categories.length;
+  const categoriesWithConfig = categories.filter(
+    (category) => category.ecommerceConfig !== null
+  );
+  const featuredCategoryIds = new Set(
+    featuredConfigs.map((config) => config.categoryId)
+  );
+
+  const totals = {
+    totalCategories,
+    categoriesWithConfig: categoriesWithConfig.length,
+    categoriesWithoutConfig: totalCategories - categoriesWithConfig.length,
+    featuredCategories: categories.filter(
+      (category) => category.ecommerceConfig?.isFeatured
+    ).length,
+    categoriesMissingTagline: categoriesWithConfig.filter(
+      (category) => !category.ecommerceConfig?.marketingTagline
+    ).length,
+    categoriesMissingOpsNotes: categoriesWithConfig.filter(
+      (category) => !category.ecommerceConfig?.opsNotes
+    ).length,
+    categoriesMissingAiPrompt: categoriesWithConfig.filter(
+      (category) => !category.ecommerceConfig?.aiPrompt
+    ).length,
+    categoriesWithoutProducts: categories.filter(
+      (category) => (productCountMap.get(category.id) ?? 0) === 0
+    ).length,
+    totalProducts: productCounts.reduce(
+      (sum, item) => sum + item._count._all,
+      0
+    ),
+    activeProducts: activeCounts.reduce(
+      (sum, item) => sum + item._count._all,
+      0
+    ),
+    newProductsLast30Days: newCounts.reduce(
+      (sum, item) => sum + item._count._all,
+      0
+    ),
+  };
+
+  const topActiveCategories = categories
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      activeProducts: activeCountMap.get(category.id) ?? 0,
+      totalProducts: productCountMap.get(category.id) ?? 0,
+      isFeatured: featuredCategoryIds.has(category.id),
+    }))
+    .filter((entry) => entry.totalProducts > 0)
+    .sort((a, b) => b.activeProducts - a.activeProducts)
+    .slice(0, 6);
+
+  const categoriesNeedingInventory = categories
+    .filter((category) => (productCountMap.get(category.id) ?? 0) === 0)
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+    }))
+    .slice(0, 5);
+
+  const staleFeaturedCategories = featuredConfigs
+    .filter((config) => config.updatedAt < ninetyDaysAgo)
+    .map((config) => {
+      const category = categories.find((item) => item.id === config.categoryId);
+      return category
+        ? {
+            id: category.id,
+            name: category.name,
+            lastUpdated: config.updatedAt,
+          }
+        : null;
+    })
+    .filter((entry): entry is { id: string; name: string; lastUpdated: Date } =>
+      Boolean(entry)
+    );
+
+  const recentlyUpdatedCategories = categories
+    .filter((category) => category.ecommerceConfig?.updatedAt)
+    .sort(
+      (a, b) =>
+        (b.ecommerceConfig?.updatedAt?.getTime() ?? 0) -
+        (a.ecommerceConfig?.updatedAt?.getTime() ?? 0)
+    )
+    .slice(0, 6)
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      updatedAt: category.ecommerceConfig?.updatedAt ?? null,
+      isFeatured: category.ecommerceConfig?.isFeatured ?? false,
+    }));
+
+  return {
+    snapshotGeneratedAt: now.toISOString(),
+    totals,
+    topActiveCategories,
+    categoriesNeedingInventory,
+    staleFeaturedCategories,
+    recentlyUpdatedCategories,
+  };
+}
+
+async function getEcommerceCustomersData() {
+  const now = new Date();
+  const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const ecommerceFilter = buildEcommerceSalesOrderFilter();
+
+  const [
+    totalCustomers,
+    active30Days,
+    active7Days,
+    inactive90Days,
+    outstandingCustomers,
+    highRiskCustomers,
+    totalOutstandingCod,
+    totalCollectedCod,
+    totalRevenue,
+    returningCustomers,
+    newCustomersThisMonth,
+    topOutstandingCustomers,
+    topValueCustomers,
+    recentCustomers,
+  ] = await Promise.all([
+    prisma.account.count({
+      where: {
+        salesOrders: {
+          some: ecommerceFilter,
+        },
+      },
+    }),
+    prisma.account.count({
+      where: {
+        salesOrders: {
+          some: {
+            ...ecommerceFilter,
+            createdAt: {
+              gte: thirtyDaysAgo,
+            },
+          },
+        },
+      },
+    }),
+    prisma.account.count({
+      where: {
+        salesOrders: {
+          some: {
+            ...ecommerceFilter,
+            createdAt: {
+              gte: sevenDaysAgo,
+            },
+          },
+        },
+      },
+    }),
+    prisma.account.count({
+      where: {
+        salesOrders: {
+          some: ecommerceFilter,
+        },
+        AND: [
+          {
+            salesOrders: {
+              none: {
+                createdAt: {
+                  gte: ninetyDaysAgo,
+                },
+                ...ecommerceFilter,
+              },
+            },
+          },
+        ],
+      },
+    }),
+    prisma.account.count({
+      where: {
+        salesOrders: {
+          some: {
+            ...ecommerceFilter,
+            invoice: {
+              paymentStatus: {
+                in: ["UNPAID", "PARTIALLY_PAID"],
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.account.count({
+      where: {
+        salesOrders: {
+          some: {
+            ...ecommerceFilter,
+            invoice: {
+              paymentStatus: {
+                in: ["UNPAID", "PARTIALLY_PAID"],
+              },
+              dueDate: {
+                lt: now,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.invoice.aggregate({
+      _sum: {
+        amountDue: true,
+      },
+      where: {
+        lead: {
+          source: "ECOMMERCE",
+        },
+        paymentStatus: {
+          in: ["UNPAID", "PARTIALLY_PAID"],
+        },
+      },
+    }),
+    prisma.invoice.aggregate({
+      _sum: {
+        amountPaid: true,
+      },
+      where: {
+        lead: {
+          source: "ECOMMERCE",
+        },
+        paymentStatus: "PAID",
+      },
+    }),
+    prisma.salesOrder.aggregate({
+      _sum: {
+        total: true,
+      },
+      where: ecommerceFilter,
+    }),
+    prisma.account.count({
+      where: {
+        salesOrders: {
+          some: ecommerceFilter,
+        },
+        AND: [
+          {
+            salesOrders: {
+              some: {
+                ...ecommerceFilter,
+                status: {
+                  in: ["DELIVERED", "COMPLETED"],
+                },
+              },
+            },
+          },
+          {
+            salesOrders: {
+              some: {
+                ...ecommerceFilter,
+                createdAt: {
+                  lt: thirtyDaysAgo,
+                },
+              },
+            },
+          },
+        ],
+      },
+    }),
+    prisma.account.count({
+      where: {
+        salesOrders: {
+          some: {
+            ...ecommerceFilter,
+            createdAt: {
+              gte: startOfMonth,
+            },
+          },
+        },
+      },
+    }),
+    prisma.account.findMany({
+      where: {
+        salesOrders: {
+          some: {
+            ...ecommerceFilter,
+            invoice: {
+              paymentStatus: {
+                in: ["UNPAID", "PARTIALLY_PAID"],
+              },
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        salesOrders: {
+          where: ecommerceFilter,
+          select: {
+            total: true,
+            invoice: {
+              select: {
+                amountDue: true,
+              },
+            },
+          },
+        },
+      },
+      take: 5,
+    }),
+    prisma.account.findMany({
+      where: {
+        salesOrders: {
+          some: ecommerceFilter,
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        salesOrders: {
+          where: ecommerceFilter,
+          select: {
+            total: true,
+          },
+        },
+      },
+      take: 5,
+    }),
+    prisma.account.findMany({
+      where: {
+        salesOrders: {
+          some: {
+            ...ecommerceFilter,
+            createdAt: {
+              gte: thirtyDaysAgo,
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 10,
+    }),
+  ]);
+
+  const outstandingCodValue = Number(totalOutstandingCod._sum.amountDue || 0);
+  const collectedCodValue = Number(totalCollectedCod._sum.amountPaid || 0);
+  const lifetimeValue = Number(totalRevenue._sum.total || 0);
+
+  const topOutstanding = topOutstandingCustomers
+    .map((account) => {
+      const outstanding = account.salesOrders.reduce((sum, order) => {
+        const due = Number(order.invoice?.amountDue || 0);
+        return sum + due;
+      }, 0);
+      return {
+        id: account.id,
+        name: account.name || "Unnamed",
+        email: account.email,
+        outstanding,
+      };
+    })
+    .sort((a, b) => b.outstanding - a.outstanding);
+
+  const topValue = topValueCustomers
+    .map((account) => {
+      const total = account.salesOrders.reduce((sum, order) => {
+        return sum + Number(order.total || 0);
+      }, 0);
+      return {
+        id: account.id,
+        name: account.name || "Unnamed",
+        email: account.email,
+        total,
+      };
+    })
+    .sort((a, b) => b.total - a.total);
+
+  return {
+    totalCustomers,
+    active30Days,
+    active7Days,
+    inactive90Days,
+    outstandingCustomers,
+    highRiskCustomers,
+    outstandingCodValue,
+    collectedCodValue,
+    lifetimeValue,
+    returningCustomers,
+    newCustomersThisMonth,
+    topOutstandingCustomers: topOutstanding,
+    topValueCustomers: topValue,
+    recentCustomers,
+  };
+}
+
 async function getPaymentsData() {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -2775,6 +3728,16 @@ function createDefaultRecommendations(page: string, count: number) {
       { title: 'Restock items', description: 'Order low-stock products', priority: 'high', action: 'Create purchase orders' },
       { title: 'Update pricing', description: 'Review and adjust product pricing', priority: 'medium', action: 'Update prices' },
       { title: 'Add products', description: 'Expand product catalog', priority: 'low', action: 'Add new items' }
+    ],
+    'ecommerce-orders': [
+      { title: 'Schedule delivery batches', description: 'Assign riders for ready-to-ship ecommerce orders and confirm delivery routes.', priority: 'high', action: 'Plan delivery runs' },
+      { title: 'Chase COD balances', description: 'Follow up on delivered ecommerce orders with outstanding COD balances to accelerate cash collection.', priority: 'high', action: 'Call customers / riders' },
+      { title: 'Update customer notifications', description: 'Send status updates to customers with orders still processing to reduce cancellations.', priority: 'medium', action: 'Send SMS/email updates' }
+    ],
+    'ecommerce-customers': [
+      { title: 'Call top COD risks', description: 'Focus on ecommerce customers with overdue COD balances to secure payment.', priority: 'high', action: 'Call high-risk customers' },
+      { title: 'Offer retention perks', description: 'Send personalized offers to recent ecommerce customers to encourage repeat orders.', priority: 'medium', action: 'Send retention campaign' },
+      { title: 'Update contact details', description: 'Verify phone and email details for ecommerce customers flagged with failed deliveries.', priority: 'medium', action: 'Confirm customer info' }
     ]
   };
 

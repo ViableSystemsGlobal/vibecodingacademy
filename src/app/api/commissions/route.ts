@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { parseTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,94 +20,159 @@ export async function GET(request: NextRequest) {
     //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     // }
 
-    const { searchParams } = new URL(request.url);
-    const agentId = searchParams.get('agentId');
-    const status = searchParams.get('status');
-    const commissionType = searchParams.get('type');
-    const dateFrom = searchParams.get('dateFrom');
-    const dateTo = searchParams.get('dateTo');
+    const params = parseTableQuery(request);
 
-    // Build where clause
-    const where: any = {};
-    
-    if (agentId) {
-      where.agentId = agentId;
-    }
-    
-    if (status) {
-      where.status = status;
-    }
-    
-    if (commissionType) {
-      where.commissionType = commissionType;
-    }
-    
-    if (dateFrom || dateTo) {
-      where.createdAt = {};
-      if (dateFrom) where.createdAt.gte = new Date(dateFrom);
-      if (dateTo) where.createdAt.lte = new Date(dateTo);
+    // Custom filter handler
+    const customFilters = (filters: Record<string, string | string[] | null>) => {
+      const where: any = {};
+
+      if (filters.status) {
+        where.status = filters.status;
+      }
+      
+      if (filters.type || filters.commissionType) {
+        where.commissionType = filters.type || filters.commissionType;
+      }
+      
+      if (filters.agentId) {
+        where.agentId = filters.agentId;
+      }
+      
+      if (filters.dateFrom || filters.dateTo) {
+        where.createdAt = {};
+        if (filters.dateFrom) where.createdAt.gte = new Date(filters.dateFrom as string);
+        if (filters.dateTo) where.createdAt.lte = new Date(filters.dateTo as string);
+      }
+
+      return where;
+    };
+
+    const where = buildWhereClause(params, {
+      searchFields: [], // We'll handle search manually for related fields
+      customFilters,
+    });
+
+    // Add search for agent name, agent code, invoice/quote/order numbers
+    if (params.search) {
+      where.OR = [
+        ...(where.OR || []),
+        {
+          agent: {
+            OR: [
+              { agentCode: { contains: params.search, mode: 'insensitive' } },
+              {
+                user: {
+                  OR: [
+                    { name: { contains: params.search, mode: 'insensitive' } },
+                    { email: { contains: params.search, mode: 'insensitive' } },
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          invoice: {
+            number: { contains: params.search, mode: 'insensitive' }
+          }
+        },
+        {
+          quotation: {
+            number: { contains: params.search, mode: 'insensitive' }
+          }
+        },
+        {
+          order: {
+            orderNumber: { contains: params.search, mode: 'insensitive' }
+          }
+        }
+      ];
     }
 
-    const commissions = await prisma.commission.findMany({
-      where,
-      include: {
-        agent: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                phone: true
+    const orderBy = buildOrderBy(params.sortBy, params.sortOrder);
+    const page = params.page || 1;
+    const limit = params.limit || 10;
+    const skip = (page - 1) * limit;
+
+    const [commissions, total] = await Promise.all([
+      prisma.commission.findMany({
+        where,
+        include: {
+          agent: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  phone: true
+                }
+              }
+            }
+          },
+          invoice: {
+            select: {
+              id: true,
+              number: true,
+              total: true,
+              account: {
+                select: { id: true, name: true }
+              }
+            }
+          },
+          quotation: {
+            select: {
+              id: true,
+              number: true,
+              total: true,
+              account: {
+                select: { id: true, name: true }
+              }
+            }
+          },
+          order: {
+            select: {
+              id: true,
+              orderNumber: true,
+              totalAmount: true,
+              distributor: {
+                select: { id: true, businessName: true }
+              }
+            }
+          },
+          opportunity: {
+            select: {
+              id: true,
+              name: true,
+              value: true,
+              account: {
+                select: { id: true, name: true }
               }
             }
           }
         },
-        invoice: {
-          select: {
-            id: true,
-            number: true,
-            total: true,
-            account: {
-              select: { id: true, name: true }
-            }
-          }
-        },
-        quotation: {
-          select: {
-            id: true,
-            number: true,
-            total: true,
-            account: {
-              select: { id: true, name: true }
-            }
-          }
-        },
-        order: {
-          select: {
-            id: true,
-            orderNumber: true,
-            totalAmount: true,
-            distributor: {
-              select: { id: true, businessName: true }
-            }
-          }
-        },
-        opportunity: {
-          select: {
-            id: true,
-            name: true,
-            value: true,
-            account: {
-              select: { id: true, name: true }
-            }
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+        orderBy,
+        skip,
+        take: limit
+      }),
+      prisma.commission.count({ where })
+    ]);
 
-    return NextResponse.json({ commissions });
+    return NextResponse.json({
+      commissions,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+      sort: params.sortBy
+        ? {
+            field: params.sortBy,
+            order: params.sortOrder || 'desc',
+          }
+        : undefined,
+    });
   } catch (error) {
     console.error('Error fetching commissions:', error);
     return NextResponse.json(

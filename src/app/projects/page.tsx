@@ -21,7 +21,17 @@ import {
   Timer,
   ClipboardList,
   Share2,
+  CheckSquare,
+  Square,
+  MoreHorizontal,
+  Eye,
+  Edit,
+  Calendar,
+  MapPin,
+  Building2,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { DropdownMenu } from "@/components/ui/dropdown-menu-custom";
 
 type ProjectSummary = {
   id: string;
@@ -82,6 +92,7 @@ const VISIBILITY_LABELS: Record<string, string> = {
 export default function ProjectsPage() {
   const { getThemeColor } = useTheme();
   const { error: showError } = useToast();
+  const router = useRouter();
 
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [summary, setSummary] = useState<ProjectsSummary>({
@@ -95,6 +106,7 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [visibilityFilter, setVisibilityFilter] = useState<string>("ALL");
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -148,6 +160,24 @@ export default function ProjectsPage() {
     const entries = Object.entries(summary.byStatus);
     return entries.length ? entries : Object.entries(STATUS_LABELS).map(([status]) => [status, 0]);
   }, [summary.byStatus]);
+
+  const handleProjectSelect = (projectId: string) => {
+    setSelectedProjects((prev) =>
+      prev.includes(projectId)
+        ? prev.filter((id) => id !== projectId)
+        : [...prev, projectId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedProjects.length === filteredProjects.length) {
+      setSelectedProjects([]);
+    } else {
+      setSelectedProjects(filteredProjects.map((p) => p.id));
+    }
+  };
+
+  const selectAll = selectedProjects.length === filteredProjects.length && filteredProjects.length > 0;
 
   return (
     <div className="space-y-6">
@@ -302,70 +332,170 @@ export default function ProjectsPage() {
             ))}
           </div>
 
+          {/* Selection Controls */}
+          {filteredProjects.length > 0 && (
+            <div className="px-4 py-3 border-b border-gray-200">
+              <button
+                onClick={handleSelectAll}
+                className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
+              >
+                {selectAll ? (
+                  <CheckSquare className="w-4 h-4 text-blue-600" />
+                ) : (
+                  <Square className="w-4 h-4 text-gray-400" />
+                )}
+                Select All ({filteredProjects.length})
+              </button>
+            </div>
+          )}
+
           {/* Project list */}
-          <div className="grid gap-4 p-4 sm:grid-cols-1 md:grid-cols-2">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 p-6">
             {isLoading ? (
-              <div className="p-10 text-center text-gray-500">
+              <div className="p-10 text-center text-gray-500 col-span-full">
                 Loading projects...
               </div>
             ) : filteredProjects.length === 0 ? (
-              <div className="p-10 text-center text-gray-500">
+              <div className="p-10 text-center text-gray-500 col-span-full">
                 No projects match your filters yet.
               </div>
             ) : (
-              filteredProjects.map((project) => (
+              filteredProjects.map((project) => {
+                const ownerName = project.owner?.name || project.owner?.email || "Unassigned";
+                const startDate = project.startDate ? new Date(project.startDate).toLocaleDateString() : null;
+                const dueDate = project.dueDate ? new Date(project.dueDate).toLocaleDateString() : null;
+
+                return (
                 <Card
                   key={project.id}
-                  className="h-full border border-gray-200 transition hover:border-gray-300 hover:shadow-sm"
-                >
-                  <CardContent className="flex h-full flex-col gap-4 p-5 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge
-                          variant="outline"
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_STYLES[project.status] ?? "bg-gray-100 text-gray-700"}`}
+                    className={`p-6 cursor-pointer transition ${selectedProjects.includes(project.id) ? 'ring-2 ring-blue-500 bg-blue-50' : ''}`}
+                    onClick={(e) => {
+                      // Don't navigate if clicking on checkbox or dropdown
+                      if ((e.target as HTMLElement).closest('button, [role="menu"]')) {
+                        return;
+                      }
+                      router.push(`/projects/${project.id}`);
+                    }}
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleProjectSelect(project.id);
+                          }}
+                          className="flex-shrink-0"
                         >
-                          {STATUS_LABELS[project.status] ?? project.status}
-                        </Badge>
-                        <Badge variant="outline" className="rounded-full px-3 py-1 text-xs font-semibold text-gray-600">
-                          {VISIBILITY_LABELS[project.visibility] ?? project.visibility}
-                        </Badge>
-                        {project.code ? (
-                          <Badge variant="outline" className="rounded-full px-3 py-1 text-xs font-semibold text-gray-600">
-                            {project.code}
-                          </Badge>
-                        ) : null}
+                          {selectedProjects.includes(project.id) ? (
+                            <CheckSquare className="w-4 h-4 text-blue-600" />
+                          ) : (
+                            <Square className="w-4 h-4 text-gray-400" />
+                          )}
+                        </button>
+                        <div className="p-2 rounded-lg bg-blue-100">
+                          <KanbanSquare className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{project.name}</h3>
+                          <p className="text-sm text-gray-600">{ownerName}</p>
+                        </div>
                       </div>
-                      <Link href={`/projects/${project.id}`} className="group inline-flex items-center gap-2">
-                        <h2 className="text-xl font-semibold text-gray-900 group-hover:text-blue-600">
-                          {project.name}
-                        </h2>
-                      </Link>
-                      {project.description ? (
-                        <p className="max-w-3xl text-sm text-gray-600">{project.description}</p>
-                      ) : null}
-                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-600">
-                        <span className="flex items-center gap-2">
-                          <Users className="h-4 w-4 text-gray-400" />
-                          {project._count.members} members
+                      <DropdownMenu
+                        trigger={
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        }
+                        items={[
+                          {
+                            label: 'View Details',
+                            icon: <Eye className="w-4 h-4" />,
+                            onClick: () => router.push(`/projects/${project.id}`)
+                          },
+                          {
+                            label: 'Edit',
+                            icon: <Edit className="w-4 h-4" />,
+                            onClick: () => {/* TODO: Edit project */}
+                          }
+                        ]}
+                      />
+                    </div>
+
+                    <div className="space-y-3 mb-4">
+                      {project.code && (
+                        <div className="flex items-center text-sm text-gray-600">
+                          <Building2 className="w-4 h-4 mr-2" />
+                            {project.code}
+                        </div>
+                      )}
+                      {startDate && (
+                        <div className="flex items-center text-sm text-gray-600">
+                          <Calendar className="w-4 h-4 mr-2" />
+                          Started: {startDate}
+                        </div>
+                      )}
+                      {dueDate && (
+                        <div className="flex items-center text-sm text-gray-600">
+                          <Timer className="w-4 h-4 mr-2" />
+                          Due: {dueDate}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="border-t pt-4">
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <p className="text-xs text-gray-500">Status</p>
+                          <div className="flex items-center mt-1">
+                            <div className={`w-2 h-2 rounded-full mr-2 ${
+                              project.status === 'ACTIVE' ? 'bg-green-500' : 
+                              project.status === 'COMPLETED' ? 'bg-blue-500' : 
+                              project.status === 'ON_HOLD' ? 'bg-amber-500' : 'bg-gray-500'
+                            }`} />
+                            <span className="font-semibold text-sm capitalize">{STATUS_LABELS[project.status]?.toLowerCase() || project.status.toLowerCase()}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Visibility</p>
+                          <p className="font-semibold text-sm mt-1">{VISIBILITY_LABELS[project.visibility] || project.visibility}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <p className="text-xs text-gray-500">Tasks</p>
+                          <p className="font-semibold text-sm mt-1">{project._count.tasks}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Members</p>
+                          <p className="font-semibold text-sm mt-1">{project._count.members}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-sm pt-3 border-t">
+                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <ClipboardList className="w-3 h-3" />
+                            {project._count.tasks}
                         </span>
-                        <span className="flex items-center gap-2">
-                          <ClipboardList className="h-4 w-4 text-gray-400" />
-                          {project._count.tasks} tasks
+                          <span className="flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            {project._count.incidents}
                         </span>
-                        <span className="flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4 text-gray-400" />
-                          {project._count.incidents} incidents
+                          <span className="flex items-center gap-1">
+                            <Share2 className="w-3 h-3" />
+                            {project._count.resourceRequests}
                         </span>
-                        <span className="flex items-center gap-2">
-                          <Share2 className="h-4 w-4 text-gray-400" />
-                          {project._count.resourceRequests} resource requests
-                        </span>
+                        </div>
                       </div>
                     </div>
-                  </CardContent>
                 </Card>
-              ))
+                );
+              })
             )}
           </div>
         </CardContent>

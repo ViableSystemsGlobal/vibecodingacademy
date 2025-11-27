@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,6 +67,13 @@ interface Product {
     id: string;
     name: string;
   };
+  // Aggregated stock metrics (from API)
+  totalQuantity?: number;
+  totalReserved?: number;
+  totalAvailable?: number;
+  maxReorderPoint?: number;
+  totalValue?: number;
+  stockStatus?: 'in-stock' | 'low-stock' | 'out-of-stock';
 }
 
 interface Category {
@@ -89,10 +96,28 @@ function StockPageContent() {
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [stockStatus, setStockStatus] = useState("all");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [stockStatus, setStockStatus] = useState("");
   const [priceRange, setPriceRange] = useState({ min: "", max: "" });
   const [isMoreFiltersOpen, setIsMoreFiltersOpen] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState<string>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  
+  // Metrics state
+  const [metrics, setMetrics] = useState({
+    totalProducts: 0,
+    inStockProducts: 0,
+    lowStockProducts: 0,
+    outOfStockProducts: 0,
+  });
 
   // Read URL parameters on mount
   useEffect(() => {
@@ -102,54 +127,131 @@ function StockPageContent() {
     }
   }, [searchParams]);
 
-
-
   const handleViewProduct = (product: Product) => {
     router.push(`/products/${product.id}`);
   };
 
+  // Initial load on mount
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [productsResponse, categoriesResponse] = await Promise.all([
-          fetch('/api/products'),
-          fetch('/api/categories')
-        ]);
-
-        if (productsResponse.ok) {
-          const productsData = await productsResponse.json();
-          setProducts(productsData.products || []);
-        }
-
-        if (categoriesResponse.ok) {
-          const categoriesData = await categoriesResponse.json();
-          setCategories(categoriesData.categories || []);
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
+    fetchCategories();
+    fetchStock(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Calculate stats
-  const totalProducts = products.length;
-  const inStockProducts = products.filter(p => {
-    const totalAvailable = p.stockItems?.reduce((sum, item) => sum + item.available, 0) || 0;
-    return totalAvailable > 0;
-  }).length;
-  const lowStockProducts = products.filter(p => {
-    const totalAvailable = p.stockItems?.reduce((sum, item) => sum + item.available, 0) || 0;
-    const maxReorderPoint = p.stockItems?.reduce((max, item) => Math.max(max, item.reorderPoint), 0) || 0;
-    return totalAvailable > 0 && totalAvailable <= maxReorderPoint;
-  }).length;
-  const outOfStockProducts = products.filter(p => {
-    const totalAvailable = p.stockItems?.reduce((sum, item) => sum + item.available, 0) || 0;
-    return totalAvailable === 0;
-  }).length;
+  // Effect for filters and sorting (skip initial mount)
+  useEffect(() => {
+    const isInitialMount = currentPage === 1 && !searchTerm && !selectedCategory && !stockStatus && !sortBy;
+    if (isInitialMount) {
+      return;
+    }
+    fetchStock(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, stockStatus, priceRange.min, priceRange.max, sortBy, sortOrder]);
+
+  // Debounced search effect (including when cleared)
+  const isMountedRef = useRef(false);
+  useEffect(() => {
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      return;
+    }
+    
+    const timeoutId = setTimeout(() => {
+      setCurrentPage(1);
+      fetchStock(1);
+    }, searchTerm ? 500 : 0);
+
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm]);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch('/api/categories');
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data.categories || []);
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
+  const fetchStock = async (page: number = currentPage) => {
+    try {
+      setIsLoading(true);
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('limit', itemsPerPage.toString());
+      
+      if (searchTerm) {
+        params.append('search', searchTerm);
+      }
+      if (selectedCategory && selectedCategory !== '' && selectedCategory !== 'all') {
+        params.append('category', selectedCategory);
+      }
+      if (stockStatus && stockStatus !== '' && stockStatus !== 'all') {
+        params.append('stockStatus', stockStatus);
+      }
+      if (priceRange.min) {
+        params.append('priceMin', priceRange.min);
+      }
+      if (priceRange.max) {
+        params.append('priceMax', priceRange.max);
+      }
+      if (sortBy) {
+        params.append('sortBy', sortBy);
+      }
+      if (sortOrder) {
+        params.append('sortOrder', sortOrder);
+      }
+      
+      const response = await fetch(`/api/inventory/stock?${params.toString()}`, {
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📦 Stock API Response:', {
+          productsCount: data.products?.length || 0,
+          total: data.pagination?.total || 0,
+          pages: data.pagination?.pages || 0,
+          metrics: data.metrics,
+        });
+        setProducts(Array.isArray(data.products) ? data.products : []);
+        setTotalPages(data.pagination?.pages || 1);
+        setTotalItems(data.pagination?.total || 0);
+        setCurrentPage(page);
+        
+        // Update metrics from API
+        if (data.metrics) {
+          setMetrics(data.metrics);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('❌ Failed to fetch stock:', response.status, errorData);
+        setProducts([]);
+        setTotalPages(1);
+        setTotalItems(0);
+      }
+    } catch (error) {
+      console.error('Error fetching stock:', error);
+      setProducts([]);
+      setTotalPages(1);
+      setTotalItems(0);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
+  };
+
+  // Use metrics from API instead of calculating client-side
+  const { totalProducts, inStockProducts, lowStockProducts, outOfStockProducts } = metrics;
   // Fetch exchange rate for conversion
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
   
@@ -194,36 +296,9 @@ function StockPageContent() {
     return sum + stockValue;
   }, 0);
 
-  // Filter products based on search and filters
-  const filteredProducts = products.filter(product => {
-    // Search filter
-    if (searchTerm && !product.name.toLowerCase().includes(searchTerm.toLowerCase()) && 
-        !product.sku.toLowerCase().includes(searchTerm.toLowerCase())) {
-      return false;
-    }
-
-    // Category filter
-    if (selectedCategory !== "all" && product.category?.id !== selectedCategory) {
-      return false;
-    }
-
-    // Stock status filter
-    if (stockStatus !== "all") {
-      const totalAvailable = product.stockItems?.reduce((sum, item) => sum + item.available, 0) || 0;
-      const maxReorderPoint = product.stockItems?.reduce((max, item) => Math.max(max, item.reorderPoint), 0) || 0;
-      
-      if (stockStatus === "in-stock" && totalAvailable <= maxReorderPoint) return false;
-      // "low-stock" should include BOTH out of stock (0) AND low stock (below reorder point)
-      if (stockStatus === "low-stock" && totalAvailable > maxReorderPoint) return false;
-      if (stockStatus === "out-of-stock" && totalAvailable > 0) return false;
-    }
-
-    // Price range filter
-    if (priceRange.min && product.price && product.price < parseFloat(priceRange.min)) return false;
-    if (priceRange.max && product.price && product.price > parseFloat(priceRange.max)) return false;
-
-    return true;
-  });
+  // Server-side filtering is handled by the API, so we just use products directly
+  // No client-side filtering needed
+  const filteredProducts = products;
 
   const handleRecommendationComplete = (id: string) => {
     // AIRecommendationCard manages its own state internally
@@ -232,16 +307,17 @@ function StockPageContent() {
 
   const handleClearFilters = () => {
     setSearchTerm("");
-    setSelectedCategory("all");
-    setStockStatus("all");
+    setSelectedCategory("");
+    setStockStatus("");
     setPriceRange({ min: "", max: "" });
+    setCurrentPage(1);
   };
 
   const getActiveFiltersCount = () => {
     let count = 0;
     if (searchTerm) count++;
-    if (selectedCategory !== "all") count++;
-    if (stockStatus !== "all") count++;
+    if (selectedCategory) count++;
+    if (stockStatus) count++;
     if (priceRange.min || priceRange.max) count++;
     return count;
   };
@@ -368,116 +444,13 @@ function StockPageContent() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Products Stock ({filteredProducts.length})</CardTitle>
+                <CardTitle>Products Stock ({totalItems})</CardTitle>
                 <CardDescription>
                   Click on any product to view detailed stock movements
                 </CardDescription>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-6 pb-0">
-            <div className="flex items-center space-x-4 mb-6">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    placeholder="Search products by name or SKU..."
-                    className="pl-10"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <select 
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                >
-                  <option value="all">All Categories</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => setIsMoreFiltersOpen(true)}
-                >
-                  More Filters
-                  {getActiveFiltersCount() > 0 && (
-                    <span className="ml-1 px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
-                      {getActiveFiltersCount()}
-                    </span>
-                  )}
-                </Button>
-                
-                <Dialog open={isMoreFiltersOpen} onOpenChange={setIsMoreFiltersOpen}>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>More Filters</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Stock Status
-                        </label>
-                        <select 
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={stockStatus}
-                          onChange={(e) => setStockStatus(e.target.value)}
-                        >
-                          <option value="all">All Stock Status</option>
-                          <option value="in-stock">In Stock</option>
-                          <option value="low-stock">Low Stock</option>
-                          <option value="out-of-stock">Out of Stock</option>
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Price Range
-                        </label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            type="number"
-                            placeholder="Min Price"
-                            value={priceRange.min}
-                            onChange={(e) => setPriceRange(prev => ({ ...prev, min: e.target.value }))}
-                          />
-                          <Input
-                            type="number"
-                            placeholder="Max Price"
-                            value={priceRange.max}
-                            onChange={(e) => setPriceRange(prev => ({ ...prev, max: e.target.value }))}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between pt-4">
-                        <Button 
-                          variant="outline" 
-                          onClick={handleClearFilters}
-                          className="text-gray-600"
-                        >
-                          Clear All
-                        </Button>
-                        <Button 
-                          onClick={() => setIsMoreFiltersOpen(false)}
-                          className="text-white hover:opacity-90 transition-opacity"
-                          style={{ backgroundColor: getThemeColor() }}
-                        >
-                          Apply Filters
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </div>
-          </CardContent>
           <CardContent className="p-0">
             <DataTable
               data={filteredProducts}
@@ -486,6 +459,118 @@ function StockPageContent() {
               onSelectionChange={setSelectedStockItems}
               onRowClick={handleViewProduct}
               getRowClassName={getRowClassName}
+              itemsPerPage={itemsPerPage}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              onPageChange={(page) => {
+                setCurrentPage(page);
+                fetchStock(page);
+              }}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSortChange={handleSortChange}
+              searchValue={searchTerm}
+              onSearchChange={setSearchTerm}
+              searchPlaceholder="Search products by name or SKU..."
+              enableExport={true}
+              exportFilename="stock"
+              isLoading={isLoading}
+              customFilters={
+                <div className="flex items-center gap-2">
+                  <select 
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={selectedCategory}
+                    onChange={(e) => {
+                      setSelectedCategory(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value="">All Categories</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select 
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={stockStatus}
+                    onChange={(e) => {
+                      setStockStatus(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <option value="">All Stock Status</option>
+                    <option value="in-stock">In Stock</option>
+                    <option value="low-stock">Low Stock</option>
+                    <option value="out-of-stock">Out of Stock</option>
+                  </select>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setIsMoreFiltersOpen(true)}
+                  >
+                    More Filters
+                    {getActiveFiltersCount() > 0 && (
+                      <span className="ml-1 px-1.5 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
+                        {getActiveFiltersCount()}
+                      </span>
+                    )}
+                  </Button>
+                  <Dialog open={isMoreFiltersOpen} onOpenChange={setIsMoreFiltersOpen}>
+                    <DialogContent className="sm:max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>More Filters</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Price Range
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              type="number"
+                              placeholder="Min Price"
+                              value={priceRange.min}
+                              onChange={(e) => {
+                                setPriceRange(prev => ({ ...prev, min: e.target.value }));
+                                setCurrentPage(1);
+                              }}
+                            />
+                            <Input
+                              type="number"
+                              placeholder="Max Price"
+                              value={priceRange.max}
+                              onChange={(e) => {
+                                setPriceRange(prev => ({ ...prev, max: e.target.value }));
+                                setCurrentPage(1);
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between pt-4">
+                          <Button 
+                            variant="outline" 
+                            onClick={handleClearFilters}
+                            className="text-gray-600"
+                          >
+                            Clear All
+                          </Button>
+                          <Button 
+                            onClick={() => setIsMoreFiltersOpen(false)}
+                            className="text-white hover:opacity-90 transition-opacity"
+                            style={{ backgroundColor: getThemeColor() }}
+                          >
+                            Apply Filters
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              }
               bulkActions={
                 <div className="flex gap-2">
                   <Button
@@ -543,79 +628,108 @@ function StockPageContent() {
                 {
                   key: 'product',
                   label: 'Product',
+                  sortable: true,
+                  exportable: true,
                   render: (product) => (
                     <div>
                       <div className="font-medium text-gray-900">{product.name}</div>
                       <div className="text-sm text-gray-500">{product.sku}</div>
                     </div>
-                  )
+                  ),
+                  exportFormat: (product) => `${product.name} (${product.sku})`
                 },
                 {
                   key: 'category',
                   label: 'Category',
+                  sortable: true,
+                  exportable: true,
                   render: (product) => (
                     <span className="text-sm text-gray-600">
                       {product.category?.name || 'No Category'}
                     </span>
-                  )
+                  ),
+                  exportFormat: (product) => product.category?.name || 'No Category'
                 },
                 {
                   key: 'stockLevel',
                   label: 'Stock Level',
+                  sortable: true,
+                  exportable: true,
                   render: (product) => {
-                    const totalQuantity = product.stockItems?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+                    const totalQuantity = product.totalQuantity ?? product.stockItems?.reduce((sum, item) => sum + item.quantity, 0) || 0;
                     return (
                       <div className="text-sm text-gray-600">
                         {totalQuantity} {product.uomBase}
                       </div>
                     );
+                  },
+                  exportFormat: (product) => {
+                    const totalQuantity = product.totalQuantity ?? product.stockItems?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+                    return `${totalQuantity} ${product.uomBase}`;
                   }
                 },
                 {
                   key: 'available',
                   label: 'Available',
+                  sortable: true,
+                  exportable: true,
                   render: (product) => {
-                    const totalAvailable = product.stockItems?.reduce((sum, item) => sum + item.available, 0) || 0;
+                    const totalAvailable = product.totalAvailable ?? product.stockItems?.reduce((sum, item) => sum + item.available, 0) || 0;
                     return (
                       <div className="text-sm text-gray-600">
                         {totalAvailable}
                       </div>
                     );
+                  },
+                  exportFormat: (product) => {
+                    return (product.totalAvailable ?? product.stockItems?.reduce((sum, item) => sum + item.available, 0) || 0).toString();
                   }
                 },
                 {
                   key: 'reserved',
                   label: 'Reserved',
+                  sortable: true,
+                  exportable: true,
                   render: (product) => {
-                    const totalReserved = product.stockItems?.reduce((sum, item) => sum + item.reserved, 0) || 0;
+                    const totalReserved = product.totalReserved ?? product.stockItems?.reduce((sum, item) => sum + item.reserved, 0) || 0;
                     return (
                       <div className="text-sm text-gray-600">
                         {totalReserved}
                       </div>
                     );
+                  },
+                  exportFormat: (product) => {
+                    return (product.totalReserved ?? product.stockItems?.reduce((sum, item) => sum + item.reserved, 0) || 0).toString();
                   }
                 },
                 {
                   key: 'unitPrice',
                   label: 'Unit Price',
+                  sortable: true,
+                  exportable: true,
                   render: (product) => (
                     <div className="text-sm text-gray-600">
                       {formatCurrencyWithSymbol(product.price || 0, currency, product.originalPriceCurrency || product.baseCurrency || 'GHS')}
                     </div>
-                  )
+                  ),
+                  exportFormat: (product) => (product.price || 0).toString()
                 },
                 {
                   key: 'costPrice',
                   label: 'Cost Price',
+                  sortable: true,
+                  exportable: true,
                   render: (product) => (
                     <div className="text-sm text-gray-600">
                       {formatCurrencyWithSymbol(product.cost || 0, currency, product.originalCostCurrency || product.importCurrency || 'USD')}
                     </div>
-                  )
+                  ),
+                  exportFormat: (product) => (product.cost || 0).toString()
                 },
                 {
                   key: 'warehouse',
                   label: 'Warehouse',
+                  exportable: true,
                   render: (product) => {
                     const warehouseNames = product.stockItems?.map(item => item.warehouse?.name).filter(Boolean) || [];
                     return (
@@ -631,18 +745,23 @@ function StockPageContent() {
                         )}
                       </div>
                     );
+                  },
+                  exportFormat: (product) => {
+                    const warehouseNames = product.stockItems?.map(item => item.warehouse?.name).filter(Boolean) || [];
+                    return warehouseNames.join(', ') || 'No Warehouse';
                   }
                 },
                 {
                   key: 'costValue',
                   label: 'Cost Value',
+                  sortable: true,
+                  exportable: true,
                   render: (product) => {
-                    // Only count stockItems that have a warehouseId assigned (exclude null warehouseId items)
-                    const stockValue = product.stockItems?.filter(item => item.warehouseId !== null).reduce((sum, item) => {
-                      // Convert USD to GHS using actual exchange rate (consistent with metric calculation)
+                    // Use totalValue from API if available, otherwise calculate
+                    const stockValue = product.totalValue ?? product.stockItems?.filter(item => item.warehouseId !== null).reduce((sum, item) => {
                       const costInUSD = item.averageCost || 0;
                       const quantity = item.quantity || 0;
-                      const usdToGhsRate = exchangeRate || 11.0; // Use actual exchange rate or fallback
+                      const usdToGhsRate = exchangeRate || 11.0;
                       const valueInGHS = (costInUSD * quantity) * usdToGhsRate;
                       return sum + valueInGHS;
                     }, 0) || 0;
@@ -651,11 +770,21 @@ function StockPageContent() {
                         {formatCurrency(stockValue, 'GHS')}
                       </div>
                     );
+                  },
+                  exportFormat: (product) => {
+                    const stockValue = product.totalValue ?? product.stockItems?.filter(item => item.warehouseId !== null).reduce((sum, item) => {
+                      const costInUSD = item.averageCost || 0;
+                      const quantity = item.quantity || 0;
+                      return sum + (costInUSD * quantity);
+                    }, 0) || 0;
+                    return stockValue.toString();
                   }
                 },
                 {
                   key: 'status',
                   label: 'Status',
+                  sortable: true,
+                  exportable: true,
                   render: (product) => {
                     const stockStatus = getStockStatus(product);
                     return (
@@ -663,11 +792,17 @@ function StockPageContent() {
                         {stockStatus.status}
                       </span>
                     );
+                  },
+                  exportFormat: (product) => {
+                    const status = getStockStatus(product);
+                    return status.status;
                   }
                 },
                 {
                   key: 'actions',
                   label: 'Actions',
+                  sortable: false,
+                  exportable: false,
                   render: (product) => (
                     <DropdownMenu
                       trigger={

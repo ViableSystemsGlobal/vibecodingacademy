@@ -1,17 +1,24 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Download, Search } from 'lucide-react';
 import { Button } from './button';
+import { Input } from './input';
 import { useTheme } from '@/contexts/theme-context';
+import { exportTableData, type ExportColumn } from '@/lib/export-utils';
+
+interface DataTableColumn<T = Record<string, unknown>> {
+  key: string;
+  label: string;
+  render?: (item: T) => React.ReactNode;
+  sortable?: boolean;
+  exportable?: boolean;
+  exportFormat?: (value: any) => string;
+}
 
 interface DataTableProps<T = Record<string, unknown>> {
   data: T[];
-  columns: {
-    key: string;
-    label: string;
-    render?: (item: T) => React.ReactNode;
-  }[];
+  columns: DataTableColumn<T>[];
   itemsPerPage?: number;
   className?: string;
   enableSelection?: boolean;
@@ -25,6 +32,21 @@ interface DataTableProps<T = Record<string, unknown>> {
   totalPages?: number;
   totalItems?: number;
   onPageChange?: (page: number) => void;
+  // Server-side sorting props
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  onSortChange?: (sortBy: string, sortOrder: 'asc' | 'desc') => void;
+  // Server-side filtering props
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  searchPlaceholder?: string;
+  // Export props
+  enableExport?: boolean;
+  exportFilename?: string;
+  // Loading state
+  isLoading?: boolean;
+  // Custom filters (rendered in the same row as search/export)
+  customFilters?: React.ReactNode;
 }
 
 export function DataTable<T extends { id?: string }>({ 
@@ -42,7 +64,22 @@ export function DataTable<T extends { id?: string }>({
   currentPage: serverCurrentPage,
   totalPages: serverTotalPages,
   totalItems: serverTotalItems,
-  onPageChange
+  onPageChange,
+  // Server-side sorting props
+  sortBy,
+  sortOrder = 'desc',
+  onSortChange,
+  // Server-side filtering props
+  searchValue,
+  onSearchChange,
+  searchPlaceholder = 'Search...',
+  // Export props
+  enableExport = false,
+  exportFilename = 'export',
+  // Loading state
+  isLoading = false,
+  // Custom filters
+  customFilters,
 }: DataTableProps<T>) {
   const { getThemeColor } = useTheme();
   const themeColor = getThemeColor() || '#dc2626'; // Fallback to red if not set
@@ -134,6 +171,39 @@ export function DataTable<T extends { id?: string }>({
   const isAllSelected = data.length > 0 && data.every(item => item.id && selectedItems.includes(item.id));
   const isIndeterminate = selectedItems.length > 0 && !isAllSelected;
 
+  // Handle column sorting
+  const handleSort = (columnKey: string) => {
+    if (!onSortChange) return;
+    
+    const column = columns.find(col => col.key === columnKey);
+    if (!column || !column.sortable) return;
+
+    const newSortOrder = 
+      sortBy === columnKey && sortOrder === 'asc' 
+        ? 'desc' 
+        : 'asc';
+    
+    onSortChange(columnKey, newSortOrder);
+  };
+
+  // Handle export
+  const handleExport = (format: 'csv' | 'excel' | 'pdf' = 'csv') => {
+    const exportColumns: ExportColumn[] = columns
+      .filter(col => col.exportable !== false)
+      .map(col => ({
+        key: col.key,
+        label: col.label,
+        format: col.exportFormat || col.exportFormat,
+      }));
+
+    exportTableData({
+      filename: exportFilename,
+      columns: exportColumns,
+      data: data,
+      format,
+    });
+  };
+
   // Reset to page 1 when data changes (only for client-side pagination)
   React.useEffect(() => {
     if (!isServerSidePagination) {
@@ -141,16 +211,70 @@ export function DataTable<T extends { id?: string }>({
     }
   }, [data.length, isServerSidePagination]);
 
-  if (data.length === 0) {
-    return (
-      <div className="text-center py-8">
-        <p className="text-gray-500">No data available</p>
-      </div>
-    );
-  }
-
   return (
     <div className={className}>
+      {/* Search, Filters, and Export Bar - Always show if enabled */}
+      {(onSearchChange || enableExport || customFilters) && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4">
+          <div className="flex-1 flex items-center gap-2 w-full sm:w-auto">
+            {/* Custom filters on the left */}
+            {customFilters && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {customFilters}
+              </div>
+            )}
+            
+            {/* Search bar in the middle (flex-1 to take remaining space) */}
+            {onSearchChange && (
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder={searchPlaceholder}
+                  value={searchValue || ''}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  className="pl-9 w-full"
+                />
+              </div>
+            )}
+          </div>
+          
+          {/* Export button on the far right */}
+          {enableExport && (
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExport('csv')}
+                className="flex items-center gap-2"
+                disabled={data.length === 0}
+              >
+                <Download className="h-4 w-4" />
+                Export CSV
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Loading State */}
+      {isLoading && (
+        <div className="text-center py-8">
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!isLoading && data.length === 0 && (
+        <div className="text-center py-8">
+          <p className="text-gray-500">No data available</p>
+        </div>
+      )}
+
+      {/* Table Content - Only show if not loading and has data */}
+      {!isLoading && data.length > 0 && (
+        <>
+
       {/* Bulk Actions Bar */}
       {enableSelection && selectedItems.length > 0 && bulkActions && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
@@ -183,14 +307,38 @@ export function DataTable<T extends { id?: string }>({
                   />
                 </th>
               )}
-              {columns.map((column) => (
-                <th 
-                  key={column.key}
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  {column.label}
-                </th>
-              ))}
+              {columns.map((column) => {
+                const isSortable = column.sortable !== false && onSortChange;
+                const isCurrentSort = sortBy === column.key;
+                const canSort = isSortable && column.sortable !== false;
+                
+                return (
+                  <th 
+                    key={column.key}
+                    className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
+                      canSort ? 'cursor-pointer hover:bg-gray-100 select-none' : ''
+                    }`}
+                    onClick={canSort ? () => handleSort(column.key) : undefined}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{column.label}</span>
+                      {canSort && (
+                        <span className="flex flex-col">
+                          {isCurrentSort ? (
+                            sortOrder === 'asc' ? (
+                              <ArrowUp className="h-3 w-3 text-blue-600" />
+                            ) : (
+                              <ArrowDown className="h-3 w-3 text-blue-600" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 text-gray-400" />
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -297,6 +445,8 @@ export function DataTable<T extends { id?: string }>({
             </Button>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

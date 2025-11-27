@@ -49,6 +49,14 @@ const DEFAULT_INCIDENT_STAGES = [
   { name: "Closed", color: "#6B7280", order: 4 },
 ];
 
+const DEFAULT_RESOURCE_STAGES = [
+  { name: "Requested", color: "#6366F1", order: 0 },
+  { name: "Approved", color: "#10B981", order: 1 },
+  { name: "Procuring", color: "#F59E0B", order: 2 },
+  { name: "Fulfilled", color: "#10B981", order: 3 },
+  { name: "Closed", color: "#6B7280", order: 4 },
+];
+
 const COLOR_OPTIONS = [
   { value: "#6366F1", label: "Indigo" },
   { value: "#3B82F6", label: "Blue" },
@@ -108,8 +116,20 @@ export function ManageProjectStagesModal({
       });
 
       if (!response.ok) {
+        let errorMessage = "Failed to add stage";
+        try {
         const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.error || "Failed to add stage");
+          if (errorData?.error && typeof errorData.error === "string" && errorData.error.trim().length > 0) {
+            errorMessage = errorData.error.trim();
+          } else if (errorData?.details && typeof errorData.details === "string" && errorData.details.trim().length > 0) {
+            errorMessage = errorData.details.trim();
+          } else {
+            errorMessage = `HTTP ${response.status}: Failed to add stage`;
+          }
+        } catch (e) {
+          errorMessage = `HTTP ${response.status}: Failed to add stage`;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -141,8 +161,20 @@ export function ManageProjectStagesModal({
       });
 
       if (!response.ok) {
+        let errorMessage = "Failed to delete stage";
+        try {
         const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.error || "Failed to delete stage");
+          if (errorData?.error && typeof errorData.error === "string" && errorData.error.trim().length > 0) {
+            errorMessage = errorData.error.trim();
+          } else if (errorData?.details && typeof errorData.details === "string" && errorData.details.trim().length > 0) {
+            errorMessage = errorData.details.trim();
+          } else {
+            errorMessage = `HTTP ${response.status}: Failed to delete stage`;
+          }
+        } catch (e) {
+          errorMessage = `HTTP ${response.status}: Failed to delete stage`;
+        }
+        throw new Error(errorMessage);
       }
 
       setStages(stages.filter((s) => s.id !== stageId));
@@ -160,7 +192,15 @@ export function ManageProjectStagesModal({
   };
 
   const handleCreateDefaultStages = async () => {
-    const defaultStages = stageType === "INCIDENT" ? DEFAULT_INCIDENT_STAGES : DEFAULT_TASK_STAGES;
+    let defaultStages;
+    if (stageType === "INCIDENT") {
+      defaultStages = DEFAULT_INCIDENT_STAGES;
+    } else if (stageType === "RESOURCE") {
+      defaultStages = DEFAULT_RESOURCE_STAGES;
+    } else {
+      defaultStages = DEFAULT_TASK_STAGES;
+    }
+
     const stageNames = defaultStages.map((s) => s.name).join(", ");
     if (!confirm(`This will create default ${stageType.toLowerCase()} stages (${stageNames}). Continue?`)) {
       return;
@@ -168,23 +208,125 @@ export function ManageProjectStagesModal({
 
     setIsLoading(true);
     try {
-      const promises = defaultStages.map((stage) =>
-        fetch(`/api/projects/${projectId}/stages`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: stage.name,
-            color: stage.color,
-            stageType: stageType,
-            order: stage.order,
-          }),
+      const results = await Promise.allSettled(
+        defaultStages.map(async (stage) => {
+          const response = await fetch(`/api/projects/${projectId}/stages`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: stage.name,
+              color: stage.color,
+              stageType: stageType,
+              order: stage.order,
+            }),
+          });
+
+          if (!response.ok) {
+            let errorMessage = `Failed to create stage "${stage.name}"`;
+            const statusCode = response.status;
+            
+            try {
+              const contentType = response.headers.get("content-type");
+              
+              if (contentType && contentType.includes("application/json")) {
+                let errorData: any = null;
+                try {
+                  errorData = await response.json();
+                } catch (jsonError) {
+                  // JSON parsing failed - response body might be empty or invalid
+                  errorMessage = `HTTP ${statusCode}: Failed to create stage "${stage.name}"`;
+                  console.error(`API Error for stage "${stage.name}": HTTP ${statusCode} - Failed to parse JSON response`);
+                  throw new Error(errorMessage);
+                }
+                
+                // Check if errorData has meaningful error content
+                const errorText = errorData?.error;
+                const detailsText = errorData?.details;
+                const hasError = errorText && typeof errorText === "string" && errorText.trim().length > 0;
+                const hasDetails = detailsText && typeof detailsText === "string" && detailsText.trim().length > 0;
+                
+                if (hasError || hasDetails) {
+                  errorMessage = (errorText || detailsText || errorMessage).trim();
+                  // Build log data with meaningful content only
+                  const logData: Record<string, string> = { status: String(statusCode) };
+                  if (hasError) logData.error = errorText.trim();
+                  if (hasDetails) logData.details = detailsText.trim();
+                  
+                  // Double check: only log if we actually have error or details content
+                  const hasActualContent = (logData.error && logData.error.length > 0) || (logData.details && logData.details.length > 0);
+                  if (hasActualContent) {
+                    // NEVER EVER log empty objects - construct message string instead
+                    const errorParts: string[] = [`HTTP ${statusCode}`];
+                    if (logData.error && logData.error.trim().length > 0) {
+                      errorParts.push(`Error: ${logData.error.trim()}`);
+                    }
+                    if (logData.details && logData.details.trim().length > 0) {
+                      errorParts.push(`Details: ${logData.details.trim()}`);
+                    }
+                    
+                    if (errorParts.length > 1) {
+                      console.error(`[STAGE-CREATE-v3] Stage "${stage.name}" failed:`, errorParts.join(" | "));
+                    } else {
+                      console.error(`[STAGE-CREATE-v3] Stage "${stage.name}" failed: HTTP ${statusCode} - No error message from API`);
+                    }
+                  } else {
+                    console.error(`[STAGE-CREATE-v3] Stage "${stage.name}" failed: HTTP ${statusCode} - No error message from API`);
+                  }
+                } else {
+                  // Empty or invalid error response - don't log empty objects
+                  errorMessage = `HTTP ${statusCode}: Failed to create stage "${stage.name}"`;
+                  console.error(`API Error for stage "${stage.name}": HTTP ${statusCode} - No error data received`);
+                }
+              } else {
+                const text = await response.text().catch(() => "");
+                errorMessage = `HTTP ${statusCode}: ${text || `Failed to create stage "${stage.name}"`}`;
+                if (text && text.trim().length > 0) {
+                  console.error(`API Error for stage "${stage.name}": HTTP ${statusCode} -`, text);
+                } else {
+                  console.error(`API Error for stage "${stage.name}": HTTP ${statusCode} - No response body`);
+                }
+              }
+            } catch (e) {
+              // Fallback error handling - avoid logging empty objects
+              errorMessage = `HTTP ${statusCode}: Failed to create stage "${stage.name}"`;
+              if (e instanceof Error && e.message !== errorMessage) {
+                console.error(`API Error for stage "${stage.name}": HTTP ${statusCode} -`, e.message);
+              } else {
+                console.error(`API Error for stage "${stage.name}": HTTP ${statusCode} - Error processing response`);
+              }
+            }
+            throw new Error(errorMessage);
+          }
+
+          return response.json();
         })
       );
 
-      await Promise.all(promises);
-      success("Default stages created successfully");
+      // Count successes and failures
+      const successful = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const failures = results
+        .map((r, idx) => ({
+          stage: defaultStages[idx].name,
+          status: r.status,
+          error: r.status === "rejected" ? (r.reason instanceof Error ? r.reason.message : String(r.reason)) : null,
+        }))
+        .filter((f) => f.status === "rejected");
+
+      if (failed > 0) {
+        const failureMessages = failures.map((f) => `"${f.stage}": ${f.error}`).join("; ");
+        if (successful > 0) {
+          showError(
+            `Created ${successful} stage(s), but ${failed} failed: ${failureMessages}`
+          );
+        } else {
+          showError(`Failed to create stages: ${failureMessages}`);
+        }
+      } else {
+      success(`Default ${stageType.toLowerCase()} stages created successfully`);
+      }
       
       if (onStagesUpdated) {
         await onStagesUpdated();
@@ -194,11 +336,14 @@ export function ManageProjectStagesModal({
       const response = await fetch(`/api/projects/${projectId}/stages`);
       if (response.ok) {
         const data = await response.json();
-        setStages(data.stages || []);
+        const filteredStages = data.stages
+          ?.filter((s: ProjectStage) => s.stageType === stageType)
+          .sort((a: ProjectStage, b: ProjectStage) => a.order - b.order) || [];
+        setStages(filteredStages);
       }
     } catch (error) {
       console.error("Error creating default stages:", error);
-      showError("Failed to create default stages");
+      showError(error instanceof Error ? error.message : "Failed to create default stages");
     } finally {
       setIsLoading(false);
     }
@@ -231,7 +376,7 @@ export function ManageProjectStagesModal({
                 className="w-full"
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Create Default {stageType === "INCIDENT" ? "Incident" : "Task"} Stages
+                Create Default {stageType === "INCIDENT" ? "Incident" : stageType === "RESOURCE" ? "Resource" : "Task"} Stages
               </Button>
             </div>
           )}
@@ -327,8 +472,20 @@ export function ManageProjectStagesModal({
                             if (!response.ok) {
                               // Revert on error
                               setStages(originalStages);
+                              let errorMessage = "Failed to reorder stages";
+                              try {
                               const errorData = await response.json().catch(() => null);
-                              throw new Error(errorData?.error || "Failed to reorder stages");
+                                if (errorData?.error && typeof errorData.error === "string" && errorData.error.trim().length > 0) {
+                                  errorMessage = errorData.error.trim();
+                                } else if (errorData?.details && typeof errorData.details === "string" && errorData.details.trim().length > 0) {
+                                  errorMessage = errorData.details.trim();
+                                } else {
+                                  errorMessage = `HTTP ${response.status}: Failed to reorder stages`;
+                                }
+                              } catch (e) {
+                                errorMessage = `HTTP ${response.status}: Failed to reorder stages`;
+                              }
+                              throw new Error(errorMessage);
                             }
 
                             success("Stages reordered successfully");

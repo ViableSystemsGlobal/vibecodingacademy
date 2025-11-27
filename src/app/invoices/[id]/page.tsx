@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useToast } from "@/contexts/toast-context";
 import { useTheme } from "@/contexts/theme-context";
@@ -23,12 +23,15 @@ import {
   Receipt,
   Paperclip,
   QrCode,
-  ArrowLeft
+  ArrowLeft,
+  KanbanSquare
 } from "lucide-react";
 import Link from "next/link";
 import { AddPaymentModal } from "@/components/modals/add-payment-modal";
 import { CreditNoteModal } from "@/components/modals/credit-note-modal";
 import { Package, FileDown, Eye, AlertCircle, CheckCircle, XCircle, Clock } from "lucide-react";
+import { AddProjectModal } from "@/components/modals/add-project-modal";
+import { useAbilities } from "@/hooks/use-abilities";
 
 // Helper function to parse product images
 const parseProductImages = (images: string | null | undefined): string[] => {
@@ -180,6 +183,7 @@ export default function ViewInvoicePage() {
   const { success, error: showError } = useToast();
   const { getThemeClasses, getThemeColor } = useTheme();
   const theme = getThemeClasses();
+  const { canAccess, loading: abilitiesLoading } = useAbilities();
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
@@ -188,12 +192,33 @@ export default function ViewInvoicePage() {
   const [showCreditNoteModal, setShowCreditNoteModal] = useState(false);
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
   const [sendingReceiptReminder, setSendingReceiptReminder] = useState(false);
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
 
   useEffect(() => {
     if (params.id) {
       loadInvoice();
     }
   }, [params.id]);
+  const canUseProjectsModule = !abilitiesLoading && canAccess("projects");
+
+  const projectInitialData = useMemo(() => {
+    if (!invoice) return undefined;
+    return {
+      name: invoice.subject
+        ? `${invoice.subject} Project`
+        : invoice.number
+        ? `Project for ${invoice.number}`
+        : "",
+      code: invoice.number ? `INV-${invoice.number}` : "",
+      description:
+        invoice.notes ||
+        `Implementation project generated from invoice ${invoice.number}`,
+      startDate: invoice.issueDate ? invoice.issueDate.slice(0, 10) : "",
+      dueDate: invoice.dueDate ? invoice.dueDate.slice(0, 10) : "",
+      budget: invoice.total ? String(invoice.total) : "",
+      budgetCurrency: invoice.currency || "USD",
+    };
+  }, [invoice]);
 
   // Helper function to get currency symbol
   const getCurrencySymbol = (code: string = 'GHS'): string => {
@@ -607,6 +632,17 @@ export default function ViewInvoicePage() {
           </div>
 
           <div className="flex space-x-3">
+            {canUseProjectsModule && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsProjectModalOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <KanbanSquare className="h-4 w-4" />
+                Create Project
+              </Button>
+            )}
             <Button 
               variant="outline" 
               size="sm"
@@ -1128,6 +1164,15 @@ export default function ViewInvoicePage() {
             setShowCreditNoteModal(false);
           }}
           invoiceId={invoice.id}
+        />
+      )}
+
+      {invoice && canUseProjectsModule && (
+        <AddProjectModal
+          isOpen={isProjectModalOpen}
+          onClose={() => setIsProjectModalOpen(false)}
+          onProjectCreated={() => setIsProjectModalOpen(false)}
+          initialData={projectInitialData}
         />
       )}
     </>

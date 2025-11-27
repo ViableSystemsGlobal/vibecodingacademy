@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/contexts/toast-context";
+import { trackPurchase } from "@/lib/analytics";
 
 function PaymentCallbackContent() {
   const router = useRouter();
@@ -12,20 +13,39 @@ function PaymentCallbackContent() {
   const { success, error: showError } = useToast();
   const [status, setStatus] = useState<"loading" | "success" | "failed">("loading");
   const [orderDetails, setOrderDetails] = useState<any>(null);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const hasTrackedPurchase = useRef(false);
 
   useEffect(() => {
     const reference = searchParams.get("reference");
     const trxref = searchParams.get("trxref"); // Paystack uses this
+    const cancelled = searchParams.get("cancelled"); // Some gateways send this
+
+    // If cancelled parameter is present, redirect immediately
+    if (cancelled === "true" || cancelled === "1") {
+      setStatus("failed");
+      setIsRedirecting(true);
+      showError("Payment cancelled", "You cancelled the payment. Redirecting to checkout...");
+      setTimeout(() => {
+        router.push("/shop/checkout");
+      }, 2000);
+      return;
+    }
 
     if (!reference && !trxref) {
+      // No reference means payment was cancelled before completion
       setStatus("failed");
-      showError("Payment reference missing", "Please contact support if you were charged");
+      setIsRedirecting(true);
+      showError("Payment cancelled", "You cancelled the payment. Redirecting to checkout...");
+      setTimeout(() => {
+        router.push("/shop/checkout");
+      }, 2000);
       return;
     }
 
     // Verify payment status
     verifyPayment(reference || trxref || "");
-  }, [searchParams]);
+  }, [searchParams, router, showError]);
 
   const verifyPayment = async (reference: string) => {
     try {
@@ -43,41 +63,68 @@ function PaymentCallbackContent() {
       if (data.success && data.verified) {
         // Payment successful
         setStatus("success");
-        
-        // Get order details from response
-        if (data.invoiceId) {
-          // Fetch order details
-          try {
-            const orderResponse = await fetch("/api/public/shop/orders", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ orderId: data.invoiceId }),
+        const order = data.order ?? null;
+        if (order) {
+          setOrderDetails(order);
+          if (!hasTrackedPurchase.current) {
+            trackPurchase({
+              transactionId: order.orderNumber ?? data.reference,
+              value: order.total ?? data.amount,
+              currency: order.currency ?? data.currency ?? "GHS",
+              items: Array.isArray(order.items)
+                ? order.items.map((item: any) => ({
+                    id: item.id ?? item.productId,
+                    name: item.name ?? item.productName ?? "Product",
+                    price: item.price ?? item.unitPrice ?? 0,
+                    quantity: item.quantity ?? 1,
+                    currency: item.currency ?? order.currency ?? "GHS",
+                    sku: item.sku ?? undefined,
+                  }))
+                : [],
             });
-
-            if (orderResponse.ok) {
-              const orderData = await orderResponse.json();
-              setOrderDetails(orderData.order);
-            }
-          } catch (err) {
-            console.error("Error fetching order details:", err);
+            hasTrackedPurchase.current = true;
           }
+        } else if (!hasTrackedPurchase.current) {
+          trackPurchase({
+            transactionId: data.reference,
+            value: data.amount,
+            currency: data.currency ?? "GHS",
+            items: [],
+          });
+          hasTrackedPurchase.current = true;
         }
 
         success("Payment successful!", "Your order has been confirmed");
       } else {
-        // Payment failed
+        // Payment failed or cancelled
+        const isCancelled = data.cancelled || 
+                           data.message?.toLowerCase().includes("cancel") || 
+                           data.gatewayResponse?.toLowerCase().includes("cancel") ||
+                           false;
+        
         setStatus("failed");
+        if (isCancelled) {
+          setIsRedirecting(true);
+          showError("Payment cancelled", "You cancelled the payment. Redirecting to checkout...");
+          // Redirect to checkout after 2 seconds
+          setTimeout(() => {
+            router.push("/shop/checkout");
+          }, 2000);
+        } else {
         showError("Payment failed", data.message || "Please try again");
+        }
       }
     } catch (error) {
       console.error("Payment verification error:", error);
       setStatus("failed");
       showError(
         "Payment verification failed",
-        "Please check your order status or contact support"
+        "Please check your order status or contact support. Redirecting to checkout..."
       );
+      // Redirect to checkout after 3 seconds on error
+      setTimeout(() => {
+        router.push("/shop/checkout");
+      }, 3000);
     }
   };
 
@@ -116,7 +163,12 @@ function PaymentCallbackContent() {
                     <div className="flex justify-between">
                       <span className="text-gray-600">Total Amount:</span>
                       <span className="font-medium">
-                        ₵{orderDetails.total?.toFixed(2) || "0.00"}
+                        {orderDetails.currency
+                          ? new Intl.NumberFormat("en-GH", {
+                              style: "currency",
+                              currency: orderDetails.currency,
+                            }).format(orderDetails.total ?? 0)
+                          : `₵${orderDetails.total?.toFixed(2) || "0.00"}`}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -158,17 +210,28 @@ function PaymentCallbackContent() {
         <div className="max-w-2xl mx-auto">
           <div className="bg-white rounded-lg shadow p-8 text-center">
             <XCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Payment Failed</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              {isRedirecting ? "Payment Cancelled" : "Payment Failed"}
+            </h1>
             <p className="text-gray-600 mb-6">
-              Unfortunately, your payment could not be processed. Please try again or use a different payment method.
+              {isRedirecting ? (
+                <>
+                  You cancelled the payment. Redirecting you back to checkout...
+                  <br />
+                  <Loader2 className="h-5 w-5 text-blue-600 animate-spin inline-block mt-2" />
+                </>
+              ) : (
+                "Unfortunately, your payment could not be processed. Please try again or use a different payment method."
+              )}
             </p>
 
+            {!isRedirecting && (
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 href="/shop/checkout"
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
               >
-                Try Again
+                  Back to Checkout
               </Link>
               <Link
                 href="/shop/cart"
@@ -177,6 +240,7 @@ function PaymentCallbackContent() {
                 Back to Cart
               </Link>
             </div>
+            )}
           </div>
         </div>
       </div>

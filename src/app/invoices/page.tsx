@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/contexts/toast-context";
@@ -18,6 +18,7 @@ import {
 import { AIRecommendationCard } from "@/components/ai-recommendation-card";
 import { SendInvoiceModal } from "../../components/modals/send-invoice-modal";
 import { SkeletonTable, SkeletonMetricCard } from "@/components/ui/skeleton";
+import { DataTable } from "@/components/ui/data-table";
 import { 
   Plus, 
   Search, 
@@ -105,7 +106,6 @@ function InvoicesPageContent() {
   const theme = getThemeClasses();
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [filteredInvoices, setFilteredInvoices] = useState<Invoice[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
@@ -114,23 +114,15 @@ function InvoicesPageContent() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   
   // Bulk selection state
-  const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
-  const [isAllSelected, setIsAllSelected] = useState(false);
+  const [selectedInvoices, setSelectedInvoices] = useState<string[]>([]);
   const [currency, setCurrency] = useState('GHS');
-
-  // Sync isAllSelected with filteredInvoices
-  useEffect(() => {
-    if (filteredInvoices.length === 0) {
-      setIsAllSelected(false);
-    } else {
-      const allSelected = selectedInvoices.size === filteredInvoices.length && filteredInvoices.length > 0;
-      setIsAllSelected(allSelected);
-    }
-  }, [selectedInvoices, filteredInvoices]);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [sortBy, setSortBy] = useState<string | undefined>(undefined);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const itemsPerPage = 10;
 
   // Stats
@@ -153,21 +145,44 @@ function InvoicesPageContent() {
     }
   }, [searchParams]);
 
+  // Initial load on mount
   useEffect(() => {
-    loadInvoices();
-    fetchCurrencySettings();
-  }, [statusFilter, paymentStatusFilter, currentPage]);
+    loadInvoices(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
-  // Reset to page 1 when filters change
+  // Immediate effect for sorting and filters (skip initial mount)
   useEffect(() => {
-    if (currentPage !== 1) {
-      setCurrentPage(1);
+    // Skip initial mount - already loaded above
+    const isInitialMount = currentPage === 1 && !searchTerm && !statusFilter && !paymentStatusFilter && !sortBy;
+    if (isInitialMount) {
+      return;
     }
-  }, [statusFilter, paymentStatusFilter]);
+    loadInvoices(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, paymentStatusFilter, sortBy, sortOrder]);
+
+  // Debounced search effect (including when cleared)
+  const isMountedRef = useRef(false);
+  useEffect(() => {
+    // Skip initial mount (handled by initial load effect)
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      return;
+    }
+    
+    const timeoutId = setTimeout(() => {
+      setCurrentPage(1);
+      loadInvoices(1);
+    }, searchTerm ? 500 : 0); // No debounce when clearing (empty search)
+
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm]);
 
   useEffect(() => {
-    filterInvoices();
-  }, [invoices, searchTerm]);
+    fetchCurrencySettings();
+  }, []);
 
   const fetchCurrencySettings = async () => {
     try {
@@ -181,25 +196,36 @@ function InvoicesPageContent() {
     }
   };
 
-  const loadInvoices = async () => {
+  const loadInvoices = async (page: number = currentPage) => {
     try {
       setLoading(true);
       const url = new URL('/api/invoices', window.location.origin);
-      url.searchParams.append('page', currentPage.toString());
+      url.searchParams.append('page', page.toString());
       url.searchParams.append('limit', itemsPerPage.toString());
       
+      if (searchTerm) {
+        url.searchParams.append('search', searchTerm);
+      }
       if (statusFilter) {
         url.searchParams.append('status', statusFilter);
       }
       if (paymentStatusFilter) {
         url.searchParams.append('paymentStatus', paymentStatusFilter);
       }
+      if (sortBy) {
+        url.searchParams.append('sortBy', sortBy);
+      }
+      if (sortOrder) {
+        url.searchParams.append('sortOrder', sortOrder);
+      }
       
       const response = await fetch(url.toString());
       if (response.ok) {
         const data = await response.json();
         setInvoices(data.invoices || []);
-        setTotalCount(data.total || 0);
+        setTotalCount(data.pagination?.total || data.total || 0);
+        setTotalPages(data.pagination?.pages || Math.ceil((data.pagination?.total || data.total || 0) / itemsPerPage));
+        setCurrentPage(page);
         
         // Calculate stats from all invoices data
         const allInvoices = data.allInvoices || data.invoices || [];
@@ -230,56 +256,27 @@ function InvoicesPageContent() {
     }
   };
 
-  const filterInvoices = () => {
-    let filtered = invoices;
-
-    if (searchTerm) {
-      filtered = filtered.filter(invoice =>
-        invoice.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        invoice.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        invoice.account?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        invoice.distributor?.businessName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (invoice.lead ? `${invoice.lead.firstName} ${invoice.lead.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) : false)
-      );
-    }
-
-    if (statusFilter) {
-      filtered = filtered.filter(invoice => invoice.status === statusFilter);
-    }
-
-    if (paymentStatusFilter) {
-      filtered = filtered.filter(invoice => invoice.paymentStatus === paymentStatusFilter);
-    }
-
-    setFilteredInvoices(filtered);
+  // Handle sorting change
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
+  };
+  
+  // Handle search change
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+  
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    loadInvoices(page);
   };
 
-  // Bulk selection functions
-  const handleSelectAll = () => {
-    if (isAllSelected) {
-      setSelectedInvoices(new Set());
-      setIsAllSelected(false);
-    } else {
-      const allIds = new Set(filteredInvoices.map(inv => inv.id));
-      setSelectedInvoices(allIds);
-      setIsAllSelected(true);
-    }
-  };
-
-  const handleSelectInvoice = (invoiceId: string, e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    setSelectedInvoices(prev => {
-      const newSelected = new Set(prev);
-      if (newSelected.has(invoiceId)) {
-        newSelected.delete(invoiceId);
-      } else {
-        newSelected.add(invoiceId);
-      }
-      return newSelected;
-    });
+  // Bulk selection functions (updated for DataTable)
+  const handleSelectionChange = (selectedIds: string[]) => {
+    setSelectedInvoices(selectedIds);
   };
 
   const handleStatusUpdate = async (invoice: Invoice, newStatus: string) => {
@@ -449,8 +446,8 @@ function InvoicesPageContent() {
         </div>
 
         {/* AI Recommendation and Metrics Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* AI Recommendation Card - Left Side (2/3) */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* AI Recommendation Card - Left Side (2/5) */}
           <div className="lg:col-span-2">
             <AIRecommendationCard
               title="Invoice Management AI"
@@ -463,45 +460,45 @@ function InvoicesPageContent() {
             />
           </div>
 
-          {/* Metrics Cards - Right Side (1/3, 2x2 Grid) */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Metrics Cards - Right Side (3/5, 2x2 Grid) */}
+          <div className="lg:col-span-3 grid grid-cols-2 gap-4">
             <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Invoices</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.totalInvoices}</p>
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0 pr-2">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Total Invoices</p>
+                  <p className="text-lg sm:text-xl font-bold text-gray-900 break-words">{stats.totalInvoices}</p>
                 </div>
-                <FileText className="h-8 w-8 text-gray-400" />
+                <FileText className="h-6 w-6 text-gray-400 flex-shrink-0 mt-1" />
               </div>
             </Card>
 
             <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Value</p>
-                  <p className={`text-2xl font-bold text-${theme.primary}`}>{formatCurrency(stats.totalValue, currency)}</p>
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0 pr-2">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Total Value</p>
+                  <p className={`text-lg sm:text-xl font-bold text-${theme.primary} break-words`}>{formatCurrency(stats.totalValue, currency)}</p>
                 </div>
-                <DollarSign className={`h-8 w-8 text-${theme.primary}`} />
+                <DollarSign className={`h-6 w-6 text-${theme.primary} flex-shrink-0 mt-1`} />
               </div>
             </Card>
 
             <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Overdue</p>
-                  <p className="text-2xl font-bold text-red-600">{formatCurrency(stats.overdueAmount, currency)}</p>
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0 pr-2">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Overdue</p>
+                  <p className="text-lg sm:text-xl font-bold text-red-600 break-words">{formatCurrency(stats.overdueAmount, currency)}</p>
                 </div>
-                <AlertCircle className="h-8 w-8 text-red-400" />
+                <AlertCircle className="h-6 w-6 text-red-400 flex-shrink-0 mt-1" />
               </div>
             </Card>
 
             <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Paid This Month</p>
-                  <p className="text-2xl font-bold text-green-600">{formatCurrency(stats.paidThisMonth, currency)}</p>
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0 pr-2">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Paid This Month</p>
+                  <p className="text-lg sm:text-xl font-bold text-green-600 break-words">{formatCurrency(stats.paidThisMonth, currency)}</p>
                 </div>
-                <CreditCard className="h-8 w-8 text-green-400" />
+                <CreditCard className="h-6 w-6 text-green-400 flex-shrink-0 mt-1" />
               </div>
             </Card>
           </div>
@@ -513,22 +510,36 @@ function InvoicesPageContent() {
             <CardTitle>Invoices</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Filters */}
-            <div className="flex items-center space-x-4 mb-6">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Search invoices..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              
+            <DataTable
+              data={invoices}
+              enableSelection={true}
+              selectedItems={selectedInvoices}
+              onSelectionChange={handleSelectionChange}
+              onRowClick={(invoice) => router.push(`/invoices/${invoice.id}`)}
+              itemsPerPage={itemsPerPage}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalCount}
+              onPageChange={handlePageChange}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSortChange={handleSortChange}
+              searchValue={searchTerm}
+              onSearchChange={handleSearchChange}
+              searchPlaceholder="Search invoices by number, subject, or customer..."
+              enableExport={true}
+              exportFilename="invoices"
+              isLoading={loading}
+              getRowClassName={(invoice) => getInvoiceRowClassName(invoice)}
+              customFilters={
+                <>
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className={`px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-${theme.primary}`}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Statuses</option>
                 <option value="DRAFT">Draft</option>
@@ -539,313 +550,187 @@ function InvoicesPageContent() {
 
               <select
                 value={paymentStatusFilter}
-                onChange={(e) => setPaymentStatusFilter(e.target.value)}
-                className={`px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-${theme.primary}`}
+                    onChange={(e) => {
+                      setPaymentStatusFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All Payment Statuses</option>
                 <option value="UNPAID">Unpaid</option>
                 <option value="PARTIALLY_PAID">Partially Paid</option>
                 <option value="PAID">Paid</option>
               </select>
-
-              <Button variant="outline">
-                <Filter className="h-4 w-4 mr-2" />
-                More Filters
+                </>
+              }
+              bulkActions={
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => success(`Selected ${selectedInvoices.length} invoice(s)`)}
+                    disabled={selectedInvoices.length === 0}
+                  >
+                    Bulk Actions
               </Button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleSelectAll();
-                        }}
-                        className="flex items-center justify-center w-4 h-4 hover:opacity-75 transition-opacity"
-                      >
-                        {isAllSelected ? (
-                          <CheckSquare className="h-4 w-4 text-blue-600" />
-                        ) : (
-                          <Square className="h-4 w-4 text-gray-400" />
-                        )}
-                      </button>
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Invoice
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Customer
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Amount
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Due Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Payment
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {loading ? (
-                    Array.from({ length: 8 }).map((_, i) => (
-                      <tr key={i} className="animate-pulse">
-                        <td className="px-6 py-4">
-                          <div className="h-4 bg-gray-200 rounded w-20"></div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="h-4 bg-gray-200 rounded w-48"></div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="h-4 bg-gray-200 rounded w-32"></div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="h-6 bg-gray-200 rounded-full w-16"></div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="h-4 bg-gray-200 rounded w-20"></div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="h-4 bg-gray-200 rounded w-24"></div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="h-8 w-8 bg-gray-200 rounded"></div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : filteredInvoices.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-6 py-12 text-center">
-                        <p className="text-gray-500 mb-4">
-                          {searchTerm || statusFilter || paymentStatusFilter
-                            ? "No invoices match your filters" 
-                            : "No invoices yet"}
-                        </p>
-                        <Link href="/invoices/create">
-                          <Button 
-                            size="sm" 
-                            className="text-white hover:opacity-90 transition-opacity"
-                            style={{ backgroundColor: getThemeColor() }}
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Create First Invoice
-                          </Button>
-                        </Link>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredInvoices.map((invoice) => (
-                      <tr 
-                        key={invoice.id} 
-                        className={getInvoiceRowClassName(invoice)}
-                        onClick={() => router.push(`/invoices/${invoice.id}`)}
-                      >
-                        <td 
-                          className="px-6 py-4 whitespace-nowrap"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            onClick={(e) => handleSelectInvoice(invoice.id, e)}
-                            className="flex items-center justify-center w-4 h-4 hover:opacity-75 transition-opacity"
-                            type="button"
-                          >
-                            {selectedInvoices.has(invoice.id) ? (
-                              <CheckSquare className="h-4 w-4 text-blue-600" />
-                            ) : (
-                              <Square className="h-4 w-4 text-gray-400" />
-                            )}
-                          </button>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <FileText className="h-4 w-4 text-gray-400 mr-2" />
-                            <span className="text-sm font-medium text-gray-900">{invoice.number}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900">{invoice.subject}</div>
-                          <div className="text-sm text-gray-500">
-                            {invoice.account?.name || invoice.distributor?.businessName || (invoice.lead ? `${invoice.lead.firstName} ${invoice.lead.lastName}` : 'Unknown')}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {formatCurrency(invoice.total, currency)}
-                          </div>
-                          {invoice.amountDue > 0 && (
-                            <div className="text-sm text-red-600">
-                              Due: {formatCurrency(invoice.amountDue, currency)}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center text-sm text-gray-500">
-                            <Calendar className="h-3 w-3 mr-1" />
-                            {new Date(invoice.dueDate).toLocaleDateString()}
-                          </div>
-                        </td>
-                        <td 
-                          className="px-6 py-4 whitespace-nowrap"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button className="focus:outline-none">
-                                {getStatusBadge(invoice.status)}
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleStatusUpdate(invoice, 'DRAFT')}>
-                                <span className="w-2 h-2 bg-gray-500 rounded-full mr-2"></span>
-                                Draft
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleStatusUpdate(invoice, 'SENT')}>
-                                <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                                Sent
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleStatusUpdate(invoice, 'OVERDUE')}>
-                                <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
-                                Overdue
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleStatusUpdate(invoice, 'VOID')}>
-                                <span className="w-2 h-2 bg-gray-500 rounded-full mr-2"></span>
-                                Void
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {getPaymentStatusBadge(invoice.paymentStatus)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => router.push(`/invoices/${invoice.id}`)}
-                              title="View invoice"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
-                              title="Edit invoice"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="ghost"
-                              onClick={() => handleDownload(invoice)}
-                              title="Download as PDF"
-                            >
-                              <Download className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="ghost"
-                              onClick={() => handleSendInvoice(invoice)}
-                              title="Send invoice via email/SMS"
-                            >
-                              <Mail className="h-4 w-4" />
-                            </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button size="sm" variant="ghost">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleConvertFromQuotation(invoice)}>
-                                  <FileText className="h-4 w-4 mr-2" />
-                                  Mark as Paid
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem 
-                                  onClick={() => handleDeleteInvoice(invoice)}
-                                  className="text-red-600 focus:text-red-600"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Controls */}
-            {!loading && filteredInvoices.length > 0 && (
-              <div className="mt-6 flex items-center justify-between border-t pt-4">
-                <div className="text-sm text-gray-600">
-                  Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalCount)} of {totalCount} invoices
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                    variant="outline"
-                    size="sm"
-                    className="flex items-center gap-1"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Button>
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: Math.ceil(totalCount / itemsPerPage) }, (_, i) => i + 1)
-                      .filter(page => {
-                        // Show first page, last page, current page, and pages around current
-                        const totalPages = Math.ceil(totalCount / itemsPerPage);
-                        return page === 1 || 
-                               page === totalPages || 
-                               (page >= currentPage - 1 && page <= currentPage + 1);
-                      })
-                      .map((page, index, array) => (
-                        <div key={page} className="flex items-center gap-1">
-                          {index > 0 && array[index - 1] !== page - 1 && (
-                            <span className="px-2 text-gray-400">...</span>
-                          )}
-                          <Button
-                            onClick={() => setCurrentPage(page)}
-                            variant={currentPage === page ? "default" : "outline"}
-                            size="sm"
-                            className="w-10"
-                          >
-                            {page}
-                          </Button>
+              }
+              columns={[
+                {
+                  key: 'number',
+                  label: 'Invoice',
+                  sortable: true,
+                  render: (invoice) => (
+                    <div className="flex items-center">
+                      <FileText className="h-4 w-4 text-gray-400 mr-2" />
+                      <span className="text-sm font-medium text-gray-900">{invoice.number}</span>
+                    </div>
+                  )
+                },
+                {
+                  key: 'subject',
+                  label: 'Customer',
+                  sortable: true,
+                  render: (invoice) => (
+                    <div>
+                      <div className="text-sm text-gray-900">{invoice.subject}</div>
+                      <div className="text-sm text-gray-500">
+                        {invoice.account?.name || invoice.distributor?.businessName || (invoice.lead ? `${invoice.lead.firstName} ${invoice.lead.lastName}` : 'Unknown')}
+                      </div>
+                    </div>
+                  )
+                },
+                {
+                  key: 'total',
+                  label: 'Amount',
+                  sortable: true,
+                  render: (invoice) => (
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {formatCurrency(invoice.total, currency)}
+                      </div>
+                      {invoice.amountDue > 0 && (
+                        <div className="text-sm text-red-600">
+                          Due: {formatCurrency(invoice.amountDue, currency)}
                         </div>
-                      ))}
-                  </div>
-                  <Button
-                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalCount / itemsPerPage), prev + 1))}
-                    disabled={currentPage >= Math.ceil(totalCount / itemsPerPage)}
-                    variant="outline"
-                    size="sm"
-                    className="flex items-center gap-1"
-                  >
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
+                      )}
+                    </div>
+                  )
+                },
+                {
+                  key: 'dueDate',
+                  label: 'Due Date',
+                  sortable: true,
+                  render: (invoice) => (
+                    <div className="flex items-center text-sm text-gray-500">
+                      <Calendar className="h-3 w-3 mr-1" />
+                      {new Date(invoice.dueDate).toLocaleDateString()}
+                    </div>
+                  )
+                },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  sortable: true,
+                  render: (invoice) => (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="focus:outline-none">
+                            {getStatusBadge(invoice.status)}
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleStatusUpdate(invoice, 'DRAFT')}>
+                            <span className="w-2 h-2 bg-gray-500 rounded-full mr-2"></span>
+                            Draft
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleStatusUpdate(invoice, 'SENT')}>
+                            <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                            Sent
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleStatusUpdate(invoice, 'OVERDUE')}>
+                            <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
+                            Overdue
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleStatusUpdate(invoice, 'VOID')}>
+                            <span className="w-2 h-2 bg-gray-500 rounded-full mr-2"></span>
+                            Void
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  )
+                },
+                {
+                  key: 'paymentStatus',
+                  label: 'Payment',
+                  sortable: true,
+                  render: (invoice) => getPaymentStatusBadge(invoice.paymentStatus)
+                },
+                {
+                  key: 'actions',
+                  label: 'Actions',
+                  render: (invoice) => (
+                    <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => router.push(`/invoices/${invoice.id}`)}
+                        title="View invoice"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => router.push(`/invoices/${invoice.id}/edit`)}
+                        title="Edit invoice"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost"
+                        onClick={() => handleDownload(invoice)}
+                        title="Download as PDF"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost"
+                        onClick={() => handleSendInvoice(invoice)}
+                        title="Send invoice via email/SMS"
+                      >
+                        <Mail className="h-4 w-4" />
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleConvertFromQuotation(invoice)}>
+                            <FileText className="h-4 w-4 mr-2" />
+                            Mark as Paid
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteInvoice(invoice)}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  )
+                }
+              ]}
+            />
           </CardContent>
         </Card>
 

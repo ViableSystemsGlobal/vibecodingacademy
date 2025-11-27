@@ -9,6 +9,14 @@ export async function GET() {
         id: true,
         name: true,
         description: true,
+        ecommerceConfig: {
+          select: {
+            tileImageUrl: true,
+            heroImageUrl: true,
+            marketingTagline: true,
+            displayOrder: true,
+          },
+        },
         _count: {
           select: {
             products: {
@@ -20,9 +28,14 @@ export async function GET() {
           },
         },
       },
-      orderBy: {
-        name: "asc",
+      orderBy: [
+        {
+          ecommerceConfig: {
+            displayOrder: "asc",
       },
+        },
+        { name: "asc" },
+      ],
     });
 
     // Transform to include product count
@@ -31,6 +44,11 @@ export async function GET() {
       name: category.name,
       description: category.description,
       productCount: category._count.products,
+      tileImageUrl:
+        category.ecommerceConfig?.tileImageUrl ||
+        category.ecommerceConfig?.heroImageUrl ||
+        null,
+      marketingTagline: category.ecommerceConfig?.marketingTagline || null,
     }));
 
     // Filter out categories with no products

@@ -112,13 +112,14 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
 
   const fetchSuppliers = async () => {
     try {
-      const response = await fetch('/api/suppliers');
+      const response = await fetch('/api/suppliers?limit=1000');
       if (response.ok) {
         const data = await response.json();
-        setSuppliers(data || []);
+        setSuppliers(data.suppliers || []);
       }
     } catch (error) {
       console.error('Error fetching suppliers:', error);
+      setSuppliers([]); // Set to empty array on error
     }
   };
 
@@ -254,6 +255,29 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
     return product.stockItems?.reduce((sum, item) => sum + item.available, 0) || 0;
   };
 
+  // Helper function to get stock for a specific warehouse
+  const getWarehouseStock = (product: Product | null, warehouseId: string) => {
+    if (!product || !warehouseId) return { available: 0, quantity: 0 };
+    const stockItem = product.stockItems?.find(item => item.warehouse.id === warehouseId);
+    return {
+      available: stockItem?.available || 0,
+      quantity: stockItem?.quantity || 0
+    };
+  };
+
+  // Helper function to get all warehouses with stock for a product
+  const getWarehousesWithStock = (product: Product | null) => {
+    if (!product || !product.stockItems) return [];
+    return product.stockItems
+      .filter(item => item.available > 0)
+      .map(item => ({
+        warehouse: item.warehouse,
+        available: item.available,
+        quantity: item.quantity
+      }))
+      .sort((a, b) => b.available - a.available); // Sort by available stock descending
+  };
+
   const handleProductSelect = (product: Product) => {
     setSelectedProduct(product);
     setFormData(prev => ({ ...prev, productId: product.id }));
@@ -310,10 +334,20 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
                               (formData.type === "TRANSFER" && formData.transferDirection === "OUT");
     const isAdjustmentOut = formData.type === "ADJUSTMENT" && formData.quantity < 0;
     
-    if ((isStockOutMovement || isAdjustmentOut) && selectedProduct) {
-      const availableStock = getTotalAvailableStock(selectedProduct);
-      if (formData.quantity > availableStock) {
-        showError("Validation Error", `Cannot remove more stock than available. Available: ${availableStock}`);
+    if ((isStockOutMovement || isAdjustmentOut) && selectedProduct && formData.warehouseId) {
+      const warehouseStock = getWarehouseStock(selectedProduct, formData.warehouseId);
+      if (formData.quantity > warehouseStock.available) {
+        showError("Validation Error", `Cannot remove more stock than available in this warehouse. Available: ${warehouseStock.available} ${selectedProduct.uomBase}`);
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
+    // For transfer IN, check source warehouse has enough stock
+    if (formData.type === "TRANSFER" && formData.transferDirection === "IN" && selectedProduct && formData.transferFromWarehouse) {
+      const sourceStock = getWarehouseStock(selectedProduct, formData.transferFromWarehouse);
+      if (formData.quantity > sourceStock.available) {
+        showError("Validation Error", `Source warehouse doesn't have enough stock. Available: ${sourceStock.available} ${selectedProduct.uomBase}`);
         setIsSubmitting(false);
         return;
       }
@@ -460,7 +494,17 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
                       <div className="text-sm text-gray-500">SKU: {product.sku}</div>
                       {product.stockItems && product.stockItems.length > 0 && (
                         <div className="text-xs text-gray-400">
-                          Available Stock: {getTotalAvailableStock(product)} {product.uomBase}
+                          <div>Total Available: {getTotalAvailableStock(product)} {product.uomBase}</div>
+                          {product.stockItems.length > 1 && (
+                            <div className="mt-1 text-gray-500">
+                              {product.stockItems
+                                .filter(item => item.available > 0)
+                                .slice(0, 3)
+                                .map(item => `${item.warehouse.name}: ${item.available}`)
+                                .join(', ')}
+                              {product.stockItems.filter(item => item.available > 0).length > 3 && '...'}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -518,13 +562,24 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
                      (formData.type === "ADJUSTMENT" ? undefined : 1)}
                  max={["SALE", "DAMAGE", "THEFT", "EXPIRY"].includes(formData.type) || 
                       (formData.type === "TRANSFER" && formData.transferDirection === "OUT") ? 
-                      (selectedProduct ? getTotalAvailableStock(selectedProduct) : 0) : undefined}
+                      (selectedProduct && formData.warehouseId ? getWarehouseStock(selectedProduct, formData.warehouseId).available : (selectedProduct ? getTotalAvailableStock(selectedProduct) : 0)) : undefined}
               />
               <p className="text-xs text-gray-500 mt-1">
                 {["SALE", "DAMAGE", "THEFT", "EXPIRY"].includes(formData.type) || 
-                 (formData.type === "TRANSFER" && formData.transferDirection === "OUT") ? 
-                 `Available stock: ${selectedProduct ? getTotalAvailableStock(selectedProduct) : 0} ${selectedProduct?.uomBase || 'units'}` :
-                 (formData.quantity > 0 ? "Positive for stock in" : "Negative for stock out")}
+                 (formData.type === "TRANSFER" && formData.transferDirection === "OUT") ? (
+                  formData.warehouseId && selectedProduct ? (
+                    <span className={getWarehouseStock(selectedProduct, formData.warehouseId).available === 0 ? 'text-red-600 font-medium' : ''}>
+                      Available in selected warehouse: {getWarehouseStock(selectedProduct, formData.warehouseId).available} {selectedProduct.uomBase}
+                      {getTotalAvailableStock(selectedProduct) !== getWarehouseStock(selectedProduct, formData.warehouseId).available && (
+                        <span className="text-gray-400"> (Total across all warehouses: {getTotalAvailableStock(selectedProduct)})</span>
+                      )}
+                    </span>
+                  ) : (
+                    `Total available stock: ${selectedProduct ? getTotalAvailableStock(selectedProduct) : 0} ${selectedProduct?.uomBase || 'units'}`
+                  )
+                ) : (
+                  formData.quantity > 0 ? "Positive for stock in" : "Negative for stock out"
+                )}
               </p>
             </div>
 
@@ -566,12 +621,45 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
               required
             >
               <option value="">Select a warehouse</option>
-              {warehouses.map((warehouse) => (
+              {warehouses.map((warehouse) => {
+                const stock = selectedProduct ? getWarehouseStock(selectedProduct, warehouse.id) : null;
+                return (
                 <option key={warehouse.id} value={warehouse.id}>
                   {warehouse.name} ({warehouse.code})
+                    {stock && ` - Available: ${stock.available} ${selectedProduct?.uomBase || 'units'}`}
                 </option>
-              ))}
+                );
+              })}
             </select>
+            {selectedProduct && formData.warehouseId && (
+              <p className="text-xs mt-1">
+                <span className={`font-medium ${
+                  getWarehouseStock(selectedProduct, formData.warehouseId).available === 0 
+                    ? 'text-red-600' 
+                    : getWarehouseStock(selectedProduct, formData.warehouseId).available < 10
+                    ? 'text-amber-600'
+                    : 'text-green-600'
+                }`}>
+                  Available in this warehouse: {getWarehouseStock(selectedProduct, formData.warehouseId).available} {selectedProduct.uomBase}
+                </span>
+              </p>
+            )}
+            {selectedProduct && !formData.warehouseId && (
+              <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
+                <p className="font-medium text-blue-800 mb-1">Stock by Warehouse:</p>
+                {getWarehousesWithStock(selectedProduct).length > 0 ? (
+                  <ul className="space-y-1">
+                    {getWarehousesWithStock(selectedProduct).map((item) => (
+                      <li key={item.warehouse.id} className="text-blue-700">
+                        {item.warehouse.name} ({item.warehouse.code}): <strong>{item.available} {selectedProduct.uomBase}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-blue-600">No stock available in any warehouse</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Supplier Selection - Only show for RECEIPT type */}
@@ -628,12 +716,21 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
                     required
                   >
                     <option value="">Select destination warehouse</option>
-                    {warehouses.filter(w => w.id !== formData.warehouseId).map((warehouse) => (
+                    {warehouses.filter(w => w.id !== formData.warehouseId).map((warehouse) => {
+                      const stock = selectedProduct ? getWarehouseStock(selectedProduct, warehouse.id) : null;
+                      return (
                       <option key={warehouse.id} value={warehouse.id}>
                         {warehouse.name} ({warehouse.code})
+                          {stock && ` - Current: ${stock.available} ${selectedProduct?.uomBase || 'units'}`}
                       </option>
-                    ))}
+                      );
+                    })}
                   </select>
+                  {selectedProduct && formData.warehouseId && (
+                    <p className="text-xs mt-1 text-gray-600">
+                      Available to transfer from {warehouses.find(w => w.id === formData.warehouseId)?.name}: <strong>{getWarehouseStock(selectedProduct, formData.warehouseId).available} {selectedProduct.uomBase}</strong>
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -649,12 +746,34 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
                     required
                   >
                     <option value="">Select source warehouse</option>
-                    {warehouses.filter(w => w.id !== formData.warehouseId).map((warehouse) => (
-                      <option key={warehouse.id} value={warehouse.id}>
+                    {warehouses.filter(w => w.id !== formData.warehouseId).map((warehouse) => {
+                      const stock = selectedProduct ? getWarehouseStock(selectedProduct, warehouse.id) : null;
+                      const hasStock = stock && stock.available > 0;
+                      return (
+                        <option 
+                          key={warehouse.id} 
+                          value={warehouse.id}
+                          disabled={!hasStock}
+                        >
                         {warehouse.name} ({warehouse.code})
+                          {stock ? ` - Available: ${stock.available} ${selectedProduct?.uomBase || 'units'}` : ' - No stock'}
                       </option>
-                    ))}
+                      );
+                    })}
                   </select>
+                  {selectedProduct && formData.transferFromWarehouse && (
+                    <p className="text-xs mt-1">
+                      <span className={`font-medium ${
+                        getWarehouseStock(selectedProduct, formData.transferFromWarehouse).available === 0 
+                          ? 'text-red-600' 
+                          : getWarehouseStock(selectedProduct, formData.transferFromWarehouse).available < formData.quantity
+                          ? 'text-amber-600'
+                          : 'text-green-600'
+                      }`}>
+                        Available in source warehouse: {getWarehouseStock(selectedProduct, formData.transferFromWarehouse).available} {selectedProduct.uomBase}
+                      </span>
+                    </p>
+                  )}
                 </div>
               )}
             </div>

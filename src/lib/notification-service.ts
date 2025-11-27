@@ -562,7 +562,7 @@ export const SystemNotificationTriggers = {
   }),
 
   stockOut: (productName: string) => ({
-    type: 'STOCK_LOW',
+    type: 'STOCK_OUT',
     title: 'Out of Stock Alert',
     message: `${productName} is now out of stock and needs immediate attention.`,
     channels: ['IN_APP', 'EMAIL', 'SMS'],
@@ -661,5 +661,18 @@ export const SystemNotificationTriggers = {
     message: `Hello ${leadName}, thank you for your interest in our products. We'll be in touch soon${assignedUserName ? ` - your dedicated contact is ${assignedUserName}` : ''}.`,
     channels: ['EMAIL'],
     data: { leadName, companyName, assignedUserName, notificationType: 'LEAD_WELCOME' }
+  }),
+
+  // Task notifications
+  taskComment: (
+    taskTitle: string,
+    commentPreview: string,
+    commenterName: string
+  ) => ({
+    type: 'TASK_COMMENT' as const,
+    title: `New Comment on Task: ${taskTitle}`,
+    message: `${commenterName} commented on "${taskTitle}": ${commentPreview}`,
+    channels: ['IN_APP' as const, 'EMAIL' as const, 'SMS' as const],
+    data: { taskTitle, commentPreview, commenterName }
   })
 };

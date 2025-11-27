@@ -354,7 +354,7 @@ export default function BackupSettingsPage() {
           {backupInfo.isPostgreSQL && (
             <p className="text-sm text-orange-600 font-medium mt-2">
               Note: File-based backup is only available for SQLite databases.
-            </p>
+          </p>
           )}
 
           <div className="flex items-center space-x-4">

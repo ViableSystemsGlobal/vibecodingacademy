@@ -238,6 +238,8 @@ export async function POST(request: NextRequest) {
       recurringTaskId,
       templateId,
       leadId, // For lead-related tasks
+      projectId, // For project-related tasks
+      stageId, // For project stage assignment
       status = 'PENDING',
     } = body;
 
@@ -271,6 +273,8 @@ export async function POST(request: NextRequest) {
         recurringTaskId,
         templateId,
         leadId: leadId || null,
+        projectId: projectId || null,
+        stageId: stageId || null,
         status: status as any,
         assignees: {
           create: finalAssignees.map((userId: string) => ({

@@ -1,20 +1,32 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ShoppingCart, Package, Truck, Shield, Star } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/contexts/toast-context";
 import { useCustomerAuth } from "@/contexts/customer-auth-context";
 import { EcommercePromoBanner } from "@/components/ecommerce/promo-banner";
+import { DEFAULT_STOREFRONT_CONTENT } from "@/lib/storefront-content";
+import { trackAddToCart, trackViewItem } from "@/lib/analytics";
 
-interface Review {
+interface Testimonial {
   id: string;
   name: string;
+  role?: string | null;
   rating: number;
-  comment: string;
-  date: string;
-  avatarColor: string;
+  quote: string;
+  avatarColor?: string | null;
+  avatarImage?: string | null;
+  isFeatured?: boolean;
+  isActive?: boolean;
+}
+
+interface WarehouseStock {
+  warehouseId: string;
+  warehouseName: string;
+  warehouseCode: string;
+  available: number;
 }
 
 interface Product {
@@ -35,6 +47,9 @@ interface Product {
   inStock: boolean;
   stockQuantity: number;
   lowStock: boolean;
+  warehouseStock?: WarehouseStock[];
+  isBestDeal?: boolean;
+  bestDealPrice?: number | null;
 }
 
 export default function ProductDetailPage() {
@@ -47,21 +62,92 @@ export default function ProductDetailPage() {
   const [addingToCart, setAddingToCart] = useState(false);
   const { success, error: showError } = useToast();
   const { refreshCartCount } = useCustomerAuth();
-  const [reviews, setReviews] = useState<Review[]>([]);
+  const normalizeProductPromo = (banner: any) => {
+    const defaults = DEFAULT_STOREFRONT_CONTENT.product_promo_banner as Record<string, any>;
+    const base = {
+      eyebrow: defaults?.eyebrow ?? "Poolside Upgrade",
+      title: defaults?.title ?? "Bundle & Save on Spa Accessories",
+      description:
+        defaults?.description ??
+        "Complete your relaxation setup with curated accessories. Members enjoy an extra 10% off when buying two or more.",
+      ctaText: defaults?.ctaText ?? "Explore Accessories",
+      ctaHref: defaults?.ctaHref ?? "/shop?category=accessories",
+      gradient: defaults?.gradient ?? "from-sky-500 via-cyan-500 to-emerald-500",
+      isActive: defaults?.isActive ?? true,
+    };
+    if (!banner) return base;
+    return {
+      ...base,
+      ...banner,
+      isActive: banner.isActive ?? base.isActive,
+    };
+  };
+
+const normalizeTestimonials = (list: any): Testimonial[] => {
+  if (!Array.isArray(list)) {
+    return [];
+  }
+
+  return list
+    .map((item) => {
+      const rating =
+        typeof item?.rating === "number" && item.rating >= 1 && item.rating <= 5
+          ? Math.round(item.rating)
+          : 5;
+      return {
+        id: item?.id ?? (typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : Math.random().toString(36).slice(2)),
+        name: item?.name ?? "",
+        role: item?.role ?? "",
+        rating,
+        quote: item?.quote ?? "",
+        avatarColor: item?.avatarColor ?? "#2563eb",
+        avatarImage: item?.avatarImage ?? null,
+        isFeatured: item?.isFeatured ?? false,
+        isActive: item?.isActive ?? true,
+      } as Testimonial;
+    })
+    .filter((item) => item.name && item.quote);
+};
+
+const [reviews, setReviews] = useState<Testimonial[]>(
+  normalizeTestimonials(DEFAULT_STOREFRONT_CONTENT.testimonials).filter(
+    (testimonial) => testimonial.isActive !== false
+  )
+);
   const [recommendedProducts, setRecommendedProducts] = useState<Product[]>([]);
+  const [productPromoBanner, setProductPromoBanner] = useState(
+    normalizeProductPromo(DEFAULT_STOREFRONT_CONTENT.product_promo_banner)
+  );
+  const hasTrackedView = useRef(false);
 
   useEffect(() => {
     if (params.id) {
+      hasTrackedView.current = false;
       fetchProduct(params.id as string);
     }
   }, [params.id]);
 
-  useEffect(() => {
-    if (product) {
-      setReviews(generateMockReviews(product.name));
-      void fetchRecommendedProducts(product.category.id, product.id);
+useEffect(() => {
+  if (product) {
+    void fetchRecommendedProducts(product.category.id, product.id);
+    void fetchStorefrontContent();
+
+    if (!hasTrackedView.current) {
+      trackViewItem({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        currency: product.currency,
+        quantity: 1,
+        category: product.category?.name,
+        sku: product.sku ?? undefined,
+      });
+      hasTrackedView.current = true;
     }
-  }, [product]);
+  }
+}, [product]);
 
   const fetchProduct = async (productId: string) => {
     try {
@@ -107,6 +193,15 @@ export default function ProductDetailPage() {
 
       if (response.ok) {
         success("Added to cart!", `${quantity} x ${product.name} added successfully`);
+        trackAddToCart({
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          currency: product.currency,
+          quantity,
+          category: product.category?.name,
+          sku: product.sku ?? undefined,
+        });
         // Reset quantity
         setQuantity(1);
         await refreshCartCount();
@@ -139,33 +234,34 @@ export default function ProductDetailPage() {
     }
   };
 
-  const generateMockReviews = (productName: string): Review[] => {
-    return [
-      {
-        id: "rev-1",
-        name: "Nana A.",
-        rating: 5,
-        comment: `Absolutely love the ${productName}! Quality is fantastic and the delivery was quick. Highly recommend for anyone looking to upgrade their pool care routine.`,
-        date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 8).toLocaleDateString(),
-        avatarColor: "bg-blue-600",
-      },
-      {
-        id: "rev-2",
-        name: "Ama B.",
-        rating: 4,
-        comment: `Great value for money. The ${productName} has made maintenance so much easier. Packaging was solid and the instructions were clear.`,
-        date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 15).toLocaleDateString(),
-        avatarColor: "bg-emerald-600",
-      },
-      {
-        id: "rev-3",
-        name: "Kojo T.",
-        rating: 5,
-        comment: `This product exceeded expectations. Customer support helped me choose the right accessories to pair with the ${productName}.`,
-        date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 32).toLocaleDateString(),
-        avatarColor: "bg-amber-500",
-      },
-    ];
+  const fetchStorefrontContent = async () => {
+    try {
+      const response = await fetch(
+        "/api/public/storefront/content?keys=product_promo_banner,testimonials"
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const banner = normalizeProductPromo(data?.content?.product_promo_banner);
+        setProductPromoBanner(banner);
+        const testimonials = normalizeTestimonials(
+          data?.content?.testimonials ?? DEFAULT_STOREFRONT_CONTENT.testimonials
+        ).filter((testimonial) => testimonial.isActive !== false);
+        setReviews(testimonials);
+      } else {
+        const fallback = normalizeTestimonials(DEFAULT_STOREFRONT_CONTENT.testimonials).filter(
+          (testimonial) => testimonial.isActive !== false
+        );
+        setReviews(fallback);
+        setProductPromoBanner(normalizeProductPromo(undefined));
+      }
+    } catch (error) {
+      console.error("Failed to fetch storefront content:", error);
+      const fallback = normalizeTestimonials(DEFAULT_STOREFRONT_CONTENT.testimonials).filter(
+        (testimonial) => testimonial.isActive !== false
+      );
+      setReviews(fallback);
+      setProductPromoBanner(normalizeProductPromo(undefined));
+    }
   };
 
   const formatPrice = (price: number, currency: string = "GHS") => {
@@ -234,8 +330,13 @@ export default function ProductDetailPage() {
                           Out of Stock
                         </span>
                       )}
+                      {product.isBestDeal && (
+                        <span className="absolute top-4 left-4 bg-[#23185c] text-white text-sm px-3 py-1 rounded z-10">
+                          Best Deal
+                        </span>
+                      )}
                       {product.originalPrice && product.originalPrice > product.price && (
-                        <span className="absolute top-4 right-4 bg-green-500 text-white text-sm px-3 py-1 rounded">
+                        <span className={`absolute ${product.isBestDeal ? 'top-4 right-4' : 'top-4 right-4'} bg-green-500 text-white text-sm px-3 py-1 rounded z-10`}>
                           {getDiscountPercentage(product.price, product.originalPrice)}% OFF
                         </span>
                       )}
@@ -304,18 +405,23 @@ export default function ProductDetailPage() {
 
                 {/* Price */}
                 <div className="mb-6">
-                  <div className="flex items-baseline">
+                  <div className="flex flex-col">
                     <span className="text-3xl font-bold text-gray-900">
                       {formatPrice(product.price, product.currency)}
                     </span>
                     {product.originalPrice && product.originalPrice > product.price && (
-                      <span className="ml-3 text-xl text-gray-500 line-through">
+                      <span className="text-sm text-gray-400 line-through mt-0.5">
                         {formatPrice(product.originalPrice, product.currency)}
                       </span>
                     )}
                   </div>
                   {product.sku && (
                     <p className="text-sm text-gray-500 mt-1">SKU: {product.sku}</p>
+                  )}
+                  {product.isBestDeal && (
+                    <span className="inline-block mt-2 bg-[#23185c] text-white text-xs px-3 py-1 rounded">
+                      🎯 Best Deal Product
+                    </span>
                   )}
                 </div>
 
@@ -423,7 +529,9 @@ export default function ProductDetailPage() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">Customer Reviews</h2>
-                <p className="text-gray-500 text-sm">Hear from pool owners who purchased this product</p>
+                <p className="text-gray-500 text-sm">
+                  Hear from pool owners and facilities that trust The PoolShop.
+                </p>
               </div>
               <div className="flex items-center gap-1 text-amber-500">
                 <Star className="h-5 w-5 fill-current" />
@@ -439,36 +547,68 @@ export default function ProductDetailPage() {
             </div>
 
             {reviews.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-8 text-center">
-                <p className="text-gray-600">No reviews yet. Be the first to share your experience with this product!</p>
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-gray-600">
+                No testimonials yet. Be the first to share your experience with this product!
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-3">
-                {reviews.map((review) => (
-                  <div key={review.id} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                    <div className="flex items-center gap-3">
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-full text-white ${review.avatarColor}`}>
-                        {review.name
-                          .split(" ")
-                          .map((part) => part[0])
-                          .join("")}
+                {reviews.map((review) => {
+                  const color = review.avatarColor || "#2563eb";
+                  const isHex = typeof color === "string" && color.startsWith("#");
+                  const avatarStyle = isHex ? { backgroundColor: color } : undefined;
+                  const avatarClass = !isHex && color ? color : "";
+                  const initials =
+                    review.name
+                      .split(" ")
+                      .map((part) => part[0])
+                      .join("")
+                      .slice(0, 2) || "A";
+
+                  return (
+                    <div
+                      key={review.id}
+                      className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
+                    >
+                      <div className="flex items-center gap-3">
+                        {review.avatarImage ? (
+                          <div className="h-10 w-10 overflow-hidden rounded-full border border-gray-200 bg-gray-100">
+                            <img
+                              src={review.avatarImage}
+                              alt={`${review.name} avatar`}
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div
+                            className={`flex h-10 w-10 items-center justify-center rounded-full text-xs font-semibold uppercase text-white ${
+                              avatarClass || "bg-blue-600"
+                            }`}
+                            style={avatarStyle}
+                          >
+                            {initials}
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{review.name}</p>
+                          {review.role ? (
+                            <p className="text-xs text-gray-500">{review.role}</p>
+                          ) : null}
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">{review.name}</p>
-                        <p className="text-xs text-gray-500">{review.date}</p>
+                      <div className="mt-3 flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={`${review.id}-star-${star}`}
+                            className={`h-4 w-4 ${
+                              star <= review.rating ? "text-amber-400 fill-current" : "text-gray-300"
+                            }`}
+                          />
+                        ))}
                       </div>
+                      <p className="mt-3 text-sm text-gray-600 leading-relaxed">{review.quote}</p>
                     </div>
-                    <div className="mt-3 flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star
-                          key={`${review.id}-star-${star}`}
-                          className={`h-4 w-4 ${star <= review.rating ? "text-amber-400 fill-current" : "text-gray-300"}`}
-                        />
-                      ))}
-                    </div>
-                    <p className="mt-3 text-sm text-gray-600 leading-relaxed">{review.comment}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -500,7 +640,7 @@ export default function ProductDetailPage() {
                 <Link
                   key={item.id}
                   href={`/shop/products/${item.id}`}
-                  className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+                  className="group relative flex h-full flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl hover:border-transparent hover:ring-2 hover:ring-[#23185c] hover:ring-offset-2 hover:ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#23185c] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 >
                   <div className="relative">
                     {item.images && item.images.length > 0 ? (
@@ -545,9 +685,11 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      <section className="py-12">
-        <EcommercePromoBanner />
-      </section>
+      {productPromoBanner?.isActive !== false ? (
+        <section className="py-12">
+          <EcommercePromoBanner {...(productPromoBanner as any)} />
+        </section>
+      ) : null}
     </div>
   );
 }

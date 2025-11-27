@@ -135,6 +135,13 @@ export const ABILITIES = {
   'task-templates.edit': 'Edit task templates',
   'task-templates.delete': 'Delete task templates',
   
+  // Projects
+  'projects.view': 'View projects',
+  'projects.create': 'Create projects',
+  'projects.edit': 'Edit projects',
+  'projects.delete': 'Delete projects',
+  'projects.manage': 'Manage project configuration',
+  
   'task-categories.view': 'View task categories',
   'task-categories.create': 'Create task categories',
   'task-categories.edit': 'Edit task categories',
@@ -203,6 +210,8 @@ export const ABILITIES = {
   'lead-sources.edit': 'Edit lead sources',
   'lead-sources.delete': 'Delete lead sources',
   
+  'audit-trail.view': 'View audit trail',
+  
   'ai-settings.view': 'View AI settings',
   'ai-settings.manage': 'Manage AI settings',
   
@@ -212,6 +221,11 @@ export const ABILITIES = {
   'ecommerce-orders.create': 'Create ecommerce orders',
   'ecommerce-orders.edit': 'Edit ecommerce orders',
   'ecommerce-orders.delete': 'Delete ecommerce orders',
+  'ecommerce-abandoned-carts.view': 'View abandoned carts',
+  'ecommerce-abandoned-carts.manage': 'Manage abandoned carts',
+  
+  'ecommerce-best-deals.view': 'View best deals',
+  'ecommerce-best-deals.manage': 'Manage best deals products',
   'ecommerce-customers.view': 'View ecommerce customers',
   'ecommerce-customers.create': 'Create ecommerce customers',
   'ecommerce-customers.edit': 'Edit ecommerce customers',
@@ -226,6 +240,7 @@ export const ABILITIES = {
   'ecommerce-marketing.delete': 'Delete ecommerce marketing',
   'ecommerce-settings.view': 'View ecommerce settings',
   'ecommerce-settings.manage': 'Manage ecommerce settings',
+  'ecommerce-analytics.view': 'View ecommerce analytics',
 } as const;
 
 // Define module access mappings - what abilities are required for each module
@@ -235,9 +250,9 @@ export const MODULE_ACCESS = {
   'inventory': ['inventory.view'],
   'warehouses': ['warehouses.view'],
   'price-lists': ['price-lists.view'],
-  'crm': ['leads.view', 'accounts.view', 'opportunities.view'],
-  'leads': ['leads.view'],
-  'accounts': ['accounts.view'],
+  'crm': ['leads.view', 'leads.create', 'leads.edit', 'leads.delete', 'accounts.view', 'accounts.create', 'accounts.edit', 'accounts.delete', 'opportunities.view', 'contacts.view', 'contacts.create', 'contacts.edit', 'contacts.delete'],
+  'leads': ['leads.view', 'leads.create', 'leads.edit', 'leads.delete'],
+  'accounts': ['accounts.view', 'accounts.create', 'accounts.edit', 'accounts.delete'],
   'opportunities': ['opportunities.view'],
   'quotations': ['quotations.view'],
   'contacts': ['contacts.view'],
@@ -263,8 +278,9 @@ export const MODULE_ACCESS = {
   'email': ['email.view'],
   'email-history': ['email.view', 'email.history'],
   'tasks': ['tasks.view'],
-  'my-tasks': ['tasks.view'],
+  'my-tasks': ['tasks.view', 'tasks.create', 'tasks.edit', 'tasks.delete', 'tasks.assign'],
   'recurring-tasks': ['recurring-tasks.view'],
+  'task_templates': ['task-templates.view'],
   'agents': ['agents.view'],
   'commissions': ['commissions.view'],
   'reports': ['reports.view'],
@@ -281,14 +297,23 @@ export const MODULE_ACCESS = {
   'system-settings': ['system-settings.view'],
   'notifications': ['notifications.view'],
   'notification-templates': ['notification-templates.view'],
+  'notification_templates': ['notification-templates.view'],
   'lead-sources': ['lead-sources.view'],
+  'lead_sources': ['lead-sources.view'],
   'ai-settings': ['ai-settings.view'],
   'ecommerce': ['ecommerce.view'],
   'ecommerce-orders': ['ecommerce-orders.view'],
+  'ecommerce-abandoned-carts': ['ecommerce-abandoned-carts.view'],
+  'ecommerce-best-deals': ['ecommerce-best-deals.view'],
   'ecommerce-customers': ['ecommerce-customers.view'],
   'ecommerce-categories': ['ecommerce-categories.view'],
   'ecommerce-marketing': ['ecommerce-marketing.view'],
   'ecommerce-settings': ['ecommerce-settings.view'],
+  'ecommerce-cms': ['ecommerce-settings.view'],
+  'ecommerce-analytics': ['ecommerce-analytics.view'],
+  'projects': ['projects.view'],
+  'audit-trail': ['audit-trail.view'],
+  'modules': ['settings.view', 'system-settings.view'],
 } as const;
 
 // Define role-based abilities - single source of truth
@@ -300,6 +325,9 @@ export const ROLE_ABILITIES = {
     // Products
     'products.view', 'products.create', 'products.edit', 'products.delete',
     
+    // Projects
+    'projects.view', 'projects.create', 'projects.edit', 'projects.delete', 'projects.manage',
+    
     // Inventory
     'inventory.view', 'stock.view', 'stock.create', 'stock.edit', 'stock.delete',
     
@@ -362,12 +390,16 @@ export const ROLE_ABILITIES = {
     'notification-templates.view', 'notification-templates.create', 'notification-templates.edit', 'notification-templates.delete',
     'lead-sources.view', 'lead-sources.create', 'lead-sources.edit', 'lead-sources.delete',
     'ai-settings.view', 'ai-settings.manage',
+    'audit-trail.view',
     
     // Ecommerce
     'ecommerce.view', 'ecommerce-orders.view', 'ecommerce-orders.create', 'ecommerce-orders.edit', 'ecommerce-orders.delete',
+    'ecommerce-abandoned-carts.view', 'ecommerce-abandoned-carts.manage',
+    'ecommerce-best-deals.view', 'ecommerce-best-deals.manage',
     'ecommerce-customers.view', 'ecommerce-customers.create', 'ecommerce-customers.edit', 'ecommerce-customers.delete',
     'ecommerce-categories.view', 'ecommerce-categories.create', 'ecommerce-categories.edit', 'ecommerce-categories.delete',
     'ecommerce-marketing.view', 'ecommerce-marketing.create', 'ecommerce-marketing.edit', 'ecommerce-marketing.delete',
+    'ecommerce-analytics.view',
     'ecommerce-settings.view', 'ecommerce-settings.manage',
   ],
   
@@ -378,6 +410,9 @@ export const ROLE_ABILITIES = {
     // Products
     'products.view', 'products.create', 'products.edit', 'products.delete',
     
+    // Projects
+    'projects.view', 'projects.create', 'projects.edit', 'projects.delete', 'projects.manage',
+    
     // Inventory
     'inventory.view', 'stock.view', 'stock.create', 'stock.edit', 'stock.delete',
     
@@ -440,6 +475,17 @@ export const ROLE_ABILITIES = {
     'notification-templates.view', 'notification-templates.create', 'notification-templates.edit', 'notification-templates.delete',
     'lead-sources.view', 'lead-sources.create', 'lead-sources.edit', 'lead-sources.delete',
     'ai-settings.view', 'ai-settings.manage',
+    'audit-trail.view',
+
+    // Ecommerce
+    'ecommerce.view', 'ecommerce-orders.view', 'ecommerce-orders.create', 'ecommerce-orders.edit', 'ecommerce-orders.delete',
+    'ecommerce-abandoned-carts.view', 'ecommerce-abandoned-carts.manage',
+    'ecommerce-best-deals.view', 'ecommerce-best-deals.manage',
+    'ecommerce-customers.view', 'ecommerce-customers.create', 'ecommerce-customers.edit', 'ecommerce-customers.delete',
+    'ecommerce-categories.view', 'ecommerce-categories.create', 'ecommerce-categories.edit', 'ecommerce-categories.delete',
+    'ecommerce-marketing.view', 'ecommerce-marketing.create', 'ecommerce-marketing.edit', 'ecommerce-marketing.delete',
+    'ecommerce-analytics.view',
+    'ecommerce-settings.view', 'ecommerce-settings.manage',
   ],
   
   'SALES_MANAGER': [
@@ -467,6 +513,11 @@ export const ROLE_ABILITIES = {
     'agents.view', 'commissions.view',
     'reports.view',
     'settings.view', 'users.view',
+
+    // Ecommerce
+    'ecommerce.view', 'ecommerce-orders.view', 'ecommerce-abandoned-carts.view',
+    'ecommerce-best-deals.view', 'ecommerce-best-deals.manage',
+    'ecommerce-customers.view', 'ecommerce-categories.view', 'ecommerce-marketing.view', 'ecommerce-settings.view',
   ],
   
   'SALES_REP': [
@@ -494,6 +545,11 @@ export const ROLE_ABILITIES = {
     'agents.view', 'commissions.view',
     'reports.view',
     'settings.view', 'users.view',
+
+    // Ecommerce
+    'ecommerce.view', 'ecommerce-orders.view', 'ecommerce-abandoned-carts.view',
+    'ecommerce-best-deals.view', 'ecommerce-best-deals.manage',
+    'ecommerce-customers.view', 'ecommerce-categories.view', 'ecommerce-marketing.view', 'ecommerce-settings.view',
   ],
   
   'INVENTORY_MANAGER': [
@@ -509,6 +565,11 @@ export const ROLE_ABILITIES = {
     'recurring-tasks.view', 'recurring-tasks.create', 'recurring-tasks.edit', 'recurring-tasks.delete', 'recurring-tasks.generate',
     'reports.view',
     'settings.view', 'users.view',
+
+    // Ecommerce
+    'ecommerce.view', 'ecommerce-orders.view', 'ecommerce-abandoned-carts.view',
+    'ecommerce-best-deals.view', 'ecommerce-best-deals.manage',
+    'ecommerce-customers.view', 'ecommerce-categories.view', 'ecommerce-marketing.view', 'ecommerce-settings.view',
   ],
   
   'FINANCE_OFFICER': [
@@ -537,6 +598,10 @@ export const ROLE_ABILITIES = {
     'agents.view', 'commissions.view',
     'reports.view',
     'settings.view', 'users.view',
+
+    // Ecommerce
+    'ecommerce.view', 'ecommerce-orders.view', 'ecommerce-orders.create', 'ecommerce-orders.edit',
+    'ecommerce-customers.view', 'ecommerce-categories.view', 'ecommerce-marketing.view', 'ecommerce-settings.view',
   ],
   
   'CUSTOMER_SERVICE': [
@@ -564,6 +629,11 @@ export const ROLE_ABILITIES = {
     'agents.view', 'commissions.view',
     'reports.view',
     'settings.view', 'users.view',
+
+    // Ecommerce
+    'ecommerce.view', 'ecommerce-orders.view', 'ecommerce-abandoned-carts.view',
+    'ecommerce-best-deals.view', 'ecommerce-best-deals.manage',
+    'ecommerce-customers.view', 'ecommerce-categories.view', 'ecommerce-marketing.view', 'ecommerce-settings.view',
   ],
   
   'VIEWER': [

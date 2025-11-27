@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/contexts/toast-context";
 import { useTheme } from "@/contexts/theme-context";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 import { 
-  Shield, 
   Plus,
   ArrowLeft,
   ChevronRight,
@@ -26,88 +26,47 @@ interface Ability {
 }
 
 interface Module {
-  name: string;
+  resource: string;
+  label: string;
   icon: string;
   abilities: Ability[];
   expanded: boolean;
 }
 
-const COMPREHENSIVE_MODULES: Module[] = [
-  {
-    name: "General",
-    icon: "⚙️",
-    abilities: [
-      { id: "1", name: "users.manage", resource: "users", action: "manage", description: "Full user management" },
-      { id: "2", name: "users.create", resource: "users", action: "create", description: "Create new users" },
-      { id: "3", name: "users.edit", resource: "users", action: "edit", description: "Edit user information" },
-      { id: "4", name: "users.delete", resource: "users", action: "delete", description: "Delete users" },
-      { id: "5", name: "users.profile.manage", resource: "users", action: "profile-manage", description: "Profile management" },
-      { id: "6", name: "users.reset.password", resource: "users", action: "reset-password", description: "Reset user passwords" },
-      { id: "7", name: "users.login.manage", resource: "users", action: "login-manage", description: "Login management" },
-      { id: "8", name: "users.import", resource: "users", action: "import", description: "Import users" },
-      { id: "9", name: "users.logs.history", resource: "users", action: "logs-history", description: "View user logs" },
-      { id: "10", name: "users.chat.manage", resource: "users", action: "chat-manage", description: "Chat management" },
-      { id: "11", name: "settings.manage", resource: "settings", action: "manage", description: "System settings" },
-      { id: "12", name: "roles.manage", resource: "roles", action: "manage", description: "Role management" }
-    ],
-    expanded: true
-  },
-  {
-    name: "Sales & CRM",
-    icon: "📊",
-    abilities: [
-      { id: "13", name: "leads.manage", resource: "leads", action: "manage", description: "Lead management" },
-      { id: "14", name: "leads.show", resource: "leads", action: "show", description: "View leads" },
-      { id: "15", name: "opportunities.manage", resource: "opportunities", action: "manage", description: "Opportunity management" },
-      { id: "16", name: "opportunities.show", resource: "opportunities", action: "show", description: "View opportunities" },
-      { id: "17", name: "quotations.manage", resource: "quotations", action: "manage", description: "Quotation management" },
-      { id: "18", name: "quotations.show", resource: "quotations", action: "show", description: "View quotations" },
-      { id: "19", name: "accounts.manage", resource: "accounts", action: "manage", description: "Account management" }
-    ],
-    expanded: false
-  },
-  {
-    name: "Inventory",
-    icon: "📦",
-    abilities: [
-      { id: "20", name: "products.manage", resource: "products", action: "manage", description: "Product management" },
-      { id: "21", name: "products.create", resource: "products", action: "create", description: "Create products" },
-      { id: "22", name: "products.edit", resource: "products", action: "edit", description: "Edit products" },
-      { id: "23", name: "products.delete", resource: "products", action: "delete", description: "Delete products" },
-      { id: "24", name: "products.show", resource: "products", action: "show", description: "View products" },
-      { id: "25", name: "inventory.manage", resource: "inventory", action: "manage", description: "Inventory management" },
-      { id: "26", name: "warehouses.manage", resource: "warehouses", action: "manage", description: "Warehouse management" },
-      { id: "27", name: "stock-movements.manage", resource: "stock-movements", action: "manage", description: "Stock movement management" }
-    ],
-    expanded: false
-  },
-  {
-    name: "Finance",
-    icon: "💰",
-    abilities: [
-      { id: "28", name: "quotations.manage", resource: "quotations", action: "manage", description: "Quotation management" },
-      { id: "29", name: "quotations.show", resource: "quotations", action: "show", description: "View quotations" },
-      { id: "30", name: "invoices.manage", resource: "invoices", action: "manage", description: "Invoice management" },
-      { id: "31", name: "invoices.show", resource: "invoices", action: "show", description: "View invoices" },
-      { id: "32", name: "payments.manage", resource: "payments", action: "manage", description: "Payment management" },
-      { id: "33", name: "payments.create", resource: "payments", action: "create", description: "Create payments" },
-      { id: "34", name: "payments.delete", resource: "payments", action: "delete", description: "Delete payments" }
-    ],
-    expanded: false
-  },
-  {
-    name: "Reports",
-    icon: "📈",
-    abilities: [
-      { id: "35", name: "reports.read", resource: "reports", action: "read", description: "View reports" },
-      { id: "36", name: "reports.sales", resource: "reports", action: "sales", description: "Sales reports" },
-      { id: "37", name: "reports.inventory", resource: "reports", action: "inventory", description: "Inventory reports" },
-      { id: "38", name: "reports.financial", resource: "reports", action: "financial", description: "Financial reports" },
-      { id: "39", name: "dashboard.read", resource: "dashboard", action: "read", description: "Dashboard access" }
-    ],
-    expanded: false
-  }
-];
+const RESOURCE_ICONS: Record<string, string> = {
+  dashboard: "📊",
+  projects: "🏗️",
+  tasks: "✅",
+  incidents: "🚨",
+  inventory: "📦",
+  products: "🧱",
+  warehouses: "🏬",
+  sales: "💼",
+  invoices: "🧾",
+  payments: "💰",
+  leads: "📞",
+  accounts: "👥",
+  opportunities: "🎯",
+  quotations: "📝",
+  communication: "✉️",
+  notifications: "🔔",
+  settings: "⚙️",
+  roles: "🛡️",
+  users: "👤",
+  ecommerce: "🛒",
+  reports: "📈",
+};
+
+const formatLabel = (resource: string) => {
+  return resource
+    .split(/[-_.]/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
+const getIconForResource = (resource: string) => {
+  return RESOURCE_ICONS[resource] || "🧩";
+};
 
 export default function CreateRolePage() {
   const { success, error: showError } = useToast();
@@ -115,15 +74,75 @@ export default function CreateRolePage() {
   const theme = getThemeClasses();
   const router = useRouter();
   
-  const [modules, setModules] = useState<Module[]>(COMPREHENSIVE_MODULES);
+  const [modules, setModules] = useState<Module[]>([]);
   const [newRoleName, setNewRoleName] = useState("");
   const [newRoleDescription, setNewRoleDescription] = useState("");
   const [selectedAbilities, setSelectedAbilities] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [isLoadingModules, setIsLoadingModules] = useState(true);
+  const [abilitiesError, setAbilitiesError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    const loadAbilities = async () => {
+      try {
+        setIsLoadingModules(true);
+        setAbilitiesError(null);
+        const response = await fetch("/api/abilities/public");
+        if (!response.ok) {
+          throw new Error("Failed to load abilities");
+        }
+        const data = await response.json();
+        const abilityList: Ability[] = data.abilities || [];
+
+        const grouped = abilityList.reduce<Record<string, Module>>(
+          (acc, ability) => {
+            const resourceKey = ability.resource || "general";
+            if (!acc[resourceKey]) {
+              acc[resourceKey] = {
+                resource: resourceKey,
+                label: formatLabel(resourceKey),
+                icon: getIconForResource(resourceKey),
+                abilities: [],
+                expanded: resourceKey === "projects" || resourceKey === "dashboard",
+              };
+            }
+            acc[resourceKey].abilities.push(ability);
+            return acc;
+          },
+          {}
+        );
+
+        const sortedModules = Object.values(grouped).sort((a, b) =>
+          a.label.localeCompare(b.label)
+        );
+
+        if (!sortedModules.some((module) => module.expanded) && sortedModules[0]) {
+          sortedModules[0].expanded = true;
+        }
+
+        setModules(sortedModules);
+      } catch (error) {
+        console.error("Failed to load abilities:", error);
+        setAbilitiesError(
+          error instanceof Error ? error.message : "Failed to load abilities"
+        );
+      } finally {
+        setIsLoadingModules(false);
+      }
+    };
+
+    loadAbilities();
+  }, []);
 
   const handleCreateRole = async () => {
     if (!newRoleName.trim()) {
       showError('Role name is required');
+      return;
+    }
+
+    if (selectedAbilities.length === 0) {
+      showError('Select at least one permission for this role');
       return;
     }
 
@@ -159,7 +178,7 @@ export default function CreateRolePage() {
 
   const toggleModule = (moduleName: string) => {
     setModules(prev => prev.map(m => 
-      m.name === moduleName ? { ...m, expanded: !m.expanded } : m
+      m.resource === moduleName ? { ...m, expanded: !m.expanded } : m
     ));
   };
 
@@ -168,6 +187,120 @@ export default function CreateRolePage() {
       prev.includes(abilityId) 
         ? prev.filter(id => id !== abilityId)
         : [...prev, abilityId]
+    );
+  };
+
+  const totalAbilities = modules.reduce((sum, module) => sum + module.abilities.length, 0);
+  const selectedCount = selectedAbilities.length;
+  const uniqueModulesSelected = modules.filter((module) =>
+    module.abilities.some((ability) => selectedAbilities.includes(ability.id))
+  ).length;
+
+  const handleSelectAll = () => {
+    const allIds = modules.flatMap((module) => module.abilities.map((ability) => ability.id));
+    setSelectedAbilities(allIds);
+  };
+
+  const handleClearAll = () => {
+    setSelectedAbilities([]);
+  };
+
+  const renderModuleSection = (module: Module) => {
+    const filteredAbilities = module.abilities.filter((ability) =>
+      ability.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      ability.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      module.label.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    if (searchTerm && filteredAbilities.length === 0) {
+      return null;
+    }
+
+    const abilitiesToRender = searchTerm ? filteredAbilities : module.abilities;
+    const allSelected =
+      abilitiesToRender.length > 0 &&
+      abilitiesToRender.every((ability) => selectedAbilities.includes(ability.id));
+
+    return (
+      <div key={module.resource} className="rounded-xl border border-gray-200 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-lg">{module.icon}</span>
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">{module.label}</h3>
+              <p className="text-xs text-gray-500">
+                {abilitiesToRender.length} permission{abilitiesToRender.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => toggleModule(module.resource)}
+              className="text-xs font-medium text-gray-500 hover:text-gray-900"
+            >
+              {module.expanded ? "Collapse" : "Expand"}
+            </button>
+            <div className="h-4 w-px bg-gray-200" />
+            <button
+              type="button"
+              onClick={() => {
+                if (allSelected) {
+                  const idsToRemove = new Set(abilitiesToRender.map((ability) => ability.id));
+                  setSelectedAbilities((prev) => prev.filter((id) => !idsToRemove.has(id)));
+                } else {
+                  setSelectedAbilities((prev) => {
+                    const newIds = abilitiesToRender
+                      .map((ability) => ability.id)
+                      .filter((id) => !prev.includes(id));
+                    return [...prev, ...newIds];
+                  });
+                }
+              }}
+              className="text-xs font-medium text-blue-600 hover:text-blue-700"
+            >
+              {allSelected ? "Clear" : "Select"}
+            </button>
+          </div>
+        </div>
+
+        {module.expanded && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {abilitiesToRender.map((ability) => {
+              const isSelected = selectedAbilities.includes(ability.id);
+              return (
+                <label
+                  key={ability.id}
+                  className={cn(
+                    "flex cursor-pointer gap-3 rounded-lg border p-3 transition",
+                    isSelected
+                      ? `border-${theme.primary} bg-${theme.primaryBg}`
+                      : "border-gray-200 hover:border-gray-300"
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleAbility(ability.id)}
+                    className={`mt-1 h-4 w-4 rounded border-gray-300 text-${theme.primary} focus:ring-${theme.primary}`}
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">{ability.name}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getActionColor(ability.action)}`}>
+                        {ability.action}
+                      </span>
+                    </div>
+                    {ability.description && (
+                      <p className="mt-1 text-xs text-gray-500">{ability.description}</p>
+                    )}
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -216,7 +349,7 @@ export default function CreateRolePage() {
             </Button>
             <Button
               onClick={handleCreateRole}
-              disabled={isCreating || !newRoleName.trim()}
+              disabled={isCreating || !newRoleName.trim() || selectedAbilities.length === 0}
               className={`bg-${theme.primary} hover:bg-${theme.primaryDark} text-white`}
             >
               {isCreating ? (
@@ -234,31 +367,30 @@ export default function CreateRolePage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Panel - Role Configuration */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* Role Configuration Form */}
-            <Card>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="space-y-6">
+            <Card className="shadow-sm">
               <CardHeader>
-                <CardTitle>Role Configuration</CardTitle>
+                <CardTitle>Role Information</CardTitle>
+                <p className="text-sm text-gray-500">
+                  Give the role a clear identity before mapping permissions.
+                </p>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Name *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
                   <Input
-                    placeholder="Enter Role Name"
+                    placeholder="e.g., Project Coordinator"
                     value={newRoleName}
                     onChange={(e) => setNewRoleName(e.target.value)}
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <Input
-                    placeholder="Role description"
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Description</label>
+                  <textarea
+                    rows={4}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Describe what this role is responsible for..."
                     value={newRoleDescription}
                     onChange={(e) => setNewRoleDescription(e.target.value)}
                   />
@@ -266,139 +398,135 @@ export default function CreateRolePage() {
               </CardContent>
             </Card>
 
-            {/* Module Navigation */}
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader>
-                <CardTitle>Modules</CardTitle>
+                <CardTitle>Selection Summary</CardTitle>
+                <p className="text-sm text-gray-500">
+                  Monitor coverage and finalize when ready.
+                </p>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {modules.map((module) => (
-                    <button
-                      key={module.name}
-                      onClick={() => toggleModule(module.name)}
-                      className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${
-                        module.expanded ? `bg-${theme.primaryBg} border border-${theme.primaryBorder}` : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <span className="text-lg">{module.icon}</span>
-                        <span className="font-medium text-gray-900">{module.name}</span>
-                      </div>
-                      {module.expanded ? (
-                        <ChevronDown className="h-4 w-4 text-gray-500" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4 text-gray-500" />
-                      )}
-                    </button>
-                  ))}
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3 text-center">
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-2xl font-bold text-gray-900">{selectedCount}</p>
+                    <p className="text-xs text-gray-500">Permissions Selected</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-2xl font-bold text-gray-900">{uniqueModulesSelected}</p>
+                    <p className="text-xs text-gray-500">Modules Covered</p>
+                  </div>
                 </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSelectAll}
+                    className={`rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-${theme.primary}`}
+                  >
+                    Select All ({totalAbilities})
+                  </button>
+                    <button
+                    type="button"
+                    onClick={handleClearAll}
+                    className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-500"
+                  >
+                    Clear All
+                    </button>
+                </div>
+
+                {selectedAbilities.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium uppercase text-gray-500">Recent picks</p>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedAbilities.slice(-6).map((abilityId) => (
+                        <span
+                          key={abilityId}
+                          className="rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-700"
+                        >
+                          {abilityId}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleCreateRole}
+                  disabled={isCreating || !newRoleName.trim() || selectedAbilities.length === 0}
+                  className={`w-full bg-${theme.primary} hover:bg-${theme.primaryDark} text-white`}
+                >
+                  {isCreating ? (
+                    <>
+                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Create Role
+                    </>
+                  )}
+                </Button>
+                <p className="text-center text-xs text-gray-500">
+                  Roles are activated immediately after creation.
+                </p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Right Panel - Permissions */}
-          <div className="lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Permissions</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {modules.map((module) => (
-                    <div key={module.name}>
-                      <div className="flex items-center space-x-3 mb-4">
-                        <span className="text-lg">{module.icon}</span>
-                        <h3 className="text-lg font-medium text-gray-900">{module.name}</h3>
-                      </div>
-                      
-                      {module.expanded && (
-                        <div className="space-y-4">
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              id={`module-${module.name}`}
-                              checked={module.abilities.every(a => selectedAbilities.includes(a.id))}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedAbilities(prev => [
-                                    ...prev,
-                                    ...module.abilities.map(a => a.id).filter(id => !prev.includes(id))
-                                  ]);
-                                } else {
-                                  setSelectedAbilities(prev => 
-                                    prev.filter(id => !module.abilities.map(a => a.id).includes(id))
-                                  );
-                                }
-                              }}
-                              className={`h-4 w-4 text-${theme.primary} focus:ring-${theme.primary} border-gray-300 rounded`}
-                            />
-                            <label htmlFor={`module-${module.name}`} className="text-sm font-medium text-gray-700">
-                              Assign {module.name} Permission to Roles
-                            </label>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {module.abilities.map((ability) => (
-                              <div
-                                key={ability.id}
-                                className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                              >
-                                <input
-                                  type="checkbox"
-                                  id={`ability-${ability.id}`}
-                                  checked={selectedAbilities.includes(ability.id)}
-                                  onChange={() => toggleAbility(ability.id)}
-                                  className={`h-4 w-4 text-${theme.primary} focus:ring-${theme.primary} border-gray-300 rounded`}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center space-x-2">
-                                    <label htmlFor={`ability-${ability.id}`} className="text-sm font-medium text-gray-900 cursor-pointer">
-                                      {ability.name}
-                                    </label>
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getActionColor(ability.action)}`}>
-                                      {ability.action}
-                                    </span>
-                                  </div>
-                                  {ability.description && (
-                                    <p className="text-xs text-gray-600 mt-1">{ability.description}</p>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+          <div className="lg:col-span-2 space-y-6">
+            <Card className="shadow-sm">
+              <CardHeader className="space-y-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <CardTitle>Permissions Catalog</CardTitle>
+                    <p className="text-sm text-gray-500">
+                      Expand a module and tick the exact permissions this role should own.
+                    </p>
+                  </div>
+                  <div className="relative w-full lg:w-72">
+                    <input
+                      type="search"
+                      placeholder="Quick search permissions..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isLoadingModules ? (
+                  <div className="py-12 text-center text-gray-500">Loading abilities...</div>
+                ) : abilitiesError ? (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-center text-sm text-red-600">
+                    {abilitiesError}
+                      </div>
+                ) : modules.length === 0 ? (
+                  <div className="py-12 text-center text-gray-500">
+                    No modules available. Sync your permissions and try again.
+                          </div>
+                ) : (
+                  (() => {
+                    const rendered = modules
+                      .map((module) => renderModuleSection(module))
+                      .filter(Boolean) as JSX.Element[];
+
+                    if (rendered.length === 0) {
+                      return (
+                        <div className="py-12 text-center text-gray-500">
+                          No permissions match “{searchTerm}”.
+                        </div>
+                      );
+                    }
+
+                    return rendered;
+                  })()
+                      )}
               </CardContent>
             </Card>
           </div>
         </div>
-
-        {/* Summary */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Role Summary</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <p className="text-sm font-medium text-gray-700">Role Name</p>
-                <p className="text-lg text-gray-900">{newRoleName || "Not specified"}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-700">Description</p>
-                <p className="text-lg text-gray-900">{newRoleDescription || "No description"}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-700">Selected Permissions</p>
-                <p className="text-lg text-gray-900">{selectedAbilities.length} permissions</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </>
   );

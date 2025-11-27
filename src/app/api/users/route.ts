@@ -3,7 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { NotificationService, SystemNotificationTriggers } from "@/lib/notification-service";
+import { logAuditEvent } from "@/lib/audit-log";
 import bcrypt from "bcryptjs";
+import { parseTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
+import { mapRoleNameToUserRole, syncUserRoleAssignments } from "@/lib/user-role-service";
 
 // GET /api/users - Get all users with pagination
 export async function GET(request: NextRequest) {
@@ -13,41 +16,41 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const search = searchParams.get('search') || '';
-    const role = searchParams.get('role') || '';
-    const status = searchParams.get('status') || '';
+    const params = parseTableQuery(request);
 
+    // Custom filter handler
+    const customFilters = (filters: Record<string, string | string[] | null>) => {
+      const where: any = {};
+
+      if (filters.role) {
+        where.role = filters.role;
+      }
+
+      if (filters.status === 'active') {
+        where.isActive = true;
+      } else if (filters.status === 'inactive') {
+        where.isActive = false;
+      }
+
+      return where;
+    };
+
+    const where = buildWhereClause(params, {
+      searchFields: ['name', 'email', 'phone'],
+      customFilters,
+    });
+
+    const orderBy = buildOrderBy(params.sortBy, params.sortOrder);
+    const page = params.page || 1;
+    const limit = params.limit || 10;
     const skip = (page - 1) * limit;
-
-    // Build where clause
-    const where: any = {};
-    
-    if (search) {
-      where.OR = [
-        { name: { contains: search } },
-        { email: { contains: search } }
-      ];
-    }
-
-    if (role) {
-      where.role = role;
-    }
-
-    if (status === 'active') {
-      where.isActive = true;
-    } else if (status === 'inactive') {
-      where.isActive = false;
-    }
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
         where,
+        orderBy,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
         select: {
           id: true,
           email: true,
@@ -59,8 +62,13 @@ export async function GET(request: NextRequest) {
           emailVerified: true,
           phoneVerified: true,
           createdAt: true,
-          updatedAt: true
-        } as any
+          updatedAt: true,
+          userRoles: {
+            include: {
+              role: true,
+            },
+          },
+        },
       }),
       prisma.user.count({ where })
     ]);
@@ -72,7 +80,13 @@ export async function GET(request: NextRequest) {
         limit,
         total,
         pages: Math.ceil(total / limit)
-      }
+      },
+      sort: params.sortBy
+        ? {
+            field: params.sortBy,
+            order: params.sortOrder || 'desc',
+          }
+        : undefined,
     });
   } catch (error) {
     console.error('Error fetching users:', error);
@@ -92,7 +106,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { email, name, phone, password, role, sendInvitation = true } = body;
+    const { email, name, phone, password, role, roleIds = [], sendInvitation = true } = body;
 
     // Validate required fields
     if (!email) {
@@ -121,36 +135,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Map role name to enum value
-    const roleMapping: { [key: string]: string } = {
-      'Super Admin': 'ADMIN',
-      'Administrator': 'ADMIN', 
-      'Sales Manager': 'SALES_MANAGER',
-      'Sales Rep': 'SALES_REP',
-      'Staff': 'SALES_REP',
-      'Inventory Manager': 'INVENTORY_MANAGER',
-      'Finance Officer': 'FINANCE_OFFICER',
-      'Executive Viewer': 'EXECUTIVE_VIEWER'
-    };
+    if (roleIds && !Array.isArray(roleIds)) {
+      return NextResponse.json(
+        { error: "roleIds must be an array" },
+        { status: 400 }
+      );
+    }
 
-    const mappedRole = roleMapping[role || ''] || 'SALES_REP';
-    console.log('Original role:', role);
-    console.log('Mapped role:', mappedRole);
+    const mappedRole = mapRoleNameToUserRole(role) || 'SALES_REP';
 
     // Hash password (required, validated above)
     const hashedPassword = await bcrypt.hash(password, 10);
     console.log('✅ Password hashed successfully');
 
     // Create user
-    const user = await prisma.user.create({
+    let user = await prisma.user.create({
       data: {
         email,
         name,
         phone,
         password: hashedPassword,
-        role: mappedRole as any,
+        role: mappedRole,
         isActive: true
-      } as any,
+      },
       select: {
         id: true,
         email: true,
@@ -160,6 +167,33 @@ export async function POST(request: NextRequest) {
         createdAt: true
       } as any
     });
+
+    if (Array.isArray(roleIds) && roleIds.length > 0) {
+      const assignmentResult = await syncUserRoleAssignments(
+        user.id,
+        roleIds,
+        (session.user as any).id
+      );
+
+      const primaryAssignedRole = assignmentResult.roles[0]?.name;
+      const derivedRole = mapRoleNameToUserRole(primaryAssignedRole);
+
+      if (derivedRole && derivedRole !== user.role) {
+        const updatedUser = await prisma.user.update({
+          where: { id: user.id },
+          data: { role: derivedRole },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            isActive: true,
+            createdAt: true
+          }
+        });
+        user = updatedUser;
+      }
+    }
 
     // Send notification to the new user
     if (sendInvitation && user.name) {
@@ -190,16 +224,13 @@ export async function POST(request: NextRequest) {
       // await sendUserInvitation(user.email, user.name);
     }
 
-    // Log audit trail (temporarily disabled due to foreign key constraint)
-    // await prisma.auditLog.create({
-    //   data: {
-    //     userId: session.user.id,
-    //     action: 'user.created',
-    //     resource: 'User',
-    //     resourceId: user.id,
-    //     newData: user
-    //   }
-    // });
+    await logAuditEvent({
+      userId: (session.user as any).id,
+      action: 'user.created',
+      resource: 'User',
+      resourceId: user.id,
+      newData: user,
+    });
 
     return NextResponse.json({ user }, { status: 201 });
   } catch (error) {

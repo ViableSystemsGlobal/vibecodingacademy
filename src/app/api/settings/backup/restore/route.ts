@@ -127,12 +127,12 @@ export async function POST(request: NextRequest) {
 
     } else {
       // Handle old format (database only)
-      await writeFile(dbPath, buffer);
+    await writeFile(dbPath, buffer);
 
-      return NextResponse.json({
-        success: true,
+    return NextResponse.json({
+      success: true,
         message: 'Database restored successfully (legacy format - files not included)'
-      });
+    });
     }
 
   } catch (error) {

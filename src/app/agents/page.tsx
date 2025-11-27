@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,10 +55,19 @@ export default function AgentsPage() {
   const { success, error: showError } = useToast();
   
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [filteredAgents, setFilteredAgents] = useState<Agent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState<string>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
   // Metrics
   const [metrics, setMetrics] = useState({
@@ -80,6 +89,7 @@ export default function AgentsPage() {
       completed: false,
       onAction: () => {
         setStatusFilter('ACTIVE');
+        setCurrentPage(1);
         success('Filter Applied', 'Showing active agents only');
       }
     },
@@ -113,67 +123,97 @@ export default function AgentsPage() {
     console.log('Recommendation completed:', id);
   };
 
+  // Initial load on mount
   useEffect(() => {
-    console.log('🚀 Agents page mounted, starting fetchAgents...');
-    fetchAgents();
+    fetchAgents(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Effect for filters and sorting (skip initial mount)
   useEffect(() => {
-    filterAgents();
-  }, [agents, searchTerm, statusFilter]);
+    const isInitialMount = currentPage === 1 && !searchTerm && !statusFilter && !sortBy;
+    if (isInitialMount) {
+      return;
+    }
+    fetchAgents(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, sortBy, sortOrder]);
 
-  const fetchAgents = async () => {
+  // Debounced search effect (including when cleared)
+  const isMountedRef = useRef(false);
+  useEffect(() => {
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      return;
+    }
+    
+    const timeoutId = setTimeout(() => {
+      setCurrentPage(1);
+      fetchAgents(1);
+    }, searchTerm ? 500 : 0);
+
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm]);
+
+  const fetchAgents = async (page: number = currentPage) => {
     try {
       setIsLoading(true);
-      console.log('🔍 Fetching agents...');
-      const response = await fetch('/api/agents');
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('limit', itemsPerPage.toString());
+      
+      if (searchTerm) {
+        params.append('search', searchTerm);
+      }
+      if (statusFilter && statusFilter !== 'ALL') {
+        params.append('status', statusFilter);
+      }
+      if (sortBy) {
+        params.append('sortBy', sortBy);
+      }
+      if (sortOrder) {
+        params.append('sortOrder', sortOrder);
+      }
+      
+      const response = await fetch(`/api/agents?${params.toString()}`, {
+        credentials: 'include',
+      });
+      
       if (!response.ok) throw new Error('Failed to fetch agents');
       
       const data = await response.json();
-      console.log('📊 Agents data:', data);
-      setAgents(data.agents);
+      setAgents(Array.isArray(data.agents) ? data.agents : []);
+      setTotalPages(data.pagination?.pages || 1);
+      setTotalItems(data.pagination?.total || 0);
+      setCurrentPage(page);
       
-      // Calculate metrics
+      // Calculate metrics from current page data (or fetch separately if needed)
       const activeAgents = data.agents.filter((a: Agent) => a.status === 'ACTIVE');
       const totalCommissions = data.agents.reduce((sum: number, a: Agent) => sum + a.totalCommissions, 0);
       const pendingCommissions = data.agents.reduce((sum: number, a: Agent) => sum + a.pendingCommissions, 0);
       
       setMetrics({
-        totalAgents: data.agents.length,
-        activeAgents: activeAgents.length,
+        totalAgents: data.pagination?.total || 0,
+        activeAgents: activeAgents.length, // This is only for current page, consider fetching separately
         totalCommissions,
         pendingCommissions
       });
-      console.log('✅ Agents loaded successfully');
     } catch (error) {
       console.error('❌ Error fetching agents:', error);
       showError('Error', 'Failed to load agents');
+      setAgents([]);
+      setTotalPages(1);
+      setTotalItems(0);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const filterAgents = () => {
-    let filtered = agents;
-
-    // Status filter
-    if (statusFilter !== "ALL") {
-      filtered = filtered.filter(agent => agent.status === statusFilter);
-    }
-
-    // Search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(agent =>
-        agent.user.name?.toLowerCase().includes(term) ||
-        agent.user.email?.toLowerCase().includes(term) ||
-        agent.agentCode.toLowerCase().includes(term) ||
-        agent.territory?.toLowerCase().includes(term) ||
-        agent.team?.toLowerCase().includes(term)
-      );
-    }
-
-    setFilteredAgents(filtered);
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
   };
 
   const handleDeleteAgent = async (id: string) => {
@@ -190,7 +230,7 @@ export default function AgentsPage() {
       }
 
       success('Success', 'Agent deleted successfully');
-      fetchAgents();
+      await fetchAgents(currentPage);
     } catch (error: any) {
       showError('Error', error.message);
     }
@@ -413,10 +453,13 @@ export default function AgentsPage() {
               
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
               >
-                <option value="ALL">All Status</option>
+                <option value="">All Status</option>
                 <option value="ACTIVE">Active</option>
                 <option value="INACTIVE">Inactive</option>
                 <option value="ON_LEAVE">On Leave</option>
@@ -432,21 +475,52 @@ export default function AgentsPage() {
             <CardTitle>Agents List</CardTitle>
           </CardHeader>
           <CardContent>
-            {filteredAgents.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600">
-                  {searchTerm || statusFilter !== "ALL" 
-                    ? "No agents found matching your filters" 
-                    : "No agents yet. Add your first agent to get started."}
-                </p>
-              </div>
-            ) : (
-              <DataTable
-                data={filteredAgents}
-                columns={columns}
-              />
-            )}
+            <DataTable
+              data={agents}
+              columns={columns.map(col => ({
+                ...col,
+                sortable: col.key !== 'actions' && col.key !== 'commissions',
+                exportable: col.key !== 'actions',
+                exportFormat: col.key === 'status' 
+                  ? (agent: Agent) => agent.status
+                  : col.key === 'commissions'
+                  ? (agent: Agent) => `${formatCurrency(agent.totalCommissions)} (${agent.commissionCount})`
+                  : undefined
+              }))}
+              itemsPerPage={itemsPerPage}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              onPageChange={(page) => {
+                setCurrentPage(page);
+                fetchAgents(page);
+              }}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSortChange={handleSortChange}
+              searchValue={searchTerm}
+              onSearchChange={setSearchTerm}
+              searchPlaceholder="Search agents by name, email, code, territory, or team..."
+              enableExport={true}
+              exportFilename="agents"
+              isLoading={isLoading}
+              customFilters={
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Status</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="INACTIVE">Inactive</option>
+                  <option value="ON_LEAVE">On Leave</option>
+                  <option value="TERMINATED">Terminated</option>
+                </select>
+              }
+            />
           </CardContent>
         </Card>
       </div>

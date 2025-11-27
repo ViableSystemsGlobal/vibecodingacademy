@@ -41,14 +41,79 @@ export async function GET(request: NextRequest) {
           fromName: await getSettingValue('SMTP_FROM_NAME', 'AdPools Group')
         },
         notifications: {
+          // Inventory
           stock_low: (await getSettingValue('EMAIL_STOCK_LOW', 'false')) === 'true',
           stock_out: (await getSettingValue('EMAIL_STOCK_OUT', 'false')) === 'true',
+          stock_movement: (await getSettingValue('EMAIL_STOCK_MOVEMENT', 'false')) === 'true',
+          warehouse_update: (await getSettingValue('EMAIL_WAREHOUSE_UPDATE', 'false')) === 'true',
+          // Orders
           new_order: (await getSettingValue('EMAIL_NEW_ORDER', 'false')) === 'true',
           order_status: (await getSettingValue('EMAIL_ORDER_STATUS', 'false')) === 'true',
+          order_cancelled: (await getSettingValue('EMAIL_ORDER_CANCELLED', 'false')) === 'true',
+          backorder_created: (await getSettingValue('EMAIL_BACKORDER_CREATED', 'false')) === 'true',
+          // Payments
           payment_received: (await getSettingValue('EMAIL_PAYMENT_RECEIVED', 'false')) === 'true',
+          payment_failed: (await getSettingValue('EMAIL_PAYMENT_FAILED', 'false')) === 'true',
+          payment_refunded: (await getSettingValue('EMAIL_PAYMENT_REFUNDED', 'false')) === 'true',
+          // Invoices
+          invoice_created: (await getSettingValue('EMAIL_INVOICE_CREATED', 'false')) === 'true',
+          invoice_sent: (await getSettingValue('EMAIL_INVOICE_SENT', 'false')) === 'true',
+          invoice_overdue: (await getSettingValue('EMAIL_INVOICE_OVERDUE', 'false')) === 'true',
+          invoice_paid: (await getSettingValue('EMAIL_INVOICE_PAID', 'false')) === 'true',
+          // Quotations
+          quotation_created: (await getSettingValue('EMAIL_QUOTATION_CREATED', 'false')) === 'true',
+          quotation_sent: (await getSettingValue('EMAIL_QUOTATION_SENT', 'false')) === 'true',
+          quotation_accepted: (await getSettingValue('EMAIL_QUOTATION_ACCEPTED', 'false')) === 'true',
+          quotation_expired: (await getSettingValue('EMAIL_QUOTATION_EXPIRED', 'false')) === 'true',
+          // Projects
+          project_created: (await getSettingValue('EMAIL_PROJECT_CREATED', 'false')) === 'true',
+          project_updated: (await getSettingValue('EMAIL_PROJECT_UPDATED', 'false')) === 'true',
+          project_completed: (await getSettingValue('EMAIL_PROJECT_COMPLETED', 'false')) === 'true',
+          project_member_added: (await getSettingValue('EMAIL_PROJECT_MEMBER_ADDED', 'false')) === 'true',
+          // Tasks
+          task_created: (await getSettingValue('EMAIL_TASK_CREATED', 'false')) === 'true',
+          task_assigned: (await getSettingValue('EMAIL_TASK_ASSIGNED', 'false')) === 'true',
+          task_due_soon: (await getSettingValue('EMAIL_TASK_DUE_SOON', 'false')) === 'true',
+          task_overdue: (await getSettingValue('EMAIL_TASK_OVERDUE', 'false')) === 'true',
+          task_completed: (await getSettingValue('EMAIL_TASK_COMPLETED', 'false')) === 'true',
+          task_comment: (await getSettingValue('EMAIL_TASK_COMMENT', 'false')) === 'true',
+          // Leads
+          lead_created: (await getSettingValue('EMAIL_LEAD_CREATED', 'false')) === 'true',
+          lead_assigned: (await getSettingValue('EMAIL_LEAD_ASSIGNED', 'false')) === 'true',
+          lead_owner_notification: (await getSettingValue('EMAIL_LEAD_OWNER_NOTIFICATION', 'false')) === 'true',
+          lead_welcome: (await getSettingValue('EMAIL_LEAD_WELCOME', 'false')) === 'true',
+          lead_converted: (await getSettingValue('EMAIL_LEAD_CONVERTED', 'false')) === 'true',
+          // Opportunities
+          opportunity_created: (await getSettingValue('EMAIL_OPPORTUNITY_CREATED', 'false')) === 'true',
+          opportunity_won: (await getSettingValue('EMAIL_OPPORTUNITY_WON', 'false')) === 'true',
+          opportunity_lost: (await getSettingValue('EMAIL_OPPORTUNITY_LOST', 'false')) === 'true',
+          // Accounts & Contacts
+          account_created: (await getSettingValue('EMAIL_ACCOUNT_CREATED', 'false')) === 'true',
+          contact_created: (await getSettingValue('EMAIL_CONTACT_CREATED', 'false')) === 'true',
+          // Ecommerce
+          ecommerce_order_placed: (await getSettingValue('EMAIL_ECOMMERCE_ORDER_PLACED', 'false')) === 'true',
+          ecommerce_order_status: (await getSettingValue('EMAIL_ECOMMERCE_ORDER_STATUS', 'false')) === 'true',
+          ecommerce_customer_registered: (await getSettingValue('EMAIL_ECOMMERCE_CUSTOMER_REGISTERED', 'false')) === 'true',
+          ecommerce_product_low_stock: (await getSettingValue('EMAIL_ECOMMERCE_PRODUCT_LOW_STOCK', 'false')) === 'true',
+          // DRM
+          distributor_lead_created: (await getSettingValue('EMAIL_DISTRIBUTOR_LEAD_CREATED', 'false')) === 'true',
+          distributor_approved: (await getSettingValue('EMAIL_DISTRIBUTOR_APPROVED', 'false')) === 'true',
+          drm_order_created: (await getSettingValue('EMAIL_DRM_ORDER_CREATED', 'false')) === 'true',
+          // Commissions
+          commission_calculated: (await getSettingValue('EMAIL_COMMISSION_CALCULATED', 'false')) === 'true',
+          commission_paid: (await getSettingValue('EMAIL_COMMISSION_PAID', 'false')) === 'true',
+          // Users & System
           user_created: (await getSettingValue('EMAIL_USER_CREATED', 'false')) === 'true',
           user_login: (await getSettingValue('EMAIL_USER_LOGIN', 'false')) === 'true',
-          system_backup: (await getSettingValue('EMAIL_SYSTEM_BACKUP', 'false')) === 'true'
+          user_role_changed: (await getSettingValue('EMAIL_USER_ROLE_CHANGED', 'false')) === 'true',
+          system_backup: (await getSettingValue('EMAIL_SYSTEM_BACKUP', 'false')) === 'true',
+          system_error: (await getSettingValue('EMAIL_SYSTEM_ERROR', 'false')) === 'true',
+          // Communication
+          email_campaign_sent: (await getSettingValue('EMAIL_EMAIL_CAMPAIGN_SENT', 'false')) === 'true',
+          sms_campaign_sent: (await getSettingValue('EMAIL_SMS_CAMPAIGN_SENT', 'false')) === 'true',
+          // Reports
+          report_generated: (await getSettingValue('EMAIL_REPORT_GENERATED', 'false')) === 'true',
+          analytics_alert: (await getSettingValue('EMAIL_ANALYTICS_ALERT', 'false')) === 'true'
         }
       },
       sms: {
@@ -61,14 +126,79 @@ export async function GET(request: NextRequest) {
           baseUrl: await getSettingValue('SMS_BASE_URL', 'https://deywuro.com/api')
         },
         notifications: {
+          // Inventory
           stock_low: (await getSettingValue('SMS_STOCK_LOW', 'false')) === 'true',
           stock_out: (await getSettingValue('SMS_STOCK_OUT', 'false')) === 'true',
+          stock_movement: (await getSettingValue('SMS_STOCK_MOVEMENT', 'false')) === 'true',
+          warehouse_update: (await getSettingValue('SMS_WAREHOUSE_UPDATE', 'false')) === 'true',
+          // Orders
           new_order: (await getSettingValue('SMS_NEW_ORDER', 'false')) === 'true',
           order_status: (await getSettingValue('SMS_ORDER_STATUS', 'false')) === 'true',
+          order_cancelled: (await getSettingValue('SMS_ORDER_CANCELLED', 'false')) === 'true',
+          backorder_created: (await getSettingValue('SMS_BACKORDER_CREATED', 'false')) === 'true',
+          // Payments
           payment_received: (await getSettingValue('SMS_PAYMENT_RECEIVED', 'false')) === 'true',
+          payment_failed: (await getSettingValue('SMS_PAYMENT_FAILED', 'false')) === 'true',
+          payment_refunded: (await getSettingValue('SMS_PAYMENT_REFUNDED', 'false')) === 'true',
+          // Invoices
+          invoice_created: (await getSettingValue('SMS_INVOICE_CREATED', 'false')) === 'true',
+          invoice_sent: (await getSettingValue('SMS_INVOICE_SENT', 'false')) === 'true',
+          invoice_overdue: (await getSettingValue('SMS_INVOICE_OVERDUE', 'false')) === 'true',
+          invoice_paid: (await getSettingValue('SMS_INVOICE_PAID', 'false')) === 'true',
+          // Quotations
+          quotation_created: (await getSettingValue('SMS_QUOTATION_CREATED', 'false')) === 'true',
+          quotation_sent: (await getSettingValue('SMS_QUOTATION_SENT', 'false')) === 'true',
+          quotation_accepted: (await getSettingValue('SMS_QUOTATION_ACCEPTED', 'false')) === 'true',
+          quotation_expired: (await getSettingValue('SMS_QUOTATION_EXPIRED', 'false')) === 'true',
+          // Projects
+          project_created: (await getSettingValue('SMS_PROJECT_CREATED', 'false')) === 'true',
+          project_updated: (await getSettingValue('SMS_PROJECT_UPDATED', 'false')) === 'true',
+          project_completed: (await getSettingValue('SMS_PROJECT_COMPLETED', 'false')) === 'true',
+          project_member_added: (await getSettingValue('SMS_PROJECT_MEMBER_ADDED', 'false')) === 'true',
+          // Tasks
+          task_created: (await getSettingValue('SMS_TASK_CREATED', 'false')) === 'true',
+          task_assigned: (await getSettingValue('SMS_TASK_ASSIGNED', 'false')) === 'true',
+          task_due_soon: (await getSettingValue('SMS_TASK_DUE_SOON', 'false')) === 'true',
+          task_overdue: (await getSettingValue('SMS_TASK_OVERDUE', 'false')) === 'true',
+          task_completed: (await getSettingValue('SMS_TASK_COMPLETED', 'false')) === 'true',
+          task_comment: (await getSettingValue('SMS_TASK_COMMENT', 'false')) === 'true',
+          // Leads
+          lead_created: (await getSettingValue('SMS_LEAD_CREATED', 'false')) === 'true',
+          lead_assigned: (await getSettingValue('SMS_LEAD_ASSIGNED', 'false')) === 'true',
+          lead_owner_notification: (await getSettingValue('SMS_LEAD_OWNER_NOTIFICATION', 'false')) === 'true',
+          lead_welcome: (await getSettingValue('SMS_LEAD_WELCOME', 'false')) === 'true',
+          lead_converted: (await getSettingValue('SMS_LEAD_CONVERTED', 'false')) === 'true',
+          // Opportunities
+          opportunity_created: (await getSettingValue('SMS_OPPORTUNITY_CREATED', 'false')) === 'true',
+          opportunity_won: (await getSettingValue('SMS_OPPORTUNITY_WON', 'false')) === 'true',
+          opportunity_lost: (await getSettingValue('SMS_OPPORTUNITY_LOST', 'false')) === 'true',
+          // Accounts & Contacts
+          account_created: (await getSettingValue('SMS_ACCOUNT_CREATED', 'false')) === 'true',
+          contact_created: (await getSettingValue('SMS_CONTACT_CREATED', 'false')) === 'true',
+          // Ecommerce
+          ecommerce_order_placed: (await getSettingValue('SMS_ECOMMERCE_ORDER_PLACED', 'false')) === 'true',
+          ecommerce_order_status: (await getSettingValue('SMS_ECOMMERCE_ORDER_STATUS', 'false')) === 'true',
+          ecommerce_customer_registered: (await getSettingValue('SMS_ECOMMERCE_CUSTOMER_REGISTERED', 'false')) === 'true',
+          ecommerce_product_low_stock: (await getSettingValue('SMS_ECOMMERCE_PRODUCT_LOW_STOCK', 'false')) === 'true',
+          // DRM
+          distributor_lead_created: (await getSettingValue('SMS_DISTRIBUTOR_LEAD_CREATED', 'false')) === 'true',
+          distributor_approved: (await getSettingValue('SMS_DISTRIBUTOR_APPROVED', 'false')) === 'true',
+          drm_order_created: (await getSettingValue('SMS_DRM_ORDER_CREATED', 'false')) === 'true',
+          // Commissions
+          commission_calculated: (await getSettingValue('SMS_COMMISSION_CALCULATED', 'false')) === 'true',
+          commission_paid: (await getSettingValue('SMS_COMMISSION_PAID', 'false')) === 'true',
+          // Users & System
           user_created: (await getSettingValue('SMS_USER_CREATED', 'false')) === 'true',
           user_login: (await getSettingValue('SMS_USER_LOGIN', 'false')) === 'true',
-          system_backup: (await getSettingValue('SMS_SYSTEM_BACKUP', 'false')) === 'true'
+          user_role_changed: (await getSettingValue('SMS_USER_ROLE_CHANGED', 'false')) === 'true',
+          system_backup: (await getSettingValue('SMS_SYSTEM_BACKUP', 'false')) === 'true',
+          system_error: (await getSettingValue('SMS_SYSTEM_ERROR', 'false')) === 'true',
+          // Communication
+          email_campaign_sent: (await getSettingValue('SMS_EMAIL_CAMPAIGN_SENT', 'false')) === 'true',
+          sms_campaign_sent: (await getSettingValue('SMS_SMS_CAMPAIGN_SENT', 'false')) === 'true',
+          // Reports
+          report_generated: (await getSettingValue('SMS_REPORT_GENERATED', 'false')) === 'true',
+          analytics_alert: (await getSettingValue('SMS_ANALYTICS_ALERT', 'false')) === 'true'
         }
       },
       taskNotifications: {

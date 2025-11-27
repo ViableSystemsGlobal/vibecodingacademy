@@ -166,9 +166,8 @@ export async function PUT(
       followUpDate,
     });
 
-    const lead = await prisma.lead.update({
-      where: { id: id },
-      data: {
+    // Build update data object, only including fields that are explicitly provided
+    const updateData: any = {
         firstName,
         lastName,
         email,
@@ -180,10 +179,27 @@ export async function PUT(
         notes,
         subject: subject as any,
         leadType: leadType as any,
-        assignedTo: assignedTo && Array.isArray(assignedTo) && assignedTo.length > 0 ? JSON.stringify(assignedTo) : null,
-        interestedProducts: interestedProducts && Array.isArray(interestedProducts) && interestedProducts.length > 0 ? JSON.stringify(interestedProducts) : null,
         followUpDate: followUpDate ? new Date(followUpDate) : null,
-      } as any,
+    };
+
+    // Only update assignedTo if it's explicitly provided in the body
+    // This preserves existing assignees when converting leads
+    if (assignedTo !== undefined) {
+      updateData.assignedTo = assignedTo && Array.isArray(assignedTo) && assignedTo.length > 0 
+        ? JSON.stringify(assignedTo) 
+        : null;
+    }
+
+    // Only update interestedProducts if it's explicitly provided in the body
+    if (interestedProducts !== undefined) {
+      updateData.interestedProducts = interestedProducts && Array.isArray(interestedProducts) && interestedProducts.length > 0 
+        ? JSON.stringify(interestedProducts) 
+        : null;
+    }
+
+    const lead = await prisma.lead.update({
+      where: { id: id },
+      data: updateData,
       include: {
         owner: {
           select: { id: true, name: true, email: true },

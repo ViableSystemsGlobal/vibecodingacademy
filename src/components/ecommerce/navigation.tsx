@@ -72,6 +72,13 @@ export function EcommerceNavigation() {
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [contactBanner, setContactBanner] = useState<{
+    phone1?: string;
+    phone1Hours?: string;
+    phone2?: string;
+    phone2Hours?: string;
+    isActive?: boolean;
+  } | null>(null);
 
   const primaryLinks = useMemo(
     () => [
@@ -87,6 +94,26 @@ export function EcommerceNavigation() {
   useEffect(() => {
     void refreshCartCount();
   }, [refreshCartCount]);
+
+  useEffect(() => {
+    const loadContactBanner = async () => {
+      try {
+        const response = await fetch("/api/public/storefront/sections/contact_banner");
+        if (response.ok) {
+          const data = await response.json();
+          if (data?.section?.content && data.section.isActive) {
+            const content = typeof data.section.content === 'string' 
+              ? JSON.parse(data.section.content) 
+              : data.section.content;
+            setContactBanner(content);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load contact banner:", error);
+      }
+    };
+    void loadContactBanner();
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -194,8 +221,18 @@ export function EcommerceNavigation() {
             <span className="flex items-center gap-2 font-medium">
               <Phone className="h-4 w-4" />
               <span>
-                Call on: <strong>+233 59 691 1818</strong> (8am - 5pm) &{" "}
-                <strong>+233 56 111 2777</strong> (5pm till 8am)
+                {contactBanner?.isActive && contactBanner.phone1 ? (
+                  <>
+                    Call on: <strong>{contactBanner.phone1}</strong> ({contactBanner.phone1Hours || ""}){contactBanner.phone2 && (
+                      <> & <strong>{contactBanner.phone2}</strong> ({contactBanner.phone2Hours || ""})</>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    Call on: <strong>+233 59 691 1818</strong> (8am - 5pm) &{" "}
+                    <strong>+233 56 111 2777</strong> (5pm till 8am)
+                  </>
+                )}
               </span>
             </span>
               </div>
@@ -296,8 +333,8 @@ export function EcommerceNavigation() {
                     {branding.companyName || "The POOLSHOP"}
                   </span>
                 </div>
-              )}
-            </Link>
+            )}
+          </Link>
           </div>
 
           {/* Search */}

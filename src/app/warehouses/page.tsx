@@ -57,17 +57,35 @@ export default function WarehousesPage() {
   const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedWarehouses, setSelectedWarehouses] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalWarehouses, setTotalWarehouses] = useState(0);
+  const [sortBy, setSortBy] = useState<string | undefined>(undefined);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const itemsPerPage = 10;
 
 
 
-  const fetchWarehouses = async () => {
+  const fetchWarehouses = async (page: number = currentPage) => {
     try {
-      const response = await fetch('/api/warehouses');
+      setIsLoading(true);
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: itemsPerPage.toString(),
+        ...(searchTerm && { search: searchTerm }),
+        ...(sortBy && { sortBy }),
+        ...(sortOrder && { sortOrder }),
+      });
+
+      const response = await fetch(`/api/warehouses?${params}`);
       if (!response.ok) {
         throw new Error('Failed to fetch warehouses');
       }
       const data = await response.json();
       setWarehouses(data.warehouses || []);
+      setTotalPages(data.pagination?.pages || 1);
+      setTotalWarehouses(data.pagination?.total || 0);
+      setCurrentPage(page);
     } catch (error) {
       console.error('Error fetching warehouses:', error);
       showError('Failed to fetch warehouses');
@@ -75,10 +93,38 @@ export default function WarehousesPage() {
       setIsLoading(false);
     }
   };
+  
+  // Handle sorting change
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
+  };
+  
+  // Handle search change
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+  
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    fetchWarehouses(page);
+  };
 
+  // Immediate effect for sorting
   useEffect(() => {
-    fetchWarehouses();
-  }, []);
+    fetchWarehouses(1);
+  }, [sortBy, sortOrder]);
+
+  // Debounced search effect (only for search term)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchWarehouses(1);
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
 
   const handleWarehouseSuccess = () => {
     fetchWarehouses();
@@ -118,16 +164,9 @@ export default function WarehousesPage() {
     }
   };
 
-  const filteredWarehouses = warehouses.filter(warehouse =>
-    warehouse.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    warehouse.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (warehouse.city && warehouse.city.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
-  // Calculate stats
-  const totalWarehouses = filteredWarehouses.length;
-  const activeWarehouses = filteredWarehouses.filter(w => w.isActive).length;
-  const inactiveWarehouses = filteredWarehouses.filter(w => !w.isActive).length;
+  // Calculate stats from all warehouses (we'll need to fetch separately or use total from API)
+  const activeWarehouses = warehouses.filter(w => w.isActive).length;
+  const inactiveWarehouses = warehouses.filter(w => !w.isActive).length;
 
   return (
     <>
@@ -204,52 +243,29 @@ export default function WarehousesPage() {
       {/* Warehouses Table */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Warehouses ({filteredWarehouses.length})</CardTitle>
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search warehouses..."
-                  className="pl-10 w-64"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <Button variant="outline">
-                <Filter className="h-4 w-4 mr-2" />
-                Filters
-              </Button>
-            </div>
-          </div>
+          <CardTitle>Warehouses ({totalWarehouses})</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="text-gray-600 mt-2">Loading warehouses...</p>
-            </div>
-          ) : filteredWarehouses.length === 0 ? (
-            <div className="text-center py-8">
-              <Building className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No warehouses found</h3>
-              <p className="text-gray-600 mb-4">Get started by creating your first warehouse.</p>
-              <Button 
-                onClick={() => setIsModalOpen(true)}
-                className="hover:opacity-90 text-white"
-                style={{ backgroundColor: getThemeColor() }}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Warehouse
-              </Button>
-            </div>
-          ) : (
-            <DataTable
-              data={filteredWarehouses}
-              enableSelection={true}
-              selectedItems={selectedWarehouses}
-              onSelectionChange={setSelectedWarehouses}
-              onRowClick={handleViewWarehouse}
+          <DataTable
+            data={warehouses}
+            enableSelection={true}
+            selectedItems={selectedWarehouses}
+            onSelectionChange={setSelectedWarehouses}
+            onRowClick={handleViewWarehouse}
+            itemsPerPage={itemsPerPage}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalWarehouses}
+            onPageChange={handlePageChange}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSortChange={handleSortChange}
+            searchValue={searchTerm}
+            onSearchChange={handleSearchChange}
+            searchPlaceholder="Search warehouses by name, code, city, or address..."
+            enableExport={true}
+            exportFilename="warehouses"
+            isLoading={isLoading}
               bulkActions={
                 <div className="flex gap-2">
                   <Button
@@ -291,8 +307,9 @@ export default function WarehousesPage() {
               }
               columns={[
                 {
-                  key: 'warehouse',
+                  key: 'name',
                   label: 'Warehouse',
+                  sortable: true,
                   render: (warehouse) => (
                     <div className="flex items-center">
                       {warehouse.image ? (
@@ -332,6 +349,7 @@ export default function WarehousesPage() {
                 {
                   key: 'code',
                   label: 'Code',
+                  sortable: true,
                   render: (warehouse) => (
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
                       {warehouse.code}
@@ -407,9 +425,7 @@ export default function WarehousesPage() {
                   )
                 }
               ]}
-              itemsPerPage={10}
             />
-          )}
         </CardContent>
       </Card>
       </div>

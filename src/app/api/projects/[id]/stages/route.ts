@@ -71,21 +71,44 @@ export async function POST(
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    // Get the highest order value
-    const lastStage = await prisma.projectStage.findFirst({
-      where: { projectId: params.id, stageType: body?.stageType || "TASK" },
-      orderBy: { order: "desc" },
+    const stageType = body?.stageType || "TASK";
+
+    // Check if stage with same name and stageType already exists for this project
+    const existingStage = await prisma.projectStage.findFirst({
+      where: {
+        projectId: params.id,
+        name,
+        stageType,
+      },
     });
 
-    const newOrder = lastStage ? lastStage.order + 1 : 0;
+    if (existingStage) {
+      return NextResponse.json(
+        {
+          error: `A stage named "${name}" already exists for ${stageType.toLowerCase()} stages in this project`,
+          details: "Stage names must be unique within a project and stage type",
+        },
+        { status: 409 }
+      );
+    }
+
+    // Use provided order, or calculate the next order if not provided
+    let order = body?.order;
+    if (order === undefined || order === null) {
+      const lastStage = await prisma.projectStage.findFirst({
+        where: { projectId: params.id, stageType },
+        orderBy: { order: "desc" },
+      });
+      order = lastStage ? lastStage.order + 1 : 0;
+    }
 
     const stage = await prisma.projectStage.create({
       data: {
         projectId: params.id,
         name,
         color: body?.color || "#6366F1",
-        order: newOrder,
-        stageType: body?.stageType || "TASK",
+        order: order,
+        stageType,
       },
       include: {
         _count: {
@@ -100,10 +123,23 @@ export async function POST(
     return NextResponse.json({ stage }, { status: 201 });
   } catch (error) {
     console.error("❌ Failed to create stage:", error);
+    
+    // Check if it's a unique constraint violation
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes("Unique constraint") || errorMessage.includes("P2002")) {
+      return NextResponse.json(
+        {
+          error: `A stage with this name already exists for this stage type in this project`,
+          details: "Stage names must be unique within a project and stage type",
+        },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(
       {
         error: "Failed to create stage",
-        details: error instanceof Error ? error.message : String(error),
+        details: errorMessage,
       },
       { status: 500 }
     );

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { NotificationService, SystemNotificationTriggers } from "@/lib/notification-service";
 
 // GET /api/tasks/[id]/comments - Get all comments for a task
 export async function GET(
@@ -131,6 +132,71 @@ export async function POST(
         }
       }
     });
+
+    // Fire notifications to task stakeholders (creator + assignees), excluding the commenter
+    try {
+      const taskWithStakeholders = await prisma.task.findUnique({
+        where: { id: taskId },
+        select: {
+          title: true,
+          createdBy: true,
+          creator: { select: { id: true, name: true, email: true, phone: true } },
+          assignee: { select: { id: true, name: true, email: true, phone: true } },
+          assignees: {
+            select: {
+              user: { select: { id: true, name: true, email: true, phone: true } }
+            }
+          }
+        }
+      });
+
+      if (taskWithStakeholders) {
+        const recipients = new Map<string, { id: string; name: string | null }>();
+
+        if (taskWithStakeholders.creator && taskWithStakeholders.creator.id !== session.user.id) {
+          recipients.set(taskWithStakeholders.creator.id, {
+            id: taskWithStakeholders.creator.id,
+            name: taskWithStakeholders.creator.name
+          });
+        }
+
+        if (taskWithStakeholders.assignee && taskWithStakeholders.assignee.id !== session.user.id) {
+          recipients.set(taskWithStakeholders.assignee.id, {
+            id: taskWithStakeholders.assignee.id,
+            name: taskWithStakeholders.assignee.name
+          });
+        }
+
+        for (const assignee of taskWithStakeholders.assignees || []) {
+          if (assignee.user && assignee.user.id !== session.user.id) {
+            recipients.set(assignee.user.id, {
+              id: assignee.user.id,
+              name: assignee.user.name
+            });
+          }
+        }
+
+        if (recipients.size > 0) {
+          const preview =
+            content.length > 120 ? `${content.slice(0, 117).trimEnd()}…` : content;
+
+          const trigger = SystemNotificationTriggers.taskComment(
+            taskWithStakeholders.title,
+            preview,
+            session.user.name || "Someone"
+          );
+
+          await Promise.all(
+            Array.from(recipients.values()).map((recipient) =>
+              NotificationService.sendToUser(recipient.id, trigger)
+            )
+          );
+        }
+      }
+    } catch (notificationError) {
+      console.error("Error sending task comment notifications:", notificationError);
+      // Do not fail the request if notifications fail
+    }
 
     return NextResponse.json({ comment }, { status: 201 });
   } catch (error) {

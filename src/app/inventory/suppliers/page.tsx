@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
-import { Plus, Edit, Trash2, Users } from 'lucide-react';
+import { Plus, Edit, Trash2, Users, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { DataTable } from '@/components/ui/data-table';
 import { SkeletonTable } from '@/components/ui/skeleton';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useTheme } from '@/contexts/theme-context';
 import { useToast } from '@/contexts/toast-context';
 
@@ -28,10 +29,21 @@ export default function SuppliersPage() {
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState<Partial<Supplier>>({ name: '', status: 'ACTIVE' });
   const [editing, setEditing] = useState<Supplier | null>(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState<string>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Populate form when editing changes
   useEffect(() => {
@@ -47,22 +59,95 @@ export default function SuppliersPage() {
     }
   }, [editing]);
 
+  // Initial load on mount
   useEffect(() => {
-    if (status === 'unauthenticated') return;
-    load();
+    if (status === 'authenticated') {
+      fetchSuppliers(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  const load = async () => {
+  // Effect for filters and sorting (skip initial mount)
+  useEffect(() => {
+    if (status === 'authenticated') {
+      const isInitialMount = currentPage === 1 && !searchTerm && !statusFilter && !sortBy;
+      if (isInitialMount) {
+        return;
+      }
+      fetchSuppliers(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, sortBy, sortOrder, status]);
+
+  // Debounced search effect (including when cleared)
+  const isMountedRef = useRef(false);
+  useEffect(() => {
+    if (status === 'authenticated') {
+      if (!isMountedRef.current) {
+        isMountedRef.current = true;
+        return;
+      }
+      
+      const timeoutId = setTimeout(() => {
+        setCurrentPage(1);
+        fetchSuppliers(1);
+      }, searchTerm ? 500 : 0);
+
+      return () => clearTimeout(timeoutId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, status]);
+
+  const fetchSuppliers = async (page: number = currentPage) => {
     try {
       setLoading(true);
-      const res = await fetch('/api/suppliers');
-      if (res.ok) {
-        const data = await res.json();
-        setSuppliers(data);
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('limit', itemsPerPage.toString());
+      
+      if (searchTerm) {
+        params.append('search', searchTerm);
       }
+      if (statusFilter) {
+        params.append('status', statusFilter);
+      }
+      if (sortBy) {
+        params.append('sortBy', sortBy);
+      }
+      if (sortOrder) {
+        params.append('sortOrder', sortOrder);
+      }
+      
+      const response = await fetch(`/api/suppliers?${params.toString()}`, {
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setSuppliers(Array.isArray(data.suppliers) ? data.suppliers : []);
+        setTotalPages(data.pagination?.pages || 1);
+        setTotalItems(data.pagination?.total || 0);
+        setCurrentPage(page);
+      } else {
+        console.error('Failed to fetch suppliers');
+        setSuppliers([]);
+        setTotalPages(1);
+        setTotalItems(0);
+      }
+    } catch (error) {
+      console.error('Error fetching suppliers:', error);
+      setSuppliers([]);
+      setTotalPages(1);
+      setTotalItems(0);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
   };
 
   const submit = async () => {
@@ -75,7 +160,7 @@ export default function SuppliersPage() {
       setShowAdd(false);
       setEditing(null);
       setForm({ name: '', status: 'ACTIVE' });
-      load();
+      await fetchSuppliers(currentPage);
     } else {
       error('Failed to save supplier');
     }
@@ -83,10 +168,13 @@ export default function SuppliersPage() {
 
   const remove = async (s: Supplier) => {
     const res = await fetch(`/api/suppliers/${s.id}`, { method: 'DELETE' });
-    if (res.ok) { success('Supplier deleted'); load(); } else { error('Failed to delete'); }
+    if (res.ok) { 
+      success('Supplier deleted'); 
+      await fetchSuppliers(currentPage);
+    } else { 
+      error('Failed to delete'); 
+    }
   };
-
-  const filtered = suppliers.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="space-y-6">
@@ -109,42 +197,119 @@ export default function SuppliersPage() {
         </Button>
       </div>
 
-      <Card className="p-4">
-        <div className="flex gap-4 mb-4">
-          <Input placeholder="Search suppliers..." value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-        {loading ? (
-          <SkeletonTable rows={8} columns={4} />
-        ) : (
-          <DataTable
-            data={filtered}
-            itemsPerPage={10}
-            onRowClick={(s) => {
-              setEditing(s as Supplier);
-              setShowAdd(true);
-            }}
-            columns={[
-              { key: 'name', label: 'Name' },
-              { key: 'contact', label: 'Contact', render: (s: any) => (
-                <div className="text-sm">
-                  {s.email && <div>{s.email}</div>}
-                  {s.phone && <div className="text-gray-500">{s.phone}</div>}
-                </div>
-              )},
-              { key: 'status', label: 'Status' },
-              { key: 'actions', label: 'Actions', render: (s: any) => (
-                <div className="flex gap-2" data-stop-row-click>
-                  <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); setEditing(s); setShowAdd(true); }}>
-                    <Edit className="w-4 h-4" />
-                  </Button>
-                  <Button variant="destructive" size="sm" onClick={(e) => { e.stopPropagation(); remove(s); }}>
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              )},
-            ]}
-          />
-        )}
+      <Card>
+        <CardContent className="p-6">
+          {loading ? (
+            <SkeletonTable rows={8} columns={4} />
+          ) : (
+            <DataTable
+              data={suppliers}
+              columns={[
+                {
+                  key: 'name',
+                  label: 'Name',
+                  sortable: true,
+                  exportable: true,
+                  render: (s: Supplier) => (
+                    <span className="text-sm font-medium text-gray-900">{s.name}</span>
+                  ),
+                  exportFormat: (s: Supplier) => s.name
+                },
+                {
+                  key: 'contact',
+                  label: 'Contact',
+                  exportable: true,
+                  render: (s: Supplier) => (
+                    <div className="text-sm">
+                      {s.email && <div>{s.email}</div>}
+                      {s.phone && <div className="text-gray-500">{s.phone}</div>}
+                    </div>
+                  ),
+                  exportFormat: (s: Supplier) => s.email || s.phone || '-'
+                },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  sortable: true,
+                  exportable: true,
+                  render: (s: Supplier) => (
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                      s.status === 'ACTIVE' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {s.status}
+                    </span>
+                  ),
+                  exportFormat: (s: Supplier) => s.status
+                },
+                {
+                  key: 'actions',
+                  label: 'Actions',
+                  sortable: false,
+                  exportable: false,
+                  render: (s: Supplier) => (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => { setEditing(s); setShowAdd(true); }}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => remove(s)}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )
+                },
+              ]}
+              itemsPerPage={itemsPerPage}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              onPageChange={(page) => {
+                setCurrentPage(page);
+                fetchSuppliers(page);
+              }}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSortChange={handleSortChange}
+              searchValue={searchTerm}
+              onSearchChange={setSearchTerm}
+              searchPlaceholder="Search suppliers by name, email, or phone..."
+              enableExport={true}
+              exportFilename="suppliers"
+              isLoading={loading}
+              onRowClick={(s) => {
+                setEditing(s as Supplier);
+                setShowAdd(true);
+              }}
+              customFilters={
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Status</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="INACTIVE">Inactive</option>
+                </select>
+              }
+            />
+          )}
+        </CardContent>
       </Card>
 
       {showAdd && (

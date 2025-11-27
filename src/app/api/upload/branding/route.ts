@@ -23,7 +23,19 @@ export async function POST(request: NextRequest) {
 
     if (
       !type ||
-      !['companyLogo', 'favicon', 'pdfHeaderImage', 'pdfFooterImage', 'chatButtonImage', 'heroVideo', 'banner', 'chatPopupImage', 'footerLogo', 'newsletterPopupImage'].includes(type)
+      ![
+        "companyLogo",
+        "favicon",
+        "pdfHeaderImage",
+        "pdfFooterImage",
+        "chatButtonImage",
+        "heroVideo",
+        "banner",
+        "chatPopupImage",
+        "footerLogo",
+        "newsletterPopupImage",
+        "seoOgImage",
+      ].includes(type)
     ) {
       return NextResponse.json({ success: false, message: 'Invalid upload type' }, { status: 400 });
     }
@@ -40,7 +52,8 @@ export async function POST(request: NextRequest) {
       newsletterPopupImage: 'branding',
       heroVideo: 'branding',
       footerLogo: 'branding',
-      banner: 'banners'
+      banner: 'banners',
+      seoOgImage: 'branding',
     };
     const uploadsSubDir = folderMap[type] || 'branding'; // Default to 'branding' if type not found
     const uploadsDir = isProduction 

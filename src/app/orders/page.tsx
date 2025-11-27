@@ -347,8 +347,8 @@ export default function OrdersPage() {
       </div>
 
       {/* AI Card + Metrics */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        {/* AI Recommendation Card - Left Side (2/3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6">
+        {/* AI Recommendation Card - Left Side (2/5) */}
         <div className="lg:col-span-2">
           <AIRecommendationCard
             title="Order Management AI"
@@ -361,45 +361,45 @@ export default function OrdersPage() {
           />
         </div>
 
-        {/* Metrics Cards - Right Side (1/3, 2x2 Grid) */}
-        <div className="grid grid-cols-2 gap-4">
+        {/* Metrics Cards - Right Side (3/5, 2x2 Grid) */}
+        <div className="lg:col-span-3 grid grid-cols-2 gap-4">
           <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Orders</p>
-                <p className="text-2xl font-bold text-gray-900">{totalOrders}</p>
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0 pr-2">
+                <p className="text-sm font-medium text-gray-600 mb-1">Total Orders</p>
+                <p className="text-lg sm:text-xl font-bold text-gray-900 break-words">{totalOrders}</p>
               </div>
-              <ShoppingCart className="h-8 w-8 text-gray-400" />
+              <ShoppingCart className="h-6 w-6 text-gray-400 flex-shrink-0 mt-1" />
             </div>
           </Card>
 
           <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Value</p>
-                <p className={`text-2xl font-bold text-${theme.primary}`}>{formatCurrency(totalValue, 'GHS')}</p>
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0 pr-2">
+                <p className="text-sm font-medium text-gray-600 mb-1">Total Value</p>
+                <p className={`text-lg sm:text-xl font-bold text-${theme.primary} break-words`}>{formatCurrency(totalValue, 'GHS')}</p>
               </div>
-              <DollarSign className={`h-8 w-8 text-${theme.primary}`} />
+              <DollarSign className={`h-6 w-6 text-${theme.primary} flex-shrink-0 mt-1`} />
             </div>
           </Card>
 
           <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Pending</p>
-                <p className="text-2xl font-bold text-yellow-600">{pendingOrders}</p>
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0 pr-2">
+                <p className="text-sm font-medium text-gray-600 mb-1">Pending</p>
+                <p className="text-lg sm:text-xl font-bold text-yellow-600 break-words">{pendingOrders}</p>
               </div>
-              <Clock className="h-8 w-8 text-yellow-400" />
+              <Clock className="h-6 w-6 text-yellow-400 flex-shrink-0 mt-1" />
             </div>
           </Card>
 
           <Card className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">This Month</p>
-                <p className="text-2xl font-bold text-green-600">{formatCurrency(thisMonthOrders, 'GHS')}</p>
+            <div className="flex items-start justify-between">
+              <div className="flex-1 min-w-0 pr-2">
+                <p className="text-sm font-medium text-gray-600 mb-1">This Month</p>
+                <p className="text-lg sm:text-xl font-bold text-green-600 break-words">{formatCurrency(thisMonthOrders, 'GHS')}</p>
               </div>
-              <Calendar className="h-8 w-8 text-green-400" />
+              <Calendar className="h-6 w-6 text-green-400 flex-shrink-0 mt-1" />
             </div>
           </Card>
         </div>

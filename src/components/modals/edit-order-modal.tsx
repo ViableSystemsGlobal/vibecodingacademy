@@ -151,7 +151,9 @@ export function EditOrderModal({
               </div>
               <div>
                 <span className="font-medium text-gray-700">Distributor:</span>
-                <p className="text-gray-900">{order.distributor.businessName}</p>
+                <p className="text-gray-900">
+                  {order.distributor?.businessName || "—"}
+                </p>
               </div>
               <div>
                 <span className="font-medium text-gray-700">Total Amount:</span>

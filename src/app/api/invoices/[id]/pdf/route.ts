@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+// Currency symbol helper - using HTML entities for proper encoding
+function getCurrencySymbol(code: string = 'GHS'): string {
+  const symbols: { [key: string]: string } = {
+    'USD': '$',
+    'GHS': 'GH&#8373;', // Ghana Cedi symbol using HTML entity
+    'EUR': '€',
+    'GBP': '£',
+    'NGN': '₦',
+    'KES': 'KSh',
+    'ZAR': 'R',
+  };
+  return symbols[code] || code;
+}
+
 // Helper function to parse product images
 const parseProductImages = (images: string | null | undefined): string[] => {
   if (!images) return [];
@@ -34,6 +48,7 @@ export async function GET(
         subject: true,
         status: true,
         paymentStatus: true,
+        currency: true,
         total: true,
         subtotal: true,
         tax: true,
@@ -74,14 +89,15 @@ export async function GET(
     }
 
     // Get customer info
-    const customerName = (invoice.account as any)?.name || 
-                        (invoice.distributor as any)?.businessName || 
-                        (invoice.lead ? `${invoice.lead.firstName} ${invoice.lead.lastName}`.trim() : '') ||
+    const invoiceData = invoice as any;
+    const customerName = invoiceData.account?.name || 
+                        invoiceData.distributor?.businessName || 
+                        (invoiceData.lead ? `${invoiceData.lead.firstName} ${invoiceData.lead.lastName}`.trim() : '') ||
                         'No customer';
-    const customerEmail = (invoice.account as any)?.email || (invoice.distributor as any)?.email || invoice.lead?.email || '';
-    const customerPhone = (invoice.account as any)?.phone || (invoice.distributor as any)?.phone || invoice.lead?.phone || '';
+    const customerEmail = invoiceData.account?.email || invoiceData.distributor?.email || invoiceData.lead?.email || '';
+    const customerPhone = invoiceData.account?.phone || invoiceData.distributor?.phone || invoiceData.lead?.phone || '';
     
-    const hasDiscounts = invoice.lines?.some(line => line.discount > 0) || false;
+    const hasDiscounts = (invoiceData.lines as any[])?.some((line: any) => line.discount > 0) || false;
     
     // Get company logo and PDF images from settings
     const [logoSetting, headerImageSetting, footerImageSetting] = await Promise.all([
@@ -105,6 +121,15 @@ export async function GET(
     const pdfHeaderImage = convertToAbsoluteUrl(headerImageSetting?.value || null);
     const pdfFooterImage = convertToAbsoluteUrl(footerImageSetting?.value || null);
 
+    const headerMargin = pdfHeaderImage ? '160px' : '0';
+    const footerMargin = pdfFooterImage ? '160px' : '0';
+
+    // Get invoice currency (default to GHS if not set)
+    const invoiceCurrency = (invoiceData.currency as string) || 'GHS';
+    const currencySymbol = getCurrencySymbol(invoiceCurrency);
+    const formatCurrency = (amount: number) =>
+      `${currencySymbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
     // Generate HTML content for PDF
     const htmlContent = `
       <!DOCTYPE html>
@@ -118,24 +143,110 @@ export async function GET(
             box-sizing: border-box;
           }
           
+          @page {
+            margin: 0;
+            size: A4;
+          }
+          
           body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             line-height: 1.6;
             color: #333;
             background: white;
-            padding: 20px;
+            padding: 0;
+            margin: 0;
+          }
+          
+          body > *:first-child {
+            margin-top: 0;
+            padding-top: 0;
+          }
+          
+          .pdf-header {
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            background: white;
+            page-break-after: avoid;
+            line-height: 0;
+          }
+          
+          .pdf-header img {
+            width: 100%;
+            max-height: 150px;
+            object-fit: cover;
+            display: block;
+            margin: 0;
+            padding: 0;
+            vertical-align: top;
+          }
+          
+          .pdf-footer {
+            width: 100%;
+            margin-left: 0;
+            margin-right: 0;
+            padding-left: 0;
+            padding-right: 0;
+            background: white;
+            page-break-before: avoid;
+          }
+          
+          .pdf-footer img {
+            width: 100%;
+            max-height: 150px;
+            object-fit: cover;
+            display: block;
+          }
+          
+          .content-wrapper {
+            padding: 0 20px 20px 20px;
+            margin-top: 0;
+            padding-top: 25px;
+            margin-bottom: 0;
+          }
+          
+          .pdf-header + .content-wrapper {
+            margin-top: 0;
+            padding-top: 25px;
+          }
+          
+          @media print {
+            .pdf-header {
+              position: fixed;
+              top: 0;
+              left: 0;
+              right: 0;
+              width: 100%;
+            }
+            .pdf-footer {
+              position: fixed;
+              bottom: 0;
+              left: 0;
+              right: 0;
+              width: 100%;
+            }
+            .content-wrapper {
+              margin-top: ${headerMargin};
+              margin-bottom: ${footerMargin};
+            }
           }
           
           .company-header {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 15px;
+            margin-top: 0;
+            padding-top: 0;
             border-bottom: 2px solid #e5e7eb;
-            padding-bottom: 20px;
+            padding-bottom: 10px;
+            line-height: 1.2;
           }
           
           .logo {
             max-height: 60px;
-            margin-bottom: 10px;
+            margin: 0 auto;
+            padding: 0;
+            display: block;
+            vertical-align: top;
           }
           
           .company-name {
@@ -153,8 +264,8 @@ export async function GET(
           
           .info-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 30px;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 20px;
             margin-bottom: 30px;
           }
           
@@ -247,7 +358,7 @@ export async function GET(
           
           .table-header {
             display: grid;
-            grid-template-columns: 40px 2fr 60px 80px ${hasDiscounts ? '80px' : ''} 80px;
+            grid-template-columns: 30px 0.8fr 45px 110px ${hasDiscounts ? '65px' : ''} 120px;
             background-color: #f9fafb;
             font-weight: 600;
             font-size: 12px;
@@ -257,8 +368,9 @@ export async function GET(
           }
           
           .table-header-cell {
-            padding: 12px 8px;
+            padding: 8px 6px;
             border-right: 1px solid #e5e7eb;
+            font-size: 11px;
           }
           
           .table-header-cell:last-child {
@@ -271,7 +383,7 @@ export async function GET(
           
           .table-row {
             display: grid;
-            grid-template-columns: 40px 2fr 60px 80px ${hasDiscounts ? '80px' : ''} 80px;
+            grid-template-columns: 30px 0.8fr 45px 110px ${hasDiscounts ? '65px' : ''} 120px;
             border-bottom: 1px solid #f3f4f6;
             font-size: 13px;
           }
@@ -281,24 +393,27 @@ export async function GET(
           }
           
           .row-number {
-            padding: 12px 8px;
+            padding: 8px 4px;
             text-align: center;
             color: #6b7280;
             border-right: 1px solid #f3f4f6;
+            font-size: 12px;
           }
           
           .row-description {
-            padding: 12px 8px;
+            padding: 8px 6px;
             border-right: 1px solid #f3f4f6;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
+            min-width: 0;
+            overflow: hidden;
           }
           
           .product-image {
-            width: 32px;
-            height: 32px;
-            border-radius: 6px;
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
             object-fit: cover;
             background-color: #e5e7eb;
             flex-shrink: 0;
@@ -306,6 +421,11 @@ export async function GET(
           
           .product-details {
             flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            word-wrap: break-word;
+            font-size: 11px;
+            line-height: 1.3;
           }
           
           .row-sku {
@@ -315,10 +435,14 @@ export async function GET(
           }
           
           .row-other {
-            padding: 12px 8px;
+            padding: 8px 6px;
             text-align: right;
             border-right: 1px solid #f3f4f6;
             color: #374151;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 12px;
           }
           
           .row-discount {
@@ -337,10 +461,14 @@ export async function GET(
           }
           
           .row-amount {
-            padding: 12px 8px;
+            padding: 8px 6px;
             text-align: right;
             font-weight: 600;
             color: #1f2937;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 12px;
           }
           
           .totals-section {
@@ -380,23 +508,36 @@ export async function GET(
           }
           
           .payment-info {
-            background-color: #f9fafb;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            background-color: transparent;
+            padding: 0;
+            border-radius: 0;
+            margin-bottom: 0;
           }
           
           .payment-info h3 {
-            font-size: 14px;
-            font-weight: 600;
-            color: #374151;
-            margin-bottom: 8px;
+            display: none;
           }
           
           .payment-info p {
-            font-size: 13px;
+            font-size: 14px;
             color: #6b7280;
             margin-bottom: 4px;
+          }
+          
+          .payment-info .info-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+          }
+          
+          .payment-info .info-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 8px;
           }
           
           .notes-section {
@@ -418,34 +559,18 @@ export async function GET(
             white-space: pre-wrap;
           }
           
-          .pdf-header-image {
-            width: 100%;
-            max-height: 150px;
-            object-fit: contain;
-            margin-bottom: 20px;
-          }
-          
-          .pdf-footer-image {
-            width: 100%;
-            max-height: 150px;
-            object-fit: contain;
-            margin-top: 30px;
-            border-top: 2px solid #e5e7eb;
-            padding-top: 20px;
-          }
-          
           @media print {
             body {
               padding: 0;
+            }
+            .pdf-header, .pdf-footer {
+              display: block !important;
             }
           }
         </style>
       </head>
       <body>
-        ${pdfHeaderImage ? `<img src="${pdfHeaderImage}" alt="PDF Header" class="pdf-header-image" />` : ''}
-        
-        <!-- Company Header -->
-        <div class="company-header">
+        ${pdfHeaderImage ? `<div class="pdf-header"><img src="${pdfHeaderImage}" alt="PDF Header" /></div>` : ''}<div class="content-wrapper"><div class="company-header">
           ${customLogo ? `<img src="${customLogo}" alt="Company Logo" class="logo" />` : ''}
           <div class="company-name">${invoice.subject || 'Untitled Invoice'}</div>
           <div class="document-subtitle">${invoice.number}</div>
@@ -481,15 +606,24 @@ export async function GET(
               <div>${customerPhone}</div>
             </div>
           </div>
+          <div>
+            <div class="info-label">Payment Information</div>
+            <div class="info-value">
+              <span class="status-badge payment-status-${(invoice.paymentStatus as any).toLowerCase()}">${(invoice.paymentStatus as any).toLowerCase().replace('_', ' ')}</span>
+            </div>
+            <div class="info-sub">
+              <div class="info-sub-label">Amount Due</div>
+              <div>${formatCurrency(Number(invoice.amountDue as any))}</div>
+              ${invoiceData.amountPaid > 0 ? `
+                <div class="info-sub-label" style="margin-top: 4px;">Amount Paid</div>
+                <div>${formatCurrency(invoiceData.amountPaid)}</div>
+              ` : ''}
+              ${invoice.paymentTerms ? `
+                <div class="info-sub-label" style="margin-top: 4px;">Payment Terms</div>
+                <div>${invoice.paymentTerms}</div>
+              ` : ''}
+          </div>
         </div>
-
-        <!-- Payment Status -->
-        <div class="payment-info">
-          <h3>Payment Information</h3>
-          <p><strong>Payment Status:</strong> <span class="status-badge payment-status-${(invoice.paymentStatus as any).toLowerCase()}">${(invoice.paymentStatus as any).toLowerCase().replace('_', ' ')}</span></p>
-          <p><strong>Amount Due:</strong> GH₵${Number(invoice.amountDue as any).toFixed(2)}</p>
-          ${invoice.amountPaid > 0 ? `<p><strong>Amount Paid:</strong> GH₵${invoice.amountPaid.toFixed(2)}</p>` : ''}
-          ${invoice.paymentTerms ? `<p><strong>Payment Terms:</strong> ${invoice.paymentTerms}</p>` : ''}
         </div>
 
         <!-- Items Section -->
@@ -524,13 +658,13 @@ export async function GET(
                       </div>
                     </div>
                     <div class="row-other">${line.quantity}</div>
-                    <div class="row-other">GH₵${line.unitPrice.toFixed(2)}</div>
+                    <div class="row-other">${formatCurrency(line.unitPrice)}</div>
                     ${hasDiscounts ? `
                       <div class="${line.discount > 0 ? 'row-discount' : 'row-discount-dash'}">
                         ${line.discount > 0 ? `${line.discount}%` : '-'}
                       </div>
                     ` : ''}
-                    <div class="row-amount">GH₵${line.lineTotal.toFixed(2)}</div>
+                    <div class="row-amount">${formatCurrency(line.lineTotal)}</div>
                   </div>
                 `).join('')}
               </div>
@@ -544,19 +678,19 @@ export async function GET(
 
         <!-- Totals Section -->
         <div class="totals-section">
-          ${!invoice.taxInclusive ? `
+          ${!invoiceData.taxInclusive ? `
             <div class="total-row">
               <span class="total-label">Subtotal:</span>
-              <span class="total-value">GH₵${invoice.subtotal.toFixed(2)}</span>
+              <span class="total-value">${formatCurrency(invoiceData.subtotal)}</span>
             </div>
             <div class="total-row">
               <span class="total-label">Tax:</span>
-              <span class="total-value">GH₵${invoice.tax.toFixed(2)}</span>
+              <span class="total-value">${formatCurrency(invoiceData.tax)}</span>
             </div>
           ` : ''}
           <div class="total-row total-final">
-            <span>${invoice.taxInclusive ? 'Total (Tax Inclusive):' : 'Total:'}</span>
-            <span class="total-black">GH₵${invoice.total.toFixed(2)}</span>
+            <span>${invoiceData.taxInclusive ? 'Total (Tax Inclusive):' : 'Total:'}</span>
+            <span class="total-black">${formatCurrency(invoiceData.total)}</span>
           </div>
         </div>
 
@@ -566,8 +700,9 @@ export async function GET(
             <div class="notes-content">${invoice.notes}</div>
           </div>
         ` : ''}
+        </div>
         
-        ${pdfFooterImage ? `<img src="${pdfFooterImage}" alt="PDF Footer" class="pdf-footer-image" />` : ''}
+        ${pdfFooterImage ? `<div class="pdf-footer"><img src="${pdfFooterImage}" alt="PDF Footer" /></div>` : ''}
       </body>
       </html>
     `;

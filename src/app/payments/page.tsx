@@ -230,8 +230,8 @@ export default function PaymentsPage() {
         </div>
 
         {/* AI Card + Metrics */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* AI Recommendation Card - Left Side (2/3) */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* AI Recommendation Card - Left Side (2/5) */}
           <div className="lg:col-span-2">
             <AIRecommendationCard
               title="Payment Management AI"
@@ -244,45 +244,45 @@ export default function PaymentsPage() {
             />
           </div>
 
-          {/* Metrics Cards - Right Side (1/3, 2x2 Grid) */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Metrics Cards - Right Side (3/5, 2x2 Grid) */}
+          <div className="lg:col-span-3 grid grid-cols-2 gap-4">
             <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Payments</p>
-                  <p className="text-2xl font-bold text-gray-900">{metrics.totalPayments}</p>
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0 pr-2">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Total Payments</p>
+                  <p className="text-lg sm:text-xl font-bold text-gray-900 break-words">{metrics.totalPayments}</p>
                 </div>
-                <DollarSign className="h-8 w-8 text-gray-400" />
+                <DollarSign className="h-6 w-6 text-gray-400 flex-shrink-0 mt-1" />
               </div>
             </Card>
 
             <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Amount</p>
-                  <p className={`text-2xl font-bold text-${theme.primary}`}>{formatCurrency(metrics.totalAmount, currency)}</p>
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0 pr-2">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Total Amount</p>
+                  <p className={`text-lg sm:text-xl font-bold text-${theme.primary} break-words`}>{formatCurrency(metrics.totalAmount, currency)}</p>
                 </div>
-                <TrendingUp className={`h-8 w-8 text-${theme.primary}`} />
+                <TrendingUp className={`h-6 w-6 text-${theme.primary} flex-shrink-0 mt-1`} />
               </div>
             </Card>
 
             <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">This Month</p>
-                  <p className="text-2xl font-bold text-green-600">{formatCurrency(metrics.thisMonth, currency)}</p>
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0 pr-2">
+                  <p className="text-sm font-medium text-gray-600 mb-1">This Month</p>
+                  <p className="text-lg sm:text-xl font-bold text-green-600 break-words">{formatCurrency(metrics.thisMonth, currency)}</p>
                 </div>
-                <Calendar className="h-8 w-8 text-green-400" />
+                <Calendar className="h-6 w-6 text-green-400 flex-shrink-0 mt-1" />
               </div>
             </Card>
 
             <Card className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Last Month</p>
-                  <p className="text-2xl font-bold text-orange-600">{formatCurrency(metrics.lastMonth, currency)}</p>
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0 pr-2">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Last Month</p>
+                  <p className="text-lg sm:text-xl font-bold text-orange-600 break-words">{formatCurrency(metrics.lastMonth, currency)}</p>
                 </div>
-                <TrendingUp className="h-8 w-8 text-orange-400" />
+                <TrendingUp className="h-6 w-6 text-orange-400 flex-shrink-0 mt-1" />
               </div>
             </Card>
           </div>

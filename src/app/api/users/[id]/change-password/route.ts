@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { logAuditEvent } from "@/lib/audit-log";
 import bcrypt from "bcryptjs";
 
 // PUT /api/users/[id]/change-password - Change user password
@@ -46,16 +47,13 @@ export async function PUT(
       data: { password: hashedPassword }
     });
 
-    // Log audit trail (temporarily disabled)
-    // await prisma.auditLog.create({
-    //   data: {
-    //     userId: session.user.id,
-    //     action: 'user.password_changed',
-    //     resource: 'User',
-    //     resourceId: params.id,
-    //     newData: { passwordChanged: true }
-    //   }
-    // });
+    await logAuditEvent({
+      userId: (session.user as any).id,
+      action: 'user.password_changed',
+      resource: 'User',
+      resourceId: resolvedParams.id,
+      newData: { passwordChanged: true },
+    });
 
     return NextResponse.json({ message: "Password changed successfully" });
   } catch (error) {

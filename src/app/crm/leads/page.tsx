@@ -105,6 +105,12 @@ export default function LeadsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalLeads, setTotalLeads] = useState(0);
+  const [sortBy, setSortBy] = useState<string | undefined>(undefined);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const itemsPerPage = 10;
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -159,26 +165,52 @@ export default function LeadsPage() {
     }
   }, [status, router]);
 
-  const fetchLeads = async () => {
+  const fetchLeads = async (page: number = currentPage) => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
-      if (statusFilter) params.append('status', statusFilter);
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: itemsPerPage.toString(),
+        ...(searchTerm && { search: searchTerm }),
+        ...(statusFilter && { status: statusFilter }),
+        ...(sortBy && { sortBy }),
+        ...(sortOrder && { sortOrder }),
+      });
 
       const response = await fetch(`/api/leads?${params}`, {
         credentials: 'include',
       });
       if (response.ok) {
         const data = await response.json();
-        setLeads(data);
-        calculateMetrics(data);
+        setLeads(data.leads || []);
+        setTotalPages(data.pagination?.pages || 1);
+        setTotalLeads(data.pagination?.total || 0);
+        setCurrentPage(page);
+        calculateMetrics(data.leads || []);
       }
     } catch (error) {
       console.error('Error fetching leads:', error);
     } finally {
       setLoading(false);
     }
+  };
+  
+  // Handle sorting change
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
+  };
+  
+  // Handle search change
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+  
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    fetchLeads(page);
   };
 
   const calculateMetrics = (leadsData: Lead[]) => {
@@ -194,9 +226,19 @@ export default function LeadsPage() {
     });
   };
 
+  // Immediate effect for filters and sorting
   useEffect(() => {
-    fetchLeads();
-  }, [searchTerm, statusFilter]);
+    fetchLeads(1);
+  }, [statusFilter, sortBy, sortOrder]);
+
+  // Debounced search effect (only for search term)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchLeads(1);
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
 
   // Don't show loading skeleton during navigation
 
@@ -651,31 +693,6 @@ export default function LeadsPage() {
 
       {viewMode === 'list' ? (
         <Card className="p-6">
-          <div className="flex gap-4 mb-6">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Search leads..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Status</option>
-              <option value="NEW">New</option>
-              <option value="QUALIFIED">Qualified</option>
-              <option value="CONVERTED_TO_OPPORTUNITY">Converted (Quote Sent)</option>
-              <option value="LOST">Lost</option>
-            </select>
-          </div>
-
         {loading ? (
           <SkeletonTable rows={8} columns={5} />
         ) : (
@@ -685,6 +702,37 @@ export default function LeadsPage() {
             selectedItems={selectedLeads}
             onSelectionChange={setSelectedLeads}
             onRowClick={handleRowClick}
+            itemsPerPage={itemsPerPage}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalLeads}
+            onPageChange={handlePageChange}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSortChange={handleSortChange}
+            searchValue={searchTerm}
+            onSearchChange={handleSearchChange}
+            searchPlaceholder="Search leads by name, email, company, phone, or subject..."
+            enableExport={true}
+            exportFilename="leads"
+            isLoading={loading}
+            customFilters={
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                  fetchLeads(1);
+                }}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Status</option>
+                <option value="NEW">New</option>
+                <option value="QUALIFIED">Qualified</option>
+                <option value="CONVERTED_TO_OPPORTUNITY">Converted (Quote Sent)</option>
+                <option value="LOST">Lost</option>
+              </select>
+            }
             bulkActions={
               <div className="flex gap-2">
                 <select
@@ -742,8 +790,9 @@ export default function LeadsPage() {
                 )
               },
               {
-                key: 'name',
+                key: 'firstName',
                 label: 'Name',
+                sortable: true,
                 render: (lead) => (
                   <div className="font-medium">
                     {lead.firstName} {lead.lastName}
@@ -753,6 +802,7 @@ export default function LeadsPage() {
               {
                 key: 'company',
                 label: 'Company',
+                sortable: true,
                 render: (lead) => <span>{lead.company || '-'}</span>
               },
               {
@@ -1244,3 +1294,4 @@ export default function LeadsPage() {
     </>
   );
 }
+

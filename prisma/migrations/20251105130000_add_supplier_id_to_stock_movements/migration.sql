@@ -1,4 +1,12 @@
--- Step 1: Create suppliers table if it doesn't exist
+-- Step 1: Create SupplierStatus enum if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'SupplierStatus') THEN
+        CREATE TYPE "public"."SupplierStatus" AS ENUM ('ACTIVE', 'INACTIVE');
+    END IF;
+END$$;
+
+-- Step 2: Create suppliers table if it doesn't exist
 CREATE TABLE IF NOT EXISTS "public"."suppliers" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -16,14 +24,6 @@ CREATE TABLE IF NOT EXISTS "public"."suppliers" (
 
     CONSTRAINT "suppliers_pkey" PRIMARY KEY ("id")
 );
-
--- Step 2: Create SupplierStatus enum if it doesn't exist
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'SupplierStatus') THEN
-        CREATE TYPE "public"."SupplierStatus" AS ENUM ('ACTIVE', 'INACTIVE');
-    END IF;
-END$$;
 
 -- Step 3: Add supplierId column to stock_movements if it doesn't exist
 DO $$

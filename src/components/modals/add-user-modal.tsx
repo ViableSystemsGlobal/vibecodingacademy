@@ -28,25 +28,39 @@ interface Role {
 interface AddUserModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddUser: (user: any) => void;
+  onAddUser: (user: any) => Promise<boolean>;
   roles?: Role[];
 }
 
+const formatRoleLabel = (roleName: string) => {
+  if (!roleName) return "";
+  if (/[a-z]/.test(roleName)) {
+    return roleName
+      .split(" ")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }
+  return roleName
+    .split("_")
+    .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+    .join(" ");
+};
+
 export default function AddUserModal({ isOpen, onClose, onAddUser, roles = [] }: AddUserModalProps) {
-  const { success, error: showError } = useToast();
+  const { error: showError } = useToast();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
 
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    role: "",
     phone: "",
     password: "",
     isActive: true
   });
   const [showPassword, setShowPassword] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({
@@ -67,9 +81,8 @@ export default function AddUserModal({ isOpen, onClose, onAddUser, roles = [] }:
       showError('Email is required');
       return;
     }
-    
-    if (!formData.role) {
-      showError('Role is required');
+    if (selectedRoleIds.length === 0) {
+      showError('Select at least one role');
       return;
     }
     
@@ -79,21 +92,26 @@ export default function AddUserModal({ isOpen, onClose, onAddUser, roles = [] }:
     }
 
     setIsCreating(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    onAddUser(formData);
-    
-    // Reset form
+    const primaryRoleId = selectedRoleIds[0];
+    const primaryRole = roles.find((role) => role.id === primaryRoleId);
+    const primaryRoleLabel = formatRoleLabel(primaryRole?.name || "");
+
+    const succeeded = await onAddUser({
+      ...formData,
+      role: primaryRoleLabel,
+      roleIds: selectedRoleIds,
+    });
+
+    if (succeeded) {
     setFormData({
       name: "",
       email: "",
-      role: "",
       phone: "",
       password: "",
       isActive: true
     });
+      setSelectedRoleIds([]);
+    }
     
     setIsCreating(false);
   };
@@ -151,29 +169,49 @@ export default function AddUserModal({ isOpen, onClose, onAddUser, roles = [] }:
               />
             </div>
 
-            {/* Role */}
+          {/* Roles */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Roles*
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Assign Roles*
               </label>
-              <select
-                value={formData.role}
-                onChange={(e) => handleInputChange('role', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value="">Select Role</option>
-                {roles.map((role) => (
-                  <option key={role.id} value={role.name}>
-                    {role.name}
-                  </option>
-                ))}
-              </select>
-              <div className="mt-1">
-                <p className="text-xs text-orange-600">
-                  Need a new role? <span className="cursor-pointer underline">Create role</span>
-                </p>
+            <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-md divide-y">
+              {roles.length === 0 ? (
+                <div className="p-3 text-sm text-gray-500">
+                  No roles available. Create a role first.
+                </div>
+              ) : (
+                roles.map((role) => (
+                  <label
+                    key={role.id}
+                    className="flex items-start space-x-3 p-3 hover:bg-gray-50 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      className={`mt-1 h-4 w-4 rounded border-gray-300 text-${theme.primary} focus:ring-${theme.primary}`}
+                      checked={selectedRoleIds.includes(role.id)}
+                      onChange={(e) => {
+                        setSelectedRoleIds((prev) =>
+                          e.target.checked
+                            ? [...prev, role.id]
+                            : prev.filter((id) => id !== role.id)
+                        );
+                      }}
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {formatRoleLabel(role.name)}
+                      </p>
+                      {role.description && (
+                        <p className="text-xs text-gray-500 mt-1">{role.description}</p>
+                      )}
               </div>
+                  </label>
+                ))
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Select all roles that should apply to this user.
+            </p>
             </div>
 
             {/* Phone */}

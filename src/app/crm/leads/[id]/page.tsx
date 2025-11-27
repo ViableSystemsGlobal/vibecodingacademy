@@ -367,7 +367,7 @@ export default function LeadDetailsPage() {
     if (!lead?.id) return;
     
     try {
-      const response = await fetch(`/api/lead-products?leadId=${lead.id}`, {
+      const response = await fetch(`/api/leads/${lead.id}/products`, {
         credentials: 'include',
       });
       

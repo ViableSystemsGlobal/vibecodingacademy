@@ -2,6 +2,7 @@
 
 import { signIn, getSession } from "next-auth/react"
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,6 +10,7 @@ import { Building2, ArrowRight, AlertCircle } from "lucide-react"
 import Image from "next/image"
 import { useTheme } from "@/contexts/theme-context"
 import { useToast } from "@/contexts/toast-context"
+import { MODULE_ACCESS } from "@/lib/permissions"
 
 interface CompanySettings {
   companyName: string;
@@ -23,6 +25,7 @@ export default function SignIn() {
   const [error, setError] = useState<string | null>(null)
   const { getThemeColor } = useTheme()
   const { error: showError } = useToast()
+  const router = useRouter()
   const [companySettings, setCompanySettings] = useState<CompanySettings>({
     companyName: "AdPools Group",
     companyLogo: "",
@@ -70,7 +73,45 @@ export default function SignIn() {
       })
 
       if (result?.ok) {
-        window.location.href = "/dashboard"
+        // Wait for session to be ready, then check dashboard permissions
+        const session = await getSession()
+        if (session?.user) {
+          try {
+            // Fetch user abilities to check dashboard access
+            const abilitiesResponse = await fetch('/api/user/abilities', {
+              credentials: 'include'
+            })
+            
+            if (abilitiesResponse.ok) {
+              const abilitiesData = await abilitiesResponse.json()
+              const userAbilities = abilitiesData.abilities || []
+              
+              // Check if user has dashboard access
+              const dashboardAbilities = MODULE_ACCESS.dashboard || []
+              const hasDashboardAccess = 
+                session.user.role === 'SUPER_ADMIN' || 
+                session.user.role === 'ADMIN' ||
+                dashboardAbilities.some(ability => userAbilities.includes(ability))
+              
+              if (hasDashboardAccess) {
+                window.location.href = "/dashboard"
+              } else {
+                // Redirect to /tasks/my if no dashboard access
+                window.location.href = "/tasks/my"
+              }
+            } else {
+              // If abilities fetch fails, default to dashboard (will be checked there)
+              window.location.href = "/dashboard"
+            }
+          } catch (error) {
+            console.error('Error checking dashboard permissions:', error)
+            // Default to dashboard if check fails
+            window.location.href = "/dashboard"
+          }
+        } else {
+          // If session not ready, default to dashboard
+          window.location.href = "/dashboard"
+        }
       } else {
         // Clear password field for security
         setPassword("")

@@ -1,5 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+
+// Currency symbol helper - using HTML entities for proper encoding
+function getCurrencySymbol(code: string = 'GHS'): string {
+  const symbols: { [key: string]: string } = {
+    'USD': '$',
+    'GHS': 'GH&#8373;', // Ghana Cedi symbol using HTML entity
+    'EUR': '€',
+    'GBP': '£',
+    'NGN': '₦',
+    'KES': 'KSh',
+    'ZAR': 'R',
+  };
+  return symbols[code] || code;
+}
+
+// Helper function to parse product images
+const parseProductImages = (images: string | null | undefined): string[] => {
+  if (!images) return [];
+  if (typeof images === 'string') {
+    try {
+      return JSON.parse(images);
+    } catch (e) {
+      return [];
+    }
+  }
+  if (Array.isArray(images)) {
+    return images;
+  }
+  return [];
+};
 
 export async function GET(
   request: NextRequest,
@@ -7,59 +39,69 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    console.log('🔍 PDF API - Starting request for ID:', id);
+    const session = await getServerSession(authOptions);
 
-    // Get quotation data
+    if (!session?.user) {
+      return new NextResponse("Unauthorized", { status: 401 });
+    }
+
     const quotation = await prisma.quotation.findUnique({
       where: { id },
-      select: {
-        id: true,
-        number: true,
-        subject: true,
-        status: true,
-        total: true,
-        subtotal: true,
-        tax: true,
-        taxInclusive: true,
-        notes: true,
-        validUntil: true,
-        customerType: true,
-        createdAt: true,
-        owner: {
-          select: { id: true, name: true, email: true },
-        },
-        account: {
-          select: { id: true, name: true, email: true, phone: true },
-        },
-        distributor: {
-          select: { id: true, businessName: true, email: true, phone: true },
-        },
+      include: {
+        owner: { select: { name: true, email: true } },
+        account: { select: { name: true, email: true, phone: true } },
+        distributor: { select: { businessName: true, email: true, phone: true } },
         lead: {
-          select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: true },
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            company: true,
+          },
         },
         lines: {
           include: {
             product: {
-              select: { id: true, name: true, sku: true, price: true }
+              select: { id: true, name: true, sku: true, images: true }
             }
           }
         },
-      } as any,
+      },
     });
 
     if (!quotation) {
-      return NextResponse.json({ error: 'Quotation not found' }, { status: 404 });
+      return new NextResponse("Quotation not found", { status: 404 });
     }
 
-    // Get customer info
-    const customerName = quotation.account?.name || 
-                        quotation.distributor?.businessName || 
-                        (quotation.lead ? `${quotation.lead.firstName} ${quotation.lead.lastName}`.trim() : '') ||
-                        'No customer';
-    const customerEmail = quotation.account?.email || quotation.distributor?.email || quotation.lead?.email || '';
-    const customerPhone = quotation.account?.phone || quotation.distributor?.phone || quotation.lead?.phone || '';
-    
-    const hasDiscounts = quotation.lines?.some(line => line.discount > 0) || false;
+    const customerName =
+      quotation.account?.name ||
+      quotation.distributor?.businessName ||
+      [quotation.lead?.firstName, quotation.lead?.lastName].filter(Boolean).join(" ") ||
+      "Customer";
+
+    const customerEmail =
+      quotation.account?.email ||
+      quotation.distributor?.email ||
+      quotation.lead?.email ||
+      "";
+
+    const customerPhone =
+      quotation.account?.phone ||
+      quotation.distributor?.phone ||
+      quotation.lead?.phone ||
+      "";
+
+    const currencySymbol = getCurrencySymbol(quotation.currency || 'GHS');
+    const formatCurrency = (amount: number) =>
+      `${currencySymbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    const issueDate = new Date(quotation.createdAt).toLocaleDateString();
+    const validUntil = quotation.validUntil
+      ? new Date(quotation.validUntil).toLocaleDateString()
+      : "No expiry";
+
+    const hasDiscounts = quotation.lines?.some((line: any) => line.discount > 0) || false;
     
     // Get company logo and PDF images from settings
     const [logoSetting, headerImageSetting, footerImageSetting] = await Promise.all([
@@ -83,11 +125,8 @@ export async function GET(
     const pdfHeaderImage = convertToAbsoluteUrl(headerImageSetting?.value || null);
     const pdfFooterImage = convertToAbsoluteUrl(footerImageSetting?.value || null);
     
-    // Debug logging
-    console.log('📄 PDF Header Image:', pdfHeaderImage);
-    console.log('📄 PDF Footer Image:', pdfFooterImage);
-    console.log('📄 Raw Header Setting:', headerImageSetting?.value);
-    console.log('📄 Raw Footer Setting:', footerImageSetting?.value);
+    const headerMargin = pdfHeaderImage ? '160px' : '0';
+    const footerMargin = pdfFooterImage ? '160px' : '0';
 
     // Generate HTML content for PDF
     const htmlContent = `
@@ -102,24 +141,110 @@ export async function GET(
             box-sizing: border-box;
           }
           
+          @page {
+            margin: 0;
+            size: A4;
+          }
+          
           body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             line-height: 1.6;
             color: #333;
             background: white;
-            padding: 20px;
+            padding: 0;
+            margin: 0;
+          }
+          
+          body > *:first-child {
+            margin-top: 0;
+            padding-top: 0;
+          }
+          
+          .pdf-header {
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            background: white;
+            page-break-after: avoid;
+            line-height: 0;
+          }
+          
+          .pdf-header img {
+            width: 100%;
+            max-height: 150px;
+            object-fit: cover;
+            display: block;
+            margin: 0;
+            padding: 0;
+            vertical-align: top;
+          }
+          
+          .pdf-footer {
+            width: 100%;
+            margin-left: 0;
+            margin-right: 0;
+            padding-left: 0;
+            padding-right: 0;
+            background: white;
+            page-break-before: avoid;
+          }
+          
+          .pdf-footer img {
+            width: 100%;
+            max-height: 150px;
+            object-fit: cover;
+            display: block;
+          }
+          
+          .content-wrapper {
+            padding: 0 20px 20px 20px;
+            margin-top: 0;
+            padding-top: 25px;
+            margin-bottom: 0;
+          }
+          
+          .pdf-header + .content-wrapper {
+            margin-top: 0;
+            padding-top: 25px;
+          }
+          
+          @media print {
+            .pdf-header {
+              position: fixed;
+              top: 0;
+              left: 0;
+              right: 0;
+              width: 100%;
+            }
+            .pdf-footer {
+              position: fixed;
+              bottom: 0;
+              left: 0;
+              right: 0;
+              width: 100%;
+            }
+            .content-wrapper {
+              margin-top: ${headerMargin};
+              margin-bottom: ${footerMargin};
+            }
           }
           
           .company-header {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 15px;
+            margin-top: 0;
+            padding-top: 0;
             border-bottom: 2px solid #e5e7eb;
-            padding-bottom: 20px;
+            padding-bottom: 10px;
+            line-height: 1.2;
           }
           
           .logo {
             max-height: 60px;
-            margin-bottom: 10px;
+            margin: 0 auto;
+            padding: 0;
+            display: block;
+            vertical-align: top;
           }
           
           .company-name {
@@ -216,7 +341,7 @@ export async function GET(
           
           .table-header {
             display: grid;
-            grid-template-columns: 40px 2fr 60px 80px ${hasDiscounts ? '80px' : ''} 80px;
+            grid-template-columns: 30px 0.8fr 45px 110px ${hasDiscounts ? '65px' : ''} 120px;
             background-color: #f9fafb;
             font-weight: 600;
             font-size: 12px;
@@ -226,8 +351,9 @@ export async function GET(
           }
           
           .table-header-cell {
-            padding: 12px 8px;
+            padding: 8px 6px;
             border-right: 1px solid #e5e7eb;
+            font-size: 11px;
           }
           
           .table-header-cell:last-child {
@@ -240,7 +366,7 @@ export async function GET(
           
           .table-row {
             display: grid;
-            grid-template-columns: 40px 2fr 60px 80px ${hasDiscounts ? '80px' : ''} 80px;
+            grid-template-columns: 30px 0.8fr 45px 110px ${hasDiscounts ? '65px' : ''} 120px;
             border-bottom: 1px solid #f3f4f6;
             font-size: 13px;
           }
@@ -250,15 +376,39 @@ export async function GET(
           }
           
           .row-number {
-            padding: 12px 8px;
+            padding: 8px 4px;
             text-align: center;
             color: #6b7280;
             border-right: 1px solid #f3f4f6;
+            font-size: 12px;
           }
           
           .row-description {
-            padding: 12px 8px;
+            padding: 8px 6px;
             border-right: 1px solid #f3f4f6;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            overflow: hidden;
+          }
+          
+          .product-image {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            object-fit: cover;
+            background-color: #e5e7eb;
+            flex-shrink: 0;
+          }
+          
+          .product-details {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            word-wrap: break-word;
+            font-size: 11px;
+            line-height: 1.3;
           }
           
           .row-sku {
@@ -268,10 +418,14 @@ export async function GET(
           }
           
           .row-other {
-            padding: 12px 8px;
+            padding: 8px 6px;
             text-align: right;
             border-right: 1px solid #f3f4f6;
             color: #374151;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 12px;
           }
           
           .row-discount {
@@ -290,10 +444,14 @@ export async function GET(
           }
           
           .row-amount {
-            padding: 12px 8px;
+            padding: 8px 6px;
             text-align: right;
             font-weight: 600;
             color: #1f2937;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 12px;
           }
           
           .totals-section {
@@ -355,29 +513,14 @@ export async function GET(
             body {
               padding: 0;
             }
-          }
-          .pdf-header-image {
-            width: 100%;
-            max-height: 150px;
-            object-fit: contain;
-            margin-bottom: 20px;
-          }
-          
-          .pdf-footer-image {
-            width: 100%;
-            max-height: 150px;
-            object-fit: contain;
-            margin-top: 30px;
-            border-top: 2px solid #e5e7eb;
-            padding-top: 20px;
+            .pdf-header, .pdf-footer {
+              display: block !important;
+            }
           }
         </style>
       </head>
       <body>
-        ${pdfHeaderImage ? `<img src="${pdfHeaderImage}" alt="PDF Header" class="pdf-header-image" />` : ''}
-        
-        <!-- Company Header -->
-        <div class="company-header">
+        ${pdfHeaderImage ? `<div class="pdf-header"><img src="${pdfHeaderImage}" alt="PDF Header" /></div>` : ''}<div class="content-wrapper"><div class="company-header">
           ${customLogo ? `<img src="${customLogo}" alt="Company Logo" class="logo" />` : ''}
           <div class="company-name">${quotation.subject || 'Untitled Quotation'}</div>
           <div class="document-subtitle">${quotation.number}</div>
@@ -429,24 +572,31 @@ export async function GET(
                 <div class="table-header-cell">Amount</div>
               </div>
               <div class="table-body">
-                ${quotation.lines.map((line: any, index: number) => `
+                ${quotation.lines.map((line: any, index: number) => {
+                  const images = parseProductImages(line.product?.images);
+                  const imageUrl = images.length > 0 ? images[0] : '';
+                  return `
                   <div class="table-row">
                     <div class="row-number">${index + 1}</div>
                     <div class="row-description">
+                      ${imageUrl ? `<img src="${imageUrl}" alt="Product" class="product-image" onerror="this.style.display='none'" />` : ''}
+                      <div class="product-details">
                       ${line.product?.name || line.productName || `Item ${index + 1}`}
                       ${line.product?.sku || line.sku ? `<div class="row-sku">SKU: ${line.product?.sku || line.sku}</div>` : ''}
                       ${line.description ? `<div class="row-sku">${line.description}</div>` : ''}
+                      </div>
                     </div>
                     <div class="row-other">${line.quantity}</div>
-                    <div class="row-other">GH₵${line.unitPrice.toFixed(2)}</div>
+                    <div class="row-other">${formatCurrency(line.unitPrice)}</div>
                     ${hasDiscounts ? `
                       <div class="${line.discount > 0 ? 'row-discount' : 'row-discount-dash'}">
                         ${line.discount > 0 ? `${line.discount}%` : '-'}
                       </div>
                     ` : ''}
-                    <div class="row-amount">GH₵${line.lineTotal.toFixed(2)}</div>
+                    <div class="row-amount">${formatCurrency(line.lineTotal)}</div>
                   </div>
-                `).join('')}
+                `;
+                }).join('')}
               </div>
             </div>
           ` : `
@@ -461,7 +611,7 @@ export async function GET(
           ${!quotation.taxInclusive ? `
             <div class="total-row">
               <span class="total-label">Subtotal:</span>
-              <span class="total-value">GH₵${quotation.subtotal.toFixed(2)}</span>
+              <span class="total-value">${formatCurrency(quotation.subtotal)}</span>
             </div>
             ${(() => {
               const totalDiscount = quotation.lines.reduce((sum: number, line: any) => {
@@ -471,18 +621,18 @@ export async function GET(
               return totalDiscount > 0 ? `
                 <div class="total-row">
                   <span class="total-label">Discount:</span>
-                  <span class="total-value" style="color: #059669;">-GH₵${totalDiscount.toFixed(2)}</span>
+                  <span class="total-value" style="color: #059669;">-${formatCurrency(totalDiscount)}</span>
                 </div>
               ` : '';
             })()}
             <div class="total-row">
               <span class="total-label">Tax:</span>
-              <span class="total-value">GH₵${quotation.tax.toFixed(2)}</span>
+              <span class="total-value">${formatCurrency(quotation.tax)}</span>
             </div>
           ` : ''}
           <div class="total-row total-final">
             <span>${quotation.taxInclusive ? 'Total (Tax Inclusive):' : 'Total:'}</span>
-            <span class="total-black">GH₵${quotation.total.toFixed(2)}</span>
+            <span class="total-black">${formatCurrency(quotation.total)}</span>
           </div>
         </div>
 
@@ -492,8 +642,9 @@ export async function GET(
             <div class="notes-content">${quotation.notes}</div>
           </div>
         ` : ''}
+        </div>
         
-        ${pdfFooterImage ? `<img src="${pdfFooterImage}" alt="PDF Footer" class="pdf-footer-image" />` : ''}
+        ${pdfFooterImage ? `<div class="pdf-footer"><img src="${pdfFooterImage}" alt="PDF Footer" /></div>` : ''}
       </body>
       </html>
     `;

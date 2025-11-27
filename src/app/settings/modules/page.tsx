@@ -24,6 +24,7 @@ import {
 import Link from "next/link";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { clearAllMenuCache } from "@/lib/menu-cache";
 
 interface Module {
   id?: string;
@@ -119,9 +120,22 @@ export default function ModulesPage() {
         )
       );
 
+      // Clear menu cache so sidebar refreshes with updated module status
+      clearAllMenuCache();
+      
+      // Small delay to ensure database update is committed
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Dispatch custom event to trigger sidebar refresh
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("module-toggled", { 
+          detail: { slug: module.slug, isEnabled: data.module.isEnabled }
+        }));
+      }
+
       success(
         module.isEnabled ? "Module Disabled" : "Module Enabled",
-        `${module.name || module.slug || "Module"} has been ${module.isEnabled ? "disabled" : "enabled"}`
+        `${module.name || module.slug || "Module"} has been ${module.isEnabled ? "disabled" : "enabled"}. The sidebar will update automatically.`
       );
     } catch (error: any) {
       console.error("Error toggling module:", error);

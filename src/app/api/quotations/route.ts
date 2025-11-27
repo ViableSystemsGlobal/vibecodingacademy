@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateQuoteQRData, generateQRCode } from '@/lib/qrcode';
+import { parseTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,30 +34,56 @@ export async function GET(request: NextRequest) {
     console.log('🔍 User role:', user?.role);
     const isSuperAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
 
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
-    const search = searchParams.get('search');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const params = parseTableQuery(request);
+
+    // Custom filter handler
+    const customFilters = (filters: Record<string, string | string[] | null>) => {
+      const where: any = {};
+      if (filters.status && filters.status !== 'ALL') {
+        where.status = filters.status;
+      }
+      return where;
+    };
+
+    const where = buildWhereClause(params, {
+      searchFields: ['number', 'subject'],
+      customFilters,
+    });
+
+    // Add customer name search if search term exists
+    if (params.search) {
+      where.OR = [
+        ...(where.OR || []), // Preserve existing OR conditions from buildWhereClause
+        {
+          account: {
+            name: { contains: params.search, mode: 'insensitive' }
+          }
+        },
+        {
+          distributor: {
+            businessName: { contains: params.search, mode: 'insensitive' }
+          }
+        },
+        {
+          lead: {
+            OR: [
+              { firstName: { contains: params.search, mode: 'insensitive' } },
+              { lastName: { contains: params.search, mode: 'insensitive' } },
+              { company: { contains: params.search, mode: 'insensitive' } }
+            ]
+          }
+        }
+      ];
+    }
 
     // Super Admins can see all quotations, others only their own
-    const where: any = {};
-    
     if (!isSuperAdmin) {
       where.ownerId = userId;
     }
 
-    if (status) {
-      where.status = status;
-    }
-
-    if (search) {
-      where.OR = [
-        { number: { contains: search, mode: 'insensitive' } },
-        { subject: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-
+    const orderBy = buildOrderBy(params.sortBy, params.sortOrder);
+    const page = params.page || 1;
+    const limit = params.limit || 10;
     const skip = (page - 1) * limit;
     
     console.log('🔍 Query parameters:', { where, skip, limit, page });
@@ -66,7 +93,7 @@ export async function GET(request: NextRequest) {
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: orderBy,
         select: {
           id: true,
           number: true,
@@ -119,7 +146,13 @@ export async function GET(request: NextRequest) {
         limit,
         total,
         pages: Math.ceil(total / limit)
-      }
+      },
+      sort: params.sortBy
+        ? {
+            field: params.sortBy,
+            order: params.sortOrder || 'desc',
+          }
+        : undefined,
     });
   } catch (error: any) {
     console.error('❌ Error fetching quotations:', error);
@@ -303,11 +336,26 @@ export async function POST(request: NextRequest) {
       data: {
         number,
         subject,
-        validUntil: validUntil && validUntil.trim() ? (() => {
+        validUntil: validUntil && validUntil.trim() && validUntil !== '' ? (() => {
           // Parse date string (YYYY-MM-DD) and create date at midnight in local timezone
           const dateStr = validUntil.trim();
+          // Validate date format (YYYY-MM-DD)
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            console.warn('📅 Invalid date format for validUntil:', dateStr);
+            return null;
+          }
           const [year, month, day] = dateStr.split('-').map(Number);
+          // Validate date values
+          if (isNaN(year) || isNaN(month) || isNaN(day) || month < 1 || month > 12 || day < 1 || day > 31) {
+            console.warn('📅 Invalid date values for validUntil:', { year, month, day });
+            return null;
+          }
           const date = new Date(year, month - 1, day);
+          // Validate the date is valid
+          if (isNaN(date.getTime())) {
+            console.warn('📅 Invalid date object created from validUntil:', dateStr);
+            return null;
+          }
           console.log('📅 Parsing validUntil:', { dateStr, parsedDate: date.toISOString() });
           return date;
         })() : null,

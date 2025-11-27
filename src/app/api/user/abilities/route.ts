@@ -14,14 +14,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // If no role in session, use fallback immediately
+    // If no role in session, return empty abilities (shouldn't happen, but be safe)
     if (!session.user.role) {
-      console.log('🔍 No role in session, using fallback');
-      const fallbackAbilities = ROLE_ABILITIES['SUPER_ADMIN'] || [];
+      console.log('🔍 No role in session, returning empty abilities');
       return NextResponse.json({
         success: true,
-        abilities: fallbackAbilities,
-        source: 'fallback-no-role'
+        abilities: [],
+        source: 'no-role'
       });
     }
 
@@ -50,15 +49,25 @@ export async function GET(request: NextRequest) {
         }
       });
     } catch (dbError) {
-      console.error('🔍 Database query failed, using fallback:', dbError);
-      // If database query fails, use fallback
+      console.error('🔍 Database query failed:', dbError);
+      // If database query fails, only use fallback for known system roles
       const userRole = session.user.role as Role;
-      const fallbackAbilities = ROLE_ABILITIES[userRole] || ROLE_ABILITIES['SUPER_ADMIN'] || [];
+      const knownSystemRoles: Role[] = ['SUPER_ADMIN', 'ADMIN', 'SALES_MANAGER', 'SALES_REP', 'INVENTORY_MANAGER', 'FINANCE_OFFICER', 'EXECUTIVE_VIEWER'];
+      if (knownSystemRoles.includes(userRole)) {
+        const fallbackAbilities = ROLE_ABILITIES[userRole] || [];
       return NextResponse.json({
         success: true,
         abilities: fallbackAbilities,
-        source: 'fallback-db-error'
+          source: 'fallback-db-error-system-role'
+        });
+      } else {
+        // Custom role - return empty abilities
+        return NextResponse.json({
+          success: true,
+          abilities: [],
+          source: 'fallback-db-error-custom-role'
       });
+      }
     }
 
     // Extract all abilities from all assigned roles
@@ -73,53 +82,93 @@ export async function GET(request: NextRequest) {
           });
         }
       });
+      
+      // Always add tasks.view for all users so they can access "My Tasks"
+      if (!abilities.includes('tasks.view')) {
+        abilities.push('tasks.view');
+      }
     } catch (extractError) {
-      console.error('🔍 Error extracting abilities, using fallback:', extractError);
+      console.error('🔍 Error extracting abilities:', extractError);
+      // Only use fallback for known system roles
       const userRole = session.user.role as Role;
-      const fallbackAbilities = ROLE_ABILITIES[userRole] || ROLE_ABILITIES['SUPER_ADMIN'] || [];
+      const knownSystemRoles: Role[] = ['SUPER_ADMIN', 'ADMIN', 'SALES_MANAGER', 'SALES_REP', 'INVENTORY_MANAGER', 'FINANCE_OFFICER', 'EXECUTIVE_VIEWER'];
+      if (knownSystemRoles.includes(userRole)) {
+        const fallbackAbilities = ROLE_ABILITIES[userRole] || [];
       return NextResponse.json({
         success: true,
         abilities: fallbackAbilities,
-        source: 'fallback-extract-error'
+          source: 'fallback-extract-error-system-role'
       });
+      } else {
+        // Custom role - return empty abilities
+        return NextResponse.json({
+          success: true,
+          abilities: [],
+          source: 'fallback-extract-error-custom-role'
+        });
+      }
     }
 
-    // If no abilities found from database, fall back to hardcoded role-based abilities
+    // If no abilities found from database, check if it's a known system role
+    // Only fall back to hardcoded abilities for known system roles
+    // Custom roles without abilities should get NO abilities
     if (abilities.length === 0) {
-      console.log('🔍 No database abilities found, using fallback for role:', session.user.role);
+      console.log('🔍 No database abilities found for user');
       const userRole = session.user.role as Role;
+      
+      // Only use fallback for known system roles
+      const knownSystemRoles: Role[] = ['SUPER_ADMIN', 'ADMIN', 'SALES_MANAGER', 'SALES_REP', 'INVENTORY_MANAGER', 'FINANCE_OFFICER', 'EXECUTIVE_VIEWER'];
+      if (knownSystemRoles.includes(userRole)) {
+        console.log('🔍 Known system role, using baseline abilities for role:', userRole);
       const fallbackAbilities = ROLE_ABILITIES[userRole] || [];
       console.log('🔍 Fallback abilities count:', fallbackAbilities.length);
+      // Ensure tasks.view is included
+      const abilitiesWithTasks = fallbackAbilities.includes('tasks.view') 
+        ? fallbackAbilities 
+        : [...fallbackAbilities, 'tasks.view'];
       return NextResponse.json({
         success: true,
-        abilities: fallbackAbilities,
-        source: 'fallback'
+        abilities: abilitiesWithTasks,
+          source: 'fallback-system-role'
+        });
+      } else {
+        // Custom role with no abilities - but still give them tasks.view for My Tasks
+        console.log('🔍 Custom role with no abilities, returning tasks.view only:', userRole);
+        return NextResponse.json({
+          success: true,
+          abilities: ['tasks.view'],
+          source: 'custom-role-no-abilities'
       });
+      }
     }
 
     // Map database abilities to navigation abilities
-    // Since the database is incomplete, we'll be generous with Super Admin access
+    // ONLY add navigation abilities if user has the specific required abilities
+    // Don't be generous - only grant what's explicitly assigned
     const navigationMapping = {
-      'sales.view': ['invoices.view', 'payments.view', 'quotations.view', 'products.view', 'users.manage'],
-      'crm.view': ['leads.view', 'accounts.view', 'opportunities.view', 'users.manage'],
-      'drm.view': ['accounts.view', 'users.manage'], 
-      'inventory.view': ['inventory.view', 'products.view', 'warehouses.view', 'stock-movements.view', 'users.manage'],
-      'communication.view': ['users.view', 'users.manage'], 
-      'agents.view': ['users.view', 'users.manage'], 
-      'reports.view': ['reports.view', 'users.manage'],
-      'settings.view': ['settings.manage', 'users.manage', 'roles.manage'],
-      'tasks.view': ['users.view', 'users.manage'], 
-      'dashboard.view': ['dashboard.view', 'users.manage'],
-      'ai_analyst.access': ['users.manage', 'reports.view'], // AI Analyst access
-      'ai-analyst.view': ['users.manage', 'reports.view'], // Alternative naming
+      'sales.view': ['invoices.view', 'payments.view', 'quotations.view'],
+      'crm.view': ['leads.view', 'accounts.view', 'opportunities.view'],
+      'drm.view': ['drm.view'], // Only grant if user explicitly has drm.view
+      'inventory.view': ['inventory.view'],
+      'communication.view': ['communication.view'],
+      'agents.view': ['agents.view'],
+      'reports.view': ['reports.view'],
+      'settings.view': ['settings.view'],
+      'tasks.view': ['tasks.view'],
+      'dashboard.view': ['dashboard.view'],
+      'ai_analyst.access': ['ai_analyst.access'],
+      'ai-analyst.view': ['ai_analyst.access'],
     };
 
     // Add navigation abilities based on database abilities
+    // Only add if user has the EXACT required ability, not inferred ones
     const enhancedAbilities = [...abilities];
     
     Object.entries(navigationMapping).forEach(([navAbility, requiredAbilities]) => {
-      const hasRequiredAbilities = requiredAbilities.some(required => abilities.includes(required));
-      if (hasRequiredAbilities && !enhancedAbilities.includes(navAbility)) {
+      // User must have ALL required abilities (not just some)
+      const hasAllRequired = requiredAbilities.every(required => abilities.includes(required));
+      if (hasAllRequired && !enhancedAbilities.includes(navAbility)) {
+        console.log(`✅ Adding navigation ability "${navAbility}" based on required abilities:`, requiredAbilities);
         enhancedAbilities.push(navAbility);
       }
     });
@@ -274,14 +323,48 @@ export async function GET(request: NextRequest) {
       }
     });
     
+    // Only add baseline abilities for known system roles
+    // Custom roles should only get abilities from their role assignments
+    const userRole = session.user.role as Role;
+    const knownSystemRoles: Role[] = ['SUPER_ADMIN', 'ADMIN', 'SALES_MANAGER', 'SALES_REP', 'INVENTORY_MANAGER', 'FINANCE_OFFICER', 'EXECUTIVE_VIEWER'];
+    
+    if (knownSystemRoles.includes(userRole)) {
+      // For known system roles, ensure baseline abilities are present
+      let baselineAbilities = ROLE_ABILITIES[userRole] || [];
+      if (userRole === 'ADMIN') {
+        // ADMIN gets ADMIN abilities, not SUPER_ADMIN
+        baselineAbilities = ROLE_ABILITIES['ADMIN'] || [];
+      }
+    baselineAbilities.forEach((ability) => {
+      if (!enhancedAbilities.includes(ability)) {
+        enhancedAbilities.push(ability);
+      }
+    });
+    }
+    // For custom roles, don't add any baseline abilities - only use what's assigned
+    
+    // Always ensure tasks.view is included for all users so they can access "My Tasks"
+    if (!enhancedAbilities.includes('tasks.view')) {
+      enhancedAbilities.push('tasks.view');
+    }
+    
     console.log('🔍 Database abilities found:', abilities.length, 'abilities');
+    console.log('🔍 Database abilities:', abilities);
     console.log('🔍 Enhanced abilities count:', enhancedAbilities.length);
-    console.log('🔍 Sample enhanced abilities:', enhancedAbilities.slice(0, 10));
+    console.log('🔍 Enhanced abilities:', enhancedAbilities);
+    console.log('🔍 User role:', session.user.role);
+    console.log('🔍 Is known system role:', knownSystemRoles.includes(userRole));
 
     return NextResponse.json({
       success: true,
       abilities: enhancedAbilities,
-      source: 'database-enhanced'
+      source: 'database-enhanced',
+      debug: {
+        databaseAbilities: abilities,
+        enhancedAbilities: enhancedAbilities,
+        userRole: session.user.role,
+        isKnownSystemRole: knownSystemRoles.includes(userRole)
+      }
     });
 
   } catch (error) {

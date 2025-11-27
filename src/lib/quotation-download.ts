@@ -97,101 +97,20 @@ export const downloadQuotationAsPDF = async (
   
   try {
     // Open window SYNCHRONOUSLY (in response to user click) to avoid popup blocker
+    // This must happen immediately, without any async operations
     const timestamp = Date.now();
     const pdfUrl = `/api/quotations/${quotation.id}/pdf?t=${timestamp}&v=${VERSION}`;
     
     console.log(`[Quotation PDF Download] Opening window synchronously`);
     
-    // Open window immediately (synchronously) - this must happen in direct response to user click
-    const newWindow = window.open('', '_blank', 'noopener,noreferrer');
+    // Open window immediately with the URL - this must be synchronous
+    const newWindow = window.open(pdfUrl, '_blank', 'noopener,noreferrer');
     
     if (!newWindow) {
       console.error('[Quotation PDF Download] Popup blocked');
-      errorHandler('Please allow popups to view the PDF');
+      errorHandler('Please allow popups to view the PDF, or try clicking the download button again.');
       return;
     }
-    
-    // Show loading message in the new window
-    newWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Loading Quotation PDF...</title>
-          <style>
-            body {
-              font-family: system-ui, -apple-system, sans-serif;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              height: 100vh;
-              margin: 0;
-              background: #f5f5f5;
-            }
-            .loader {
-              text-align: center;
-            }
-            .spinner {
-              border: 4px solid #f3f3f3;
-              border-top: 4px solid #3498db;
-              border-radius: 50%;
-              width: 40px;
-              height: 40px;
-              animation: spin 1s linear infinite;
-              margin: 0 auto 20px;
-            }
-            @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="loader">
-            <div class="spinner"></div>
-            <p>Loading quotation PDF...</p>
-          </div>
-        </body>
-      </html>
-    `);
-    newWindow.document.close();
-    
-    // Now fetch the PDF content asynchronously
-    console.log(`[Quotation PDF Download] Fetching PDF from: ${pdfUrl}`);
-    
-    const response = await fetch(pdfUrl, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-      },
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      console.error('[Quotation PDF Download] PDF generation failed:', errorText);
-      newWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head><title>Error</title></head>
-          <body style="font-family: system-ui; padding: 20px;">
-            <h1>Error</h1>
-            <p>Failed to generate PDF. Please try again.</p>
-          </body>
-        </html>
-      `);
-      newWindow.document.close();
-      errorHandler('Failed to generate PDF. Please try again.');
-      return;
-    }
-
-    const htmlContent = await response.text();
-    
-    // Write the PDF content to the already-opened window
-    newWindow.document.open();
-    newWindow.document.write(htmlContent);
-    newWindow.document.close();
     
     console.log(`[Quotation PDF Download] PDF opened successfully`);
     successHandler("Quotation PDF opened in new tab. You can print it from there.");

@@ -20,11 +20,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify the lead exists and user has access
-    const lead = await prisma.lead.findFirst({
+    // Verify the lead exists
+    const lead = await prisma.lead.findUnique({
       where: {
         id: leadId,
-        ownerId: session.user.id,
       },
     });
 
@@ -32,6 +31,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Lead not found' },
         { status: 404 }
+      );
+    }
+
+    // Check if user has access (owner, assigned user, or admin)
+    const assignedUsers = (lead as any).assignedTo ? 
+      (typeof (lead as any).assignedTo === 'string' ? JSON.parse((lead as any).assignedTo) : (lead as any).assignedTo) : [];
+    
+    const isOwner = lead.ownerId === session.user.id;
+    const isAssigned = assignedUsers.some((user: any) => user.id === session.user.id);
+    const userRole = (session.user as any).role;
+    const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
+    
+    if (!isOwner && !isAssigned && !isAdmin) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 403 }
       );
     }
 
@@ -150,11 +165,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verify the lead exists and user has access
-    const lead = await prisma.lead.findFirst({
+    // Verify the lead exists
+    const lead = await prisma.lead.findUnique({
       where: {
         id: leadId,
-        ownerId: session.user.id,
       },
     });
 
@@ -165,9 +179,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Return the assigned users from the lead
+    // Check if user has access (owner, assigned user, or admin)
+    // Parse assigned users from the lead
     const assignedUsers = (lead as any).assignedTo ? 
       (typeof (lead as any).assignedTo === 'string' ? JSON.parse((lead as any).assignedTo) : (lead as any).assignedTo) : [];
+    
+    const isOwner = lead.ownerId === session.user.id;
+    const isAssigned = assignedUsers.some((user: any) => user.id === session.user.id);
+    const userRole = (session.user as any).role;
+    const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
+    
+    if (!isOwner && !isAssigned && !isAdmin) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 403 }
+      );
+    }
+
+    // Return the assigned users from the lead (reuse the already parsed assignedUsers)
     
     // Get all users for the assignment popup (excluding already assigned users)
     const allUsers = await prisma.user.findMany({

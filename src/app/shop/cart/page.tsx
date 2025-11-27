@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/contexts/toast-context";
+import { useBranding } from "@/contexts/branding-context";
 
 interface CartItem {
   productId: string;
@@ -33,6 +34,8 @@ export default function CartPage() {
   const [updating, setUpdating] = useState<string | null>(null);
   const router = useRouter();
   const { success, error: showError } = useToast();
+  const { getThemeColor } = useBranding();
+  const themeColor = getThemeColor();
 
   useEffect(() => {
     fetchCart();
@@ -170,7 +173,7 @@ export default function CartPage() {
               </p>
             </div>
 
-            <div className="grid lg:grid-cols-3 gap-8">
+            <div className="grid gap-8 lg:grid-cols-3">
               {/* Cart Items */}
               <div className="lg:col-span-2">
                 <div className="bg-white rounded-lg shadow">
@@ -189,16 +192,16 @@ export default function CartPage() {
                   <div className="divide-y">
                     {cart.items.map((item) => (
                       <div key={item.productId} className="p-6">
-                        <div className="flex items-start space-x-4">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:space-x-4 sm:gap-0">
                           {/* Product Image */}
                           {item.image ? (
                             <img
                               src={item.image}
                               alt={item.name}
-                              className="h-20 w-20 object-cover rounded-lg"
+                              className="h-24 w-24 object-cover rounded-lg sm:h-20 sm:w-20"
                             />
                           ) : (
-                            <div className="h-20 w-20 bg-gray-200 rounded-lg flex items-center justify-center">
+                            <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-gray-200 sm:h-20 sm:w-20">
                               <Package className="h-8 w-8 text-gray-400" />
                             </div>
                           )}
@@ -215,7 +218,7 @@ export default function CartPage() {
                           </div>
 
                           {/* Quantity Controls */}
-                          <div className="flex items-center space-x-2">
+                          <div className="mt-2 flex items-center space-x-2 sm:mt-0">
                             <button
                               onClick={() => updateQuantity(item.productId, Math.max(1, item.quantity - 1))}
                               disabled={updating === item.productId || item.quantity <= 1}
@@ -236,7 +239,7 @@ export default function CartPage() {
                           </div>
 
                           {/* Line Total */}
-                          <div className="text-right">
+                          <div className="mt-2 text-right sm:mt-0">
                             <p className="font-semibold text-gray-900">
                               {formatPrice(item.lineTotal, item.currency)}
                             </p>
@@ -272,7 +275,7 @@ export default function CartPage() {
 
               {/* Order Summary */}
               <div className="lg:col-span-1">
-                <div className="bg-white rounded-lg shadow p-6 sticky top-6">
+                <div className="rounded-lg bg-white p-6 shadow lg:sticky lg:top-6">
                   <h2 className="text-lg font-semibold mb-4">Order Summary</h2>
 
                   <div className="space-y-3">
@@ -294,7 +297,8 @@ export default function CartPage() {
 
                   <button
                     onClick={() => router.push("/shop/checkout")}
-                    className="w-full mt-6 bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition flex items-center justify-center space-x-2"
+                    className="mt-6 flex w-full items-center justify-center space-x-2 rounded-full px-5 py-3 text-base font-semibold text-white shadow-sm transition hover:opacity-95"
+                    style={{ backgroundColor: themeColor }}
                   >
                     <CreditCard className="h-5 w-5" />
                     <span>Proceed to Checkout</span>

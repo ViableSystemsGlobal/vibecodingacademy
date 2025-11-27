@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "./toast-context";
 
@@ -23,6 +23,8 @@ interface CustomerAuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
+  refreshCartCount: () => Promise<void>;
+  cartCount: number;
 }
 
 interface RegisterData {
@@ -38,18 +40,38 @@ const CustomerAuthContext = createContext<CustomerAuthContextType>({
   login: async () => {},
   logout: async () => {},
   register: async () => {},
+  refreshCartCount: async () => {},
+  cartCount: 0,
 });
 
 export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cartCount, setCartCount] = useState(0);
   const router = useRouter();
   const { success, error } = useToast();
+
+  const fetchCartCount = useCallback(async () => {
+    try {
+      const response = await fetch("/api/public/shop/cart", {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        setCartCount(0);
+        return;
+      }
+      const data = await response.json();
+      setCartCount(data.itemCount || 0);
+    } catch (err) {
+      setCartCount(0);
+    }
+  }, []);
 
   // Check if customer is logged in on mount
   useEffect(() => {
     checkAuth();
-  }, []);
+    void fetchCartCount();
+  }, [fetchCartCount]);
 
   const checkAuth = async () => {
     try {
@@ -61,11 +83,14 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         const data = await response.json();
         if (data.customer) {
           setCustomer(data.customer);
+        } else {
+          setCustomer(null);
         }
       } else {
         // Not authenticated, set customer to null
         setCustomer(null);
       }
+      await fetchCartCount();
     } catch (err) {
       console.error("Auth check failed:", err);
       setCustomer(null);
@@ -92,6 +117,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       }
 
       setCustomer(data.customer);
+      await fetchCartCount();
       success("Login successful!");
       router.push("/shop/account");
     } catch (err) {
@@ -133,6 +159,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       }
 
       setCustomer(result.customer);
+      await fetchCartCount();
       success("Registration successful!");
       router.push("/shop/account");
     } catch (err) {
@@ -149,6 +176,8 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         register,
+        refreshCartCount: fetchCartCount,
+        cartCount,
       }}
     >
       {children}

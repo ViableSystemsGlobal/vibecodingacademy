@@ -401,11 +401,20 @@ export default function ViewQuotationPage() {
             </Button>
             <Button 
               variant="outline"
-              onClick={async (e) => {
+              onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                await new Promise(resolve => setTimeout(resolve, 100));
-                await downloadQuotationAsPDF(quotation as any, customLogo || undefined, showError, success);
+                // Open window immediately (synchronously) in direct response to user click
+                const timestamp = Date.now();
+                const pdfUrl = `/api/quotations/${quotation.id}/pdf?t=${timestamp}`;
+                const newWindow = window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+                
+                if (!newWindow) {
+                  showError('Please allow popups to view the PDF, or try clicking the download button again.');
+                  return;
+                }
+                
+                success("Quotation PDF opened in new tab. You can print it from there.");
               }}
             >
               <Download className="h-4 w-4 mr-2" />
@@ -642,11 +651,20 @@ export default function ViewQuotationPage() {
                   <Button 
                     variant="outline" 
                     className="w-full"
-                    onClick={async (e) => {
+                    onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      await new Promise(resolve => setTimeout(resolve, 100));
-                      await downloadQuotationAsPDF(quotation as any, customLogo || undefined, showError, success);
+                      // Open window immediately (synchronously) in direct response to user click
+                      const timestamp = Date.now();
+                      const pdfUrl = `/api/quotations/${quotation.id}/pdf?t=${timestamp}`;
+                      const newWindow = window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+                      
+                      if (!newWindow) {
+                        showError('Please allow popups to view the PDF, or try clicking the download button again.');
+                        return;
+                      }
+                      
+                      success("Quotation PDF opened in new tab. You can print it from there.");
                     }}
                   >
                     <Download className="h-4 w-4 mr-2" />

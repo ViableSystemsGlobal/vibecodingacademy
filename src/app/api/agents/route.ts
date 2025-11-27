@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { parseTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
 
 // Helper function to generate agent code
 async function generateAgentCode(): Promise<string> {
@@ -26,30 +27,61 @@ export async function GET(request: NextRequest) {
     //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     // }
 
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
-    const territory = searchParams.get('territory');
-    const team = searchParams.get('team');
-    const managerId = searchParams.get('managerId');
+    const params = parseTableQuery(request);
 
-    // Build where clause
-    const where: any = {};
-    
-    if (status) {
-      where.status = status;
+    // Custom filter handler
+    const customFilters = (filters: Record<string, string | string[] | null>) => {
+      const where: any = {};
+
+      if (filters.status) {
+        where.status = filters.status;
+      }
+      
+      if (filters.territory) {
+        where.territory = filters.territory;
+      }
+      
+      if (filters.team) {
+        where.team = filters.team;
+      }
+      
+      if (filters.managerId) {
+        where.managerId = filters.managerId;
+      }
+
+      return where;
+    };
+
+    const where = buildWhereClause(params, {
+      searchFields: ['agentCode'],
+      customFilters,
+    });
+
+    // Add search for user name and email
+    if (params.search) {
+      where.OR = [
+        ...(where.OR || []),
+        {
+          user: {
+            OR: [
+              { name: { contains: params.search, mode: 'insensitive' } },
+              { email: { contains: params.search, mode: 'insensitive' } },
+            ]
+          }
+        },
+        {
+          territory: { contains: params.search, mode: 'insensitive' }
+        },
+        {
+          team: { contains: params.search, mode: 'insensitive' }
+        }
+      ];
     }
-    
-    if (territory) {
-      where.territory = territory;
-    }
-    
-    if (team) {
-      where.team = team;
-    }
-    
-    if (managerId) {
-      where.managerId = managerId;
-    }
+
+    const orderBy = buildOrderBy(params.sortBy, params.sortOrder);
+    const page = params.page || 1;
+    const limit = params.limit || 10;
+    const skip = (page - 1) * limit;
 
     const agents = await prisma.agent.findMany({
       where,
@@ -82,8 +114,13 @@ export async function GET(request: NextRequest) {
           }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy,
+      skip,
+      take: limit
     });
+
+    // Get total count
+    const total = await prisma.agent.count({ where });
 
     // Calculate total commissions for each agent
     const agentsWithStats = await Promise.all(
@@ -126,7 +163,21 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ agents: agentsWithStats });
+    return NextResponse.json({
+      agents: agentsWithStats,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+      sort: params.sortBy
+        ? {
+            field: params.sortBy,
+            order: params.sortOrder || 'desc',
+          }
+        : undefined,
+    });
   } catch (error) {
     console.error('❌ Error fetching agents:', error);
     console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');

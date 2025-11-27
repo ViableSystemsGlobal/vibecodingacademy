@@ -3,209 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useTheme } from "@/contexts/theme-context";
 import { useAbilities } from "@/hooks/use-abilities";
 import { useSession } from "next-auth/react";
 import { SkeletonSidebar } from "@/components/ui/skeleton";
 import {
-  LayoutDashboard,
-  Users,
-  Handshake,
-  ShoppingCart,
-  Package,
-  CreditCard,
-  MessageSquare,
-  UserCheck,
-  BarChart3,
   Building,
-  Warehouse,
-  DollarSign,
+  CheckSquare,
   ChevronDown,
   ChevronRight,
-  HelpCircle,
-  Settings,
-  MapPin,
   FileText,
-  Folder,
-  Shield,
-  Bell,
-  Smartphone,
-  History,
-  Send,
-  Mail,
-  CheckSquare,
-  Calendar,
-  Printer,
-  FileDown,
-  Database,
-  Store,
-  Tag,
-  Megaphone,
-  Truck,
-  Globe,
-  Video,
-  Image,
+  HelpCircle,
+  Package,
+  LayoutDashboard,
 } from "lucide-react";
-
-const navigation = [
-  { 
-    name: "Home", 
-    href: "/dashboard", 
-    icon: LayoutDashboard,
-    badge: null,
-    module: "dashboard"
-  },
-  { 
-    name: "CRM", 
-    href: "/crm", 
-    icon: Users,
-    badge: null,
-    module: "crm",
-    children: [
-      { name: "Leads", href: "/crm/leads", icon: UserCheck, module: "leads" },
-      { name: "Opportunities", href: "/crm/opportunities", icon: BarChart3, module: "opportunities" },
-      { name: "Accounts", href: "/crm/accounts", icon: Building, module: "accounts" },
-      { name: "Contacts", href: "/crm/contacts", icon: Users, module: "contacts" },
-    ]
-  },
-  { 
-    name: "DRM", 
-    href: null, 
-    icon: Handshake,
-    badge: null,
-    module: "drm",
-    children: [
-      { name: "Distributor Leads", href: "/drm/distributor-leads", icon: Users, module: "distributor-leads" },
-      { name: "Distributors", href: "/drm/distributors", icon: Building, module: "distributors" },
-      { name: "Routes & Mapping", href: "/drm/routes-mapping", icon: MapPin, module: "routes-mapping" },
-      { name: "Engagement", href: "/drm/engagement", icon: MessageSquare, module: "engagement" },
-    ]
-  },
-  { 
-    name: "Sales", 
-    href: "/sales", 
-    icon: ShoppingCart,
-    badge: null,
-    module: "sales",
-    children: [
-      { name: "Orders", href: "/orders", icon: ShoppingCart, module: "orders" },
-      { name: "Quotations", href: "/quotations", icon: FileText, module: "quotations" },
-      { name: "Invoices", href: "/invoices", icon: FileText, module: "invoices" },
-      { name: "Credit Notes", href: "/credit-notes", icon: FileDown, module: "credit-notes" },
-      { name: "Payments", href: "/payments", icon: CreditCard, module: "payments" },
-      { name: "Returns", href: "/returns", icon: Package, module: "returns" },
-    ]
-  },
-  { 
-    name: "Inventory", 
-    href: "/inventory", 
-    icon: Warehouse,
-    badge: null,
-    module: "inventory",
-    children: [
-      { name: "All Products", href: "/products", icon: Package, module: "products" },
-      { name: "Product Labels", href: "/products/labels", icon: Printer, module: "products" },
-      { name: "Price Lists", href: "/price-lists", icon: FileText, module: "price-lists" },
-      { name: "Stock Overview", href: "/inventory/stock", icon: BarChart3, module: "inventory" },
-      { name: "Stock Movements", href: "/inventory/stock-movements", icon: BarChart3, module: "inventory" },
-      { name: "Physical Count", href: "/inventory/stocktake", icon: CheckSquare, module: "inventory" },
-      { name: "Warehouses", href: "/warehouses", icon: Building, module: "warehouses" },
-      { name: "Suppliers", href: "/inventory/suppliers", icon: Users, module: "inventory" },
-      { name: "Backorders", href: "/backorders", icon: Package, module: "backorders" },
-    ]
-  },
-  { 
-    name: "Ecommerce", 
-    href: null, 
-    icon: Store,
-    badge: null,
-    module: "ecommerce",
-    children: [
-      { name: "Dashboard", href: "/ecommerce/dashboard", icon: LayoutDashboard, module: "ecommerce" },
-      { name: "Orders", href: "/ecommerce/orders", icon: ShoppingCart, module: "ecommerce-orders" },
-      { name: "Customers", href: "/ecommerce/customers", icon: Users, module: "ecommerce-customers" },
-      { name: "Categories", href: "/ecommerce/categories", icon: Tag, module: "ecommerce-categories" },
-      { name: "Banners", href: "/ecommerce/banners", icon: Image, module: "ecommerce-marketing" },
-      { name: "Marketing", href: "/ecommerce/marketing", icon: Megaphone, module: "ecommerce-marketing" },
-      { name: "Settings", href: "/ecommerce/settings", icon: Settings, module: "ecommerce-settings" },
-    ]
-  },
-        { 
-          name: "Communication", 
-          href: "/communication", 
-          icon: MessageSquare,
-          badge: null,
-          module: "communication",
-          children: [
-            { name: "SMS Messages", href: "/communication/sms", icon: Smartphone, module: "sms" },
-            { name: "SMS History", href: "/communication/sms-history", icon: History, module: "sms-history" },
-            { name: "Email Messages", href: "/communication/email", icon: Mail, module: "email" },
-            { name: "Email History", href: "/communication/email-history", icon: History, module: "email-history" },
-            { name: "Templates", href: "/templates", icon: FileText, module: "templates" },
-            { name: "Logs", href: "/communication-logs", icon: BarChart3, module: "communication-logs" },
-          ]
-        },
-  { 
-    name: "Agents", 
-    href: "/agents", 
-    icon: UserCheck,
-    badge: null,
-    module: "agents",
-    children: [
-      { name: "Agents", href: "/agents", icon: Users, module: "agents" },
-      { name: "Commissions", href: "/commissions", icon: CreditCard, module: "commissions" },
-    ]
-  },
-  { 
-    name: "Tasks", 
-    href: "/tasks", 
-    icon: CheckSquare,
-    badge: null,
-    module: "tasks",
-    children: [
-      { name: "All Tasks", href: "/tasks", icon: CheckSquare, module: "tasks" },
-      { name: "My Tasks", href: "/tasks/my", icon: Calendar, module: "my-tasks" },
-    ]
-  },
-  { 
-    name: "Reports", 
-    href: "/reports", 
-    icon: BarChart3,
-    badge: null,
-    module: "reports"
-  },
-  { 
-    name: "AI Business Analyst", 
-    href: "/ai-analyst", 
-    icon: BarChart3,
-    badge: null,
-    module: "ai_analyst"
-  },
-  { 
-    name: "Settings", 
-    href: "/settings", 
-    icon: Settings,
-    badge: null,
-    module: "settings",
-    children: [
-      { name: "User Management", href: "/settings/users", icon: Users, module: "users" },
-      { name: "Role Management", href: "/settings/roles", icon: Shield, module: "roles" },
-      { name: "Notifications", href: "/settings/notifications", icon: Bell, module: "notifications" },
-      { name: "Notification Templates", href: "/settings/notification-templates", icon: FileText, module: "notification_templates" },
-      { name: "Task Templates", href: "/settings/task-templates", icon: CheckSquare, module: "task_templates" },
-      { name: "Lead Sources", href: "/settings/lead-sources", icon: UserCheck, module: "lead_sources" },
-      { name: "Product Settings", href: "/settings/products", icon: Package, module: "product-settings" },
-      { name: "Currency Settings", href: "/settings/currency", icon: DollarSign, module: "currency-settings" },
-      { name: "Business Settings", href: "/settings/business", icon: Building, module: "business-settings" },
-      { name: "Google Maps", href: "/settings/google-maps", icon: MapPin, module: "google-maps" },
-      { name: "Credit Monitoring", href: "/settings/credit-monitoring", icon: CreditCard, module: "credit-monitoring" },
-      { name: "AI Settings", href: "/settings/ai", icon: BarChart3, module: "ai-settings" },
-      { name: "Backup & Restore", href: "/settings/backup", icon: Database, module: "backup-settings" },
-      { name: "System Settings", href: "/settings/system", icon: Settings, module: "system-settings" },
-    ]
-  },
-];
+import { getCachedMenu, clearAllMenuCache } from "@/lib/menu-cache";
+import type { ModuleNavigationItem } from "@/modules/types";
 
 const shortcuts = [
   { name: "Pending Tasks", href: "/tasks?status=PENDING", icon: CheckSquare, badge: "0" },
@@ -220,13 +34,90 @@ export default function Sidebar() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const { getThemeClasses, customLogo, getThemeColor } = useTheme();
   const theme = getThemeClasses();
-  const { canAccess, loading: abilitiesLoading } = useAbilities();
+  const { canAccess, abilities, loading: abilitiesLoading } = useAbilities();
   const { data: session, status: sessionStatus } = useSession();
   const [shortcutCounts, setShortcutCounts] = useState({
     pendingTasks: 0,
     overdueInvoices: 0,
     lowStock: 0
   });
+  const [navigation, setNavigation] = useState<ModuleNavigationItem[]>([]);
+
+  // Function to refresh navigation menu
+  const refreshNavigation = useCallback(async () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    // Wait for abilities to load before filtering
+    if (abilitiesLoading || sessionStatus === 'loading') {
+      console.log('⏳ Waiting for abilities/session to load...', { abilitiesLoading, sessionStatus });
+      return;
+    }
+
+    const userId = (session?.user as any)?.id;
+    if (!userId) {
+      console.log('⚠️ No user ID, clearing navigation');
+      setNavigation([]);
+      return;
+    }
+
+    const userRole = session?.user?.role as string | undefined;
+    
+    // Always clear cache to ensure fresh menu (especially after permission changes)
+    // This ensures users see the latest navigation based on their current abilities
+    clearAllMenuCache();
+    console.log('🧹 Cleared menu cache to ensure fresh navigation');
+    
+    // Create a wrapper for canAccess that ensures it doesn't return true while loading
+    const canAccessWrapper = (module: string): boolean => {
+      if (abilitiesLoading) {
+        return false; // Don't show anything while loading
+      }
+      return canAccess(module);
+    };
+    
+    try {
+      console.log('🔄 Refreshing navigation menu with abilities:', abilities.length, 'abilities', 'role:', userRole);
+      const cachedMenu = await getCachedMenu(userId, abilities, canAccessWrapper, userRole);
+      setNavigation(Array.isArray(cachedMenu) ? cachedMenu : []);
+      console.log('✅ Navigation menu refreshed, items:', cachedMenu.length);
+    } catch (error) {
+      console.error("Error getting cached menu:", error);
+      setNavigation([]);
+      setIsInitialLoad(false);
+    }
+    // Note: canAccess is intentionally not in deps - it's a function that changes on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abilities, abilitiesLoading, sessionStatus, session?.user]);
+
+  // Get cached menu when abilities or user changes
+  useEffect(() => {
+    refreshNavigation();
+  }, [refreshNavigation]);
+
+  // Listen for module toggle events to refresh sidebar
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleModuleToggled = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log("Module toggled - refreshing sidebar", customEvent.detail);
+      // Clear cache first, then refresh
+      clearAllMenuCache();
+      // Small delay to ensure cache is cleared
+      setTimeout(() => {
+        refreshNavigation();
+      }, 200);
+    };
+
+    window.addEventListener("module-toggled", handleModuleToggled);
+    return () => {
+      window.removeEventListener("module-toggled", handleModuleToggled);
+    };
+  }, [refreshNavigation]);
 
   // Show skeleton loading during initial load, while abilities are loading, or session is loading
   useEffect(() => {
@@ -236,8 +127,22 @@ export default function Sidebar() {
         setIsInitialLoad(false);
       }, 500);
       return () => clearTimeout(timer);
+    } else if (sessionStatus === 'loading' || abilitiesLoading) {
+      // Reset to loading state if session or abilities start loading again
+      setIsInitialLoad(true);
     }
   }, [sessionStatus, abilitiesLoading]);
+
+  // Safety timeout: ensure sidebar always resolves from loading state after 10 seconds
+  useEffect(() => {
+    const safetyTimer = setTimeout(() => {
+      if (isInitialLoad) {
+        console.warn('Sidebar loading timeout - forcing render');
+        setIsInitialLoad(false);
+      }
+    }, 10000);
+    return () => clearTimeout(safetyTimer);
+  }, [isInitialLoad]);
 
   // Define isActive function before using it in useEffect
   const isActive = (href: string) => {
@@ -285,6 +190,8 @@ export default function Sidebar() {
 
   // Auto-expand sections when on child pages
   useEffect(() => {
+    if (navigation.length === 0) return;
+
     const shouldExpandSections: string[] = [];
     
     navigation.forEach(section => {
@@ -302,7 +209,31 @@ export default function Sidebar() {
         return newExpanded;
       });
     }
-  }, [pathname]);
+  }, [pathname, navigation]);
+
+  const dashboardAccessible = !abilitiesLoading && canAccess("dashboard");
+
+  const navigationWithDashboard = useMemo(() => {
+    if (!Array.isArray(navigation)) {
+      return [];
+    }
+    if (!dashboardAccessible) {
+      return navigation;
+    }
+    const hasDashboard = navigation.some((item) => item.module === "dashboard");
+    if (hasDashboard) {
+      return navigation;
+    }
+    return [
+      {
+        name: "Dashboard",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+        module: "dashboard",
+      },
+      ...navigation,
+    ];
+  }, [navigation, dashboardAccessible]);
 
   if (isInitialLoad || abilitiesLoading || sessionStatus === 'loading') {
     return <SkeletonSidebar />;
@@ -456,9 +387,7 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent hover:scrollbar-thumb-gray-400">
-        {navigation
-          .filter(item => canAccess(item.module))
-          .map((item) => {
+        {navigationWithDashboard && navigationWithDashboard.length > 0 ? navigationWithDashboard.map((item) => {
             const hasChildren = item.children && item.children.length > 0;
             const isExpanded = expandedSections.includes(item.name);
             const isActiveItem = (item.href && isActive(item.href)) || (hasChildren && item.children!.some(child => isActive(child.href)));
@@ -483,34 +412,20 @@ export default function Sidebar() {
                     if (isCustomColor && !isActiveItem) {
                       e.currentTarget.style.backgroundColor = themeColorHex;
                       e.currentTarget.style.color = 'white';
-                      // Set icon to white
                       const icon = e.currentTarget.querySelector('svg');
                       if (icon) icon.style.color = 'white';
-                      // Set text span to white
                       const textSpan = e.currentTarget.querySelector('span:not(.ml-auto)');
                       if (textSpan) (textSpan as HTMLElement).style.color = 'white';
-                      // Set chevron to white
-                      const chevron = e.currentTarget.querySelector('.ml-auto svg');
-                      if (chevron) chevron.style.color = 'white';
-                      const chevronSpan = e.currentTarget.querySelector('.ml-auto');
-                      if (chevronSpan) (chevronSpan as HTMLElement).style.color = 'white';
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (isCustomColor && !isActiveItem) {
                       e.currentTarget.style.backgroundColor = '';
-                      e.currentTarget.style.color = '#374151'; // Restore gray text color
-                      // Restore icon color
+                      e.currentTarget.style.color = '#374151';
                       const icon = e.currentTarget.querySelector('svg');
                       if (icon) icon.style.color = '#374151';
-                      // Restore text span color
                       const textSpan = e.currentTarget.querySelector('span:not(.ml-auto)');
                       if (textSpan) (textSpan as HTMLElement).style.color = '#374151';
-                      // Restore chevron color
-                      const chevron = e.currentTarget.querySelector('.ml-auto svg');
-                      if (chevron) chevron.style.color = '#6B7280';
-                      const chevronSpan = e.currentTarget.querySelector('.ml-auto');
-                      if (chevronSpan) (chevronSpan as HTMLElement).style.color = '#6B7280';
                     }
                   }}
                 >
@@ -534,11 +449,18 @@ export default function Sidebar() {
                       >
                         {item.name}
                       </span>
-                      <span className={cn(
-                        "ml-auto transition-colors",
-                        isActiveItem && isCustomColor ? "text-white" : isActiveItem ? "text-white" : "text-gray-400 group-hover:text-white"
-                      )}
-                      style={isActiveItem && isCustomColor ? { color: 'white' } : isCustomColor && !isActiveItem ? { color: '#6B7280' } : {}}
+                      <span
+                        className={cn(
+                          "ml-auto text-gray-400 transition-colors group-hover:text-white",
+                          isActiveItem ? "text-white" : ""
+                        )}
+                        style={
+                          isActiveItem && isCustomColor
+                            ? { color: 'white' }
+                            : isCustomColor && !isActiveItem
+                            ? { color: '#6B7280' }
+                            : {}
+                        }
                       >
                         {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </span>
@@ -563,10 +485,8 @@ export default function Sidebar() {
                     if (isCustomColor && !isActiveItem) {
                       e.currentTarget.style.backgroundColor = themeColorHex;
                       e.currentTarget.style.color = 'white';
-                      // Set icon to white
                       const icon = e.currentTarget.querySelector('svg');
                       if (icon) icon.style.color = 'white';
-                      // Set text span to white
                       const textSpan = e.currentTarget.querySelector('span');
                       if (textSpan) (textSpan as HTMLElement).style.color = 'white';
                     }
@@ -574,11 +494,9 @@ export default function Sidebar() {
                   onMouseLeave={(e) => {
                     if (isCustomColor && !isActiveItem) {
                       e.currentTarget.style.backgroundColor = '';
-                      e.currentTarget.style.color = '#374151'; // Restore gray text color
-                      // Restore icon color
+                      e.currentTarget.style.color = '#374151';
                       const icon = e.currentTarget.querySelector('svg');
                       if (icon) icon.style.color = '#374151';
-                      // Restore text span color
                       const textSpan = e.currentTarget.querySelector('span');
                       if (textSpan) (textSpan as HTMLElement).style.color = '#374151';
                     }
@@ -610,24 +528,7 @@ export default function Sidebar() {
               {/* Children */}
               {hasChildren && isExpanded && !collapsed && (
                 <div className="ml-6 mt-1 space-y-1">
-                  {item.children!
-                    .filter(child => {
-                      // Special handling for Tasks module
-                      if (child.module === "tasks" || child.module === "my-tasks") {
-                        // All roles can access My Tasks
-                        if (child.module === "my-tasks") {
-                          return true;
-                        }
-                        // Only Super Admin and Admin can access All Tasks
-                        if (child.module === "tasks") {
-                          const userRole = session?.user?.role;
-                          return userRole === "SUPER_ADMIN" || userRole === "ADMIN";
-                        }
-                      }
-                      // Default access control for other modules
-                      return canAccess(child.module);
-                    })
-                    .map((child) => (
+                  {item.children!.map((child) => (
                     <Link
                       key={child.name}
                       href={child.href}
@@ -661,7 +562,11 @@ export default function Sidebar() {
               )}
             </div>
           );
-        })}
+        }) : (
+          <div className="p-4 text-sm text-gray-500 text-center">
+            No navigation items available
+          </div>
+        )}
       </nav>
 
       {/* Shortcuts */}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { logAuditEvent } from "@/lib/audit-log";
 
 // PUT /api/users/[id]/toggle-status - Toggle user active status
 export async function PUT(
@@ -32,27 +33,26 @@ export async function PUT(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    const wasActive = Boolean((user as any).isActive);
+
     // Toggle status
     const updatedUser = await prisma.user.update({
       where: { id },
-      data: { isActive: !(user as any).isActive } as any
+      data: { isActive: !wasActive } as any
     });
 
-    // Log audit trail (temporarily disabled)
-    // await prisma.auditLog.create({
-    //   data: {
-    //     userId: session.user.id,
-    //     action: (user as any).isActive ? 'user.deactivated' : 'user.activated',
-    //     resource: 'User',
-    //     resourceId: params.id,
-    //     oldData: { isActive: (user as any).isActive },
-    //     newData: { isActive: !(user as any).isActive }
-    //   }
-    // });
+    await logAuditEvent({
+      userId: (session.user as any).id,
+      action: wasActive ? 'user.deactivated' : 'user.activated',
+      resource: 'User',
+      resourceId: id,
+      oldData: { isActive: wasActive },
+      newData: { isActive: !wasActive },
+    });
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       user: updatedUser,
-      message: `User ${(user as any).isActive ? 'deactivated' : 'activated'} successfully`
+      message: `User ${wasActive ? 'deactivated' : 'activated'} successfully`
     });
   } catch (error) {
     console.error('Error toggling user status:', error);

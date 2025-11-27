@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Search, Filter, MoreHorizontal, Edit, Trash2, Eye, Users, TrendingUp, FileText, Receipt, Building2, Clock, CheckCircle } from 'lucide-react';
@@ -62,6 +62,12 @@ export default function AccountsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalAccounts, setTotalAccounts] = useState(0);
+  const [sortBy, setSortBy] = useState<string | undefined>(undefined);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const itemsPerPage = 10;
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -113,26 +119,52 @@ export default function AccountsPage() {
     }
   }, [status, router]);
 
-  const fetchAccounts = async () => {
+  const fetchAccounts = async (page: number = currentPage) => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (searchTerm) params.append('search', searchTerm);
-      if (typeFilter) params.append('type', typeFilter);
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: itemsPerPage.toString(),
+        ...(searchTerm && { search: searchTerm }),
+        ...(typeFilter && { type: typeFilter }),
+        ...(sortBy && { sortBy }),
+        ...(sortOrder && { sortOrder }),
+      });
 
       const response = await fetch(`/api/accounts?${params}`, {
         credentials: 'include',
       });
       if (response.ok) {
         const data = await response.json();
-        setAccounts(data);
-        calculateMetrics(data);
+        setAccounts(data.accounts || []);
+        setTotalPages(data.pagination?.pages || 1);
+        setTotalAccounts(data.pagination?.total || 0);
+        setCurrentPage(page);
+        calculateMetrics(data.accounts || []);
       }
     } catch (error) {
       console.error('Error fetching accounts:', error);
     } finally {
       setLoading(false);
     }
+  };
+  
+  // Handle sorting change
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
+  };
+  
+  // Handle search change
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+  
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    fetchAccounts(page);
   };
 
   const calculateMetrics = (accountsData: Account[]) => {
@@ -148,9 +180,44 @@ export default function AccountsPage() {
     });
   };
 
+  // Initial load on mount
   useEffect(() => {
-    fetchAccounts();
-  }, [searchTerm, typeFilter]);
+    if (status === 'authenticated' && session?.user) {
+      fetchAccounts(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, session]);
+
+  // Effect for filters and sorting (skip initial mount)
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user) {
+      const isInitialMount = currentPage === 1 && !searchTerm && !typeFilter && !sortBy;
+      if (isInitialMount) {
+        return;
+      }
+      fetchAccounts(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeFilter, sortBy, sortOrder, status, session]);
+
+  // Debounced search effect (including when cleared)
+  const isMountedRef = useRef(false);
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user) {
+      if (!isMountedRef.current) {
+        isMountedRef.current = true;
+        return;
+      }
+      
+      const timeoutId = setTimeout(() => {
+        setCurrentPage(1);
+        fetchAccounts(1);
+      }, searchTerm ? 500 : 0); // No debounce when clearing (empty search)
+
+      return () => clearTimeout(timeoutId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, status, session]);
 
   // Don't show loading skeleton during navigation
 
@@ -192,7 +259,7 @@ export default function AccountsPage() {
       });
 
       if (response.ok) {
-        await fetchAccounts();
+        await fetchAccounts(currentPage);
         setShowAddModal(false);
       }
     } catch (error) {
@@ -223,7 +290,7 @@ export default function AccountsPage() {
       });
 
       if (response.ok) {
-        await fetchAccounts();
+        await fetchAccounts(currentPage);
         setShowEditModal(false);
         setSelectedAccount(null);
       }
@@ -242,7 +309,7 @@ export default function AccountsPage() {
       });
 
       if (response.ok) {
-        await fetchAccounts();
+        await fetchAccounts(currentPage);
         setShowDeleteModal(false);
         setSelectedAccount(null);
       }
@@ -276,10 +343,9 @@ export default function AccountsPage() {
       });
 
       if (response.ok) {
-        setAccounts(accounts.filter(a => !selectedAccounts.includes(a.id)));
+        await fetchAccounts(currentPage);
         setSelectedAccounts([]);
         success(`Successfully deleted ${selectedAccounts.length} account(s)`);
-        calculateMetrics(accounts.filter(a => !selectedAccounts.includes(a.id)));
       } else {
         error('Failed to delete accounts');
       }
@@ -400,30 +466,6 @@ export default function AccountsPage() {
       </div>
 
       <Card className="p-6">
-        <div className="flex gap-4 mb-6">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                placeholder="Search accounts..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-          </div>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All Types</option>
-            <option value="INDIVIDUAL">Individual</option>
-            <option value="COMPANY">Company</option>
-            <option value="PROJECT">Project</option>
-          </select>
-        </div>
-
         {loading ? (
           <SkeletonTable rows={8} columns={6} />
         ) : (
@@ -433,6 +475,36 @@ export default function AccountsPage() {
             selectedItems={selectedAccounts}
             onSelectionChange={setSelectedAccounts}
             onRowClick={handleViewAccount}
+            itemsPerPage={itemsPerPage}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalAccounts}
+            onPageChange={handlePageChange}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSortChange={handleSortChange}
+            searchValue={searchTerm}
+            onSearchChange={handleSearchChange}
+            searchPlaceholder="Search accounts by name, email, or phone..."
+            enableExport={true}
+            exportFilename="accounts"
+            isLoading={loading}
+            customFilters={
+              <select
+                value={typeFilter}
+                onChange={(e) => {
+                  setTypeFilter(e.target.value);
+                  setCurrentPage(1);
+                  fetchAccounts(1);
+                }}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Types</option>
+                <option value="INDIVIDUAL">Individual</option>
+                <option value="COMPANY">Company</option>
+                <option value="PROJECT">Project</option>
+              </select>
+            }
             bulkActions={
               <div className="flex gap-2">
                 <Button
@@ -455,8 +527,10 @@ export default function AccountsPage() {
             }
             columns={[
               {
-                key: 'account',
+                key: 'name',
                 label: 'Account',
+                sortable: true,
+                exportable: true,
                 render: (account) => (
                   <div>
                     <div className="font-medium">{account.name}</div>
@@ -468,36 +542,49 @@ export default function AccountsPage() {
                       </div>
                     )}
                   </div>
-                )
+                ),
+                exportFormat: (account) => account.name
               },
               {
                 key: 'type',
                 label: 'Type',
+                sortable: true,
+                exportable: true,
                 render: (account) => (
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${typeColors[account.type]}`}>
                     {account.type}
                   </span>
-                )
+                ),
+                exportFormat: (account) => account.type
               },
               {
                 key: 'contact',
                 label: 'Contact',
+                exportable: true,
                 render: (account) => (
                   <div className="text-sm">
                     {account.email && <div>{account.email}</div>}
                     {account.phone && <div className="text-gray-500">{account.phone}</div>}
                   </div>
-                )
+                ),
+                exportFormat: (account) => account.email || account.phone || '-'
               },
               {
                 key: 'location',
                 label: 'Location',
+                exportable: true,
                 render: (account) => (
                   <div className="text-sm">
                     {account.city && <div>{account.city}</div>}
                     {account.country && <div className="text-gray-500">{account.country}</div>}
                   </div>
-                )
+                ),
+                exportFormat: (account) => {
+                  const parts = [];
+                  if (account.city) parts.push(account.city);
+                  if (account.country) parts.push(account.country);
+                  return parts.join(', ') || '-';
+                }
               },
               {
                 key: 'stats',
@@ -606,3 +693,4 @@ export default function AccountsPage() {
     </>
   );
 }
+

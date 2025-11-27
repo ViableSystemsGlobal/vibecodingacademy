@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, EcommerceOrderStatus } from '@prisma/client';
 import { sendOrderStatusChangeNotifications, sendOrderCreatedNotifications } from '@/lib/payment-order-notifications';
 
 // Get a single order
@@ -356,16 +356,71 @@ export async function PUT(
 
       console.log('✅ Order updated successfully:', updatedOrder.orderNumber);
 
+      // Auto-fulfill linked resource requests when order is delivered
+      if (statusChanged && status === 'DELIVERED') {
+        try {
+          const linkedRequests = await prisma.resourceRequest.findMany({
+            where: { orderId: id, status: { not: 'FULFILLED' } }
+          });
+          
+          for (const request of linkedRequests) {
+            await prisma.resourceRequest.update({
+              where: { id: request.id },
+              data: {
+                status: 'FULFILLED',
+                fulfilledAt: new Date()
+              }
+            });
+            
+            // Create status history event
+            await prisma.resourceRequestEvent.create({
+              data: {
+                requestId: request.id,
+                userId: session.user.id,
+                status: 'FULFILLED',
+                notes: `Auto-fulfilled when linked order ${updatedOrder.orderNumber} was delivered`
+              }
+            });
+            
+            console.log(`✅ Auto-fulfilled resource request ${request.id} from order delivery`);
+          }
+        } catch (fulfillError) {
+          console.error('Error auto-fulfilling resource requests:', fulfillError);
+          // Don't fail the order update if fulfillment fails
+        }
+      }
+
       // Send status change notifications if status changed
       if (statusChanged) {
         try {
           const customer = updatedOrder.account || updatedOrder.distributor || updatedOrder.contact;
           if (customer) {
+            // Check if this order is related to an ecommerce order (via invoice if available)
+            let isEcommerce = false;
+            if (updatedOrder.invoiceId) {
+              try {
+                const invoice = await prisma.invoice.findUnique({
+                  where: { id: updatedOrder.invoiceId },
+                  select: { number: true }
+                });
+                if (invoice) {
+                  const ecommerceOrder = await prisma.ecommerceOrder.findFirst({
+                    where: { orderNumber: invoice.number },
+                    select: { id: true }
+                  });
+                  isEcommerce = !!ecommerceOrder;
+                }
+              } catch (e) {
+                // Ignore errors checking for ecommerce order
+              }
+            }
+
             await sendOrderStatusChangeNotifications(
               updatedOrder,
               oldStatus,
               status,
-              customer
+              customer,
+              isEcommerce
             );
           }
         } catch (notificationError) {
@@ -383,7 +438,7 @@ export async function PUT(
       // Try to update as SalesOrder
       const existingSalesOrder = await prisma.salesOrder.findUnique({
         where: { id },
-        select: { id: true, status: true }
+        select: { id: true, status: true, invoiceId: true }
       });
 
       if (!existingSalesOrder) {
@@ -394,6 +449,7 @@ export async function PUT(
 
       // Get old status for notifications
       const oldStatus = existingSalesOrder.status;
+      const invoiceId = existingSalesOrder.invoiceId;
 
       // Validate status for SalesOrder
       const validSalesOrderStatuses = ['PENDING', 'CONFIRMED', 'PROCESSING', 'READY_TO_SHIP', 'SHIPPED', 'DELIVERED', 'COMPLETED', 'CANCELLED'];
@@ -448,14 +504,104 @@ export async function PUT(
 
       console.log('✅ SalesOrder updated successfully:', updatedSalesOrder.number);
 
+      // Sync status to Ecommerce Order if this Sales Order came from ecommerce
+      if (statusChanged && invoiceId) {
+        try {
+          // Get the invoice to find the ecommerce order (ecommerce order orderNumber = invoice number)
+          const invoice = await prisma.invoice.findUnique({
+            where: { id: invoiceId },
+            select: { number: true }
+          });
+
+          if (invoice) {
+            // Find the ecommerce order by orderNumber (which equals invoice.number)
+            const ecommerceOrder = await prisma.ecommerceOrder.findUnique({
+              where: { orderNumber: invoice.number }
+            });
+
+            if (ecommerceOrder) {
+              // Map Sales Order status to Ecommerce Order status
+              let ecommerceStatus: EcommerceOrderStatus;
+              switch (status.toUpperCase()) {
+                case 'DELIVERED':
+                  ecommerceStatus = EcommerceOrderStatus.DELIVERED;
+                  break;
+                case 'COMPLETED':
+                  ecommerceStatus = EcommerceOrderStatus.DELIVERED; // Completed = Delivered for ecommerce
+                  break;
+                case 'SHIPPED':
+                  ecommerceStatus = EcommerceOrderStatus.SHIPPED;
+                  break;
+                case 'READY_TO_SHIP':
+                  ecommerceStatus = EcommerceOrderStatus.SHIPPED;
+                  break;
+                case 'PROCESSING':
+                  ecommerceStatus = EcommerceOrderStatus.PROCESSING;
+                  break;
+                case 'CONFIRMED':
+                  ecommerceStatus = EcommerceOrderStatus.CONFIRMED;
+                  break;
+                case 'CANCELLED':
+                  ecommerceStatus = EcommerceOrderStatus.CANCELLED;
+                  break;
+                case 'PENDING':
+                default:
+                  ecommerceStatus = EcommerceOrderStatus.PENDING;
+                  break;
+              }
+
+              // Update ecommerce order status and delivery date if delivered
+              await prisma.ecommerceOrder.update({
+                where: { id: ecommerceOrder.id },
+                data: {
+                  status: ecommerceStatus,
+                  ...(status.toUpperCase() === 'DELIVERED' || status.toUpperCase() === 'COMPLETED' 
+                    ? { 
+                        deliveredAt: new Date(),
+                        // Also update deliveredAt if it's not already set
+                      }
+                    : {})
+                }
+              });
+
+              console.log(`✅ Synced Sales Order status "${status}" to Ecommerce Order ${ecommerceOrder.orderNumber} as "${ecommerceStatus}"`);
+            }
+          }
+        } catch (syncError) {
+          console.error('❌ Error syncing status to Ecommerce Order:', syncError);
+          // Don't fail the sales order update if sync fails
+        }
+      }
+
       // Send status change notifications if status changed
       if (statusChanged && updatedSalesOrder.account) {
         try {
+          // Check if this is an ecommerce order (has invoice with ecommerce order)
+          let isEcommerce = false;
+          if (invoiceId) {
+            try {
+              const invoice = await prisma.invoice.findUnique({
+                where: { id: invoiceId },
+                select: { number: true }
+              });
+              if (invoice) {
+                const ecommerceOrder = await prisma.ecommerceOrder.findFirst({
+                  where: { orderNumber: invoice.number },
+                  select: { id: true }
+                });
+                isEcommerce = !!ecommerceOrder;
+              }
+            } catch (e) {
+              // Ignore errors checking for ecommerce order
+            }
+          }
+
           await sendOrderStatusChangeNotifications(
             updatedSalesOrder,
             oldStatus,
             status,
-            updatedSalesOrder.account
+            updatedSalesOrder.account,
+            isEcommerce
           );
         } catch (notificationError) {
           console.error('❌ Error sending order status change notifications:', notificationError);

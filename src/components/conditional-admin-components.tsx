@@ -17,7 +17,8 @@ export function ConditionalAdminComponents({ children }: ConditionalAdminCompone
       const hostname = window.location.hostname;
       const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
       const isAdminDomain = hostname.includes('sms.') || hostname.includes('admin.');
-      const isAdminPort = port === '3001';
+      const adminPorts = new Set(['3001', '3003']);
+      const isAdminPort = adminPorts.has(port);
       const isShop = pathname.startsWith('/shop') || 
                      pathname === '/' && (port === '3000' || (!isAdminDomain && !isAdminPort));
       

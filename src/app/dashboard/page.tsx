@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useTheme } from "@/contexts/theme-context"
+import { useAbilities } from "@/hooks/use-abilities"
 import { MiniLineChart } from "@/components/ui/mini-line-chart"
 import { AIRecommendationCard } from "@/components/ai-recommendation-card"
 import { SkeletonMetricCard, SkeletonCard, SkeletonChart } from "@/components/ui/skeleton"
@@ -61,9 +63,27 @@ export default function Dashboard() {
   const { getThemeClasses, getThemeColor } = useTheme()
   const theme = getThemeClasses()
   const router = useRouter()
+  const { data: session, status } = useSession()
+  const { canAccess, loading: abilitiesLoading } = useAbilities()
   
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Check dashboard permissions and redirect if no access
+  useEffect(() => {
+    if (status === 'loading' || abilitiesLoading) return
+    
+    if (!session) {
+      router.push('/auth/signin')
+      return
+    }
+    
+    // Wait for abilities to load before checking
+    if (!abilitiesLoading && !canAccess('dashboard')) {
+      router.push('/tasks/my')
+      return
+    }
+  }, [session, status, canAccess, abilitiesLoading, router])
   
   // Fetch dashboard data
   useEffect(() => {
@@ -125,6 +145,23 @@ export default function Dashboard() {
         return <FileText className={`h-4 w-4 text-${theme.primary}`} />;
     }
   };
+
+  // Don't render if checking permissions or if no access
+  if (status === 'loading' || abilitiesLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+  
+  if (!session) {
+    return null
+  }
+  
+  if (!canAccess('dashboard')) {
+    return null // Will redirect via useEffect
+  }
 
   const getActivityNavigation = (type: string, id: string) => {
     switch (type) {

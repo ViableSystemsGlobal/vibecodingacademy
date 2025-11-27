@@ -140,6 +140,8 @@ export default function ProductsPage() {
   const { currency, changeCurrency } = useCurrency();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [sortBy, setSortBy] = useState<string | undefined>(undefined);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
@@ -256,11 +258,34 @@ export default function ProductsPage() {
     };
   }, []);
 
-  // Refetch products when search term or category changes
+  // Immediate effect for category filter and sorting
   React.useEffect(() => {
     setCurrentPage(1);
     fetchProducts(1);
-  }, [searchTerm, selectedCategory]);
+  }, [selectedCategory, sortBy, sortOrder]);
+
+  // Debounced search effect (only for search term)
+  React.useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setCurrentPage(1);
+      fetchProducts(1);
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
+  
+  // Handle sorting change
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
+  };
+  
+  // Handle search change with debounce
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
 
   // Pagination handlers
   const handlePageChange = (page: number) => {
@@ -286,7 +311,9 @@ export default function ProductsPage() {
         page: page.toString(),
         limit: itemsPerPage.toString(),
         ...(searchTerm && { search: searchTerm }),
-        ...(selectedCategory && selectedCategory !== 'all' && { category: selectedCategory })
+        ...(selectedCategory && selectedCategory !== 'all' && { category: selectedCategory }),
+        ...(sortBy && { sortBy }),
+        ...(sortOrder && { sortOrder }),
       });
       
       const response = await fetch(`/api/products?${params}`);
@@ -792,37 +819,8 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* Products Table with Search */}
+      {/* Products Table */}
       <Card className="p-6">
-        <div className="flex gap-4 mb-6">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                placeholder="Search products by name or SKU..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className={`pl-10 ${getFocusRingClasses()}`}
-              />
-            </div>
-          </div>
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className={`px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${getFocusRingClasses()} bg-white text-gray-900`}
-          >
-            {categoryOptions.map(category => (
-              <option key={category} value={category}>
-                {category === "all" ? "All Categories" : category}
-              </option>
-            ))}
-          </select>
-          <Button variant="outline" onClick={() => setIsFiltersModalOpen(true)}>
-            <Filter className="mr-2 h-4 w-4" />
-            More Filters
-          </Button>
-        </div>
-
         {isLoading ? (
           <SkeletonTable rows={10} columns={6} />
         ) : (
@@ -837,6 +835,15 @@ export default function ProductsPage() {
             totalPages={totalPages}
             totalItems={totalProducts}
             onPageChange={handlePageChange}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSortChange={handleSortChange}
+            searchValue={searchTerm}
+            onSearchChange={handleSearchChange}
+            searchPlaceholder="Search products by name, SKU, or description..."
+            enableExport={true}
+            exportFilename="products"
+            isLoading={isLoading}
             bulkActions={
               <div className="flex gap-2">
                 <Button
@@ -888,8 +895,9 @@ export default function ProductsPage() {
             }
             columns={[
               {
-                key: 'product',
+                key: 'name',
                 label: 'Product',
+                sortable: true,
                 render: (product) => (
                   <div className="flex items-center">
                     <div className="h-10 w-10 rounded-lg bg-gray-200 flex items-center justify-center overflow-hidden">
@@ -966,6 +974,7 @@ export default function ProductsPage() {
               {
                 key: 'category',
                 label: 'Category',
+                sortable: true,
                 render: (product) => (
                   <span className="text-sm text-gray-900">{product.category?.name || 'Uncategorized'}</span>
                 )
@@ -973,6 +982,7 @@ export default function ProductsPage() {
               {
                 key: 'price',
                 label: 'Price',
+                sortable: true,
                 render: (product) => (
                   <span className="text-sm text-gray-900">
                     {formatCurrencyWithSymbol(product.price || 0, currency, product.originalPriceCurrency || product.baseCurrency || 'GHS')}
@@ -1045,8 +1055,9 @@ export default function ProductsPage() {
                 )
               },
               {
-                key: 'status',
+                key: 'active',
                 label: 'Status',
+                sortable: true,
                 render: (product) => (
                   <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                     product.active
@@ -1385,3 +1396,4 @@ export default function ProductsPage() {
     </>
   );
 }
+

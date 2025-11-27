@@ -175,7 +175,29 @@ export async function PUT(
     // Build update data object, only including fields that are provided
     const updateData: any = {
       subject,
-      validUntil: validUntil ? new Date(validUntil) : null,
+      validUntil: validUntil && validUntil.trim() && validUntil !== '' ? (() => {
+        // Parse date string (YYYY-MM-DD) and create date at midnight in local timezone
+        const dateStr = validUntil.trim();
+        // Validate date format (YYYY-MM-DD)
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          console.warn('📅 Invalid date format for validUntil:', dateStr);
+          return null;
+        }
+        const [year, month, day] = dateStr.split('-').map(Number);
+        // Validate date values
+        if (isNaN(year) || isNaN(month) || isNaN(day) || month < 1 || month > 12 || day < 1 || day > 31) {
+          console.warn('📅 Invalid date values for validUntil:', { year, month, day });
+          return null;
+        }
+        const date = new Date(year, month - 1, day);
+        // Validate the date is valid
+        if (isNaN(date.getTime())) {
+          console.warn('📅 Invalid date object created from validUntil:', dateStr);
+          return null;
+        }
+        console.log('📅 Parsing validUntil:', { dateStr, parsedDate: date.toISOString() });
+        return date;
+      })() : null,
       notes,
       currency: currency || existingQuotation.currency || 'GHS',
       subtotal,

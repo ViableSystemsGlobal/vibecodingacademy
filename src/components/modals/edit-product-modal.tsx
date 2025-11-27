@@ -91,18 +91,18 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
   useEffect(() => {
     if (product) {
       setFormData({
-        sku: product.sku,
-        name: product.name,
-        description: product.description || "",
-        categoryId: product.categoryId,
+        sku: product.sku ?? "",
+        name: product.name ?? "",
+        description: product.description ?? "",
+        categoryId: product.categoryId ?? "",
         price: product.price || 0,
         cost: product.cost || 0,
         costCurrency: product.originalCostCurrency || product.importCurrency || "USD",
         sellingCurrency: product.originalPriceCurrency || product.baseCurrency || product.importCurrency || "USD",
         exchangeRateMode: product.exchangeRateAtImport ? "manual" : "automatic",
         customExchangeRate: product.exchangeRateAtImport || 1,
-        uomBase: product.uomBase,
-        uomSell: product.uomSell,
+        uomBase: product.uomBase ?? "",
+        uomSell: product.uomSell ?? "",
         active: product.active,
       });
 

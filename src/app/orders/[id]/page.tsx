@@ -567,8 +567,8 @@ export default function OrderDetailsPage() {
                 </div>
                 {getCustomerEmail() && (
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <MailIcon className="h-4 w-4 text-gray-400" />
+                  <div className="flex items-center space-x-2">
+                    <MailIcon className="h-4 w-4 text-gray-400" />
                       <span className="text-sm text-gray-600">{getCustomerEmail()}</span>
                     </div>
                     <Button

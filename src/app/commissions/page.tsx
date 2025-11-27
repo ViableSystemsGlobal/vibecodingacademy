@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,11 +64,20 @@ export default function CommissionsPage() {
   const { success, error: showError } = useToast();
   
   const [commissions, setCommissions] = useState<Commission[]>([]);
-  const [filteredCommissions, setFilteredCommissions] = useState<Commission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [typeFilter, setTypeFilter] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<string>("");
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState<string>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
   // Metrics
   const [metrics, setMetrics] = useState({
@@ -90,6 +99,7 @@ export default function CommissionsPage() {
       completed: false,
       onAction: () => {
         setStatusFilter('PENDING');
+        setCurrentPage(1);
         success('Filter Applied', 'Showing pending commissions only');
       }
     },
@@ -103,6 +113,7 @@ export default function CommissionsPage() {
       completed: false,
       onAction: () => {
         setStatusFilter('APPROVED');
+        setCurrentPage(1);
         success('Filter Applied', 'Showing approved commissions ready for payout');
       }
     },
@@ -115,7 +126,9 @@ export default function CommissionsPage() {
       priority: 'low' as const,
       completed: false,
       onAction: () => {
-        setStatusFilter('ALL');
+        setStatusFilter('');
+        setTypeFilter('');
+        setCurrentPage(1);
         success('Filter Reset', 'Showing all commissions');
       }
     }
@@ -125,13 +138,38 @@ export default function CommissionsPage() {
     console.log('Recommendation completed:', id);
   };
 
+  // Initial load on mount
   useEffect(() => {
-    fetchCommissions();
+    fetchCommissions(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Effect for filters and sorting (skip initial mount)
   useEffect(() => {
-    filterCommissions();
-  }, [commissions, searchTerm, statusFilter, typeFilter]);
+    const isInitialMount = currentPage === 1 && !searchTerm && !statusFilter && !typeFilter && !sortBy;
+    if (isInitialMount) {
+      return;
+    }
+    fetchCommissions(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, typeFilter, sortBy, sortOrder]);
+
+  // Debounced search effect (including when cleared)
+  const isMountedRef = useRef(false);
+  useEffect(() => {
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      return;
+    }
+    
+    const timeoutId = setTimeout(() => {
+      setCurrentPage(1);
+      fetchCommissions(1);
+    }, searchTerm ? 500 : 0);
+
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm]);
 
   const handleApproveCommission = async (commissionId: string) => {
     try {
@@ -147,7 +185,7 @@ export default function CommissionsPage() {
       }
 
       success('Success', 'Commission approved successfully');
-      fetchCommissions(); // Reload data
+      await fetchCommissions(currentPage); // Reload data
     } catch (err) {
       console.error('Error approving commission:', err);
       showError('Error', err instanceof Error ? err.message : 'Failed to approve commission');
@@ -168,23 +206,49 @@ export default function CommissionsPage() {
       }
 
       success('Success', 'Commission marked as paid');
-      fetchCommissions(); // Reload data
+      await fetchCommissions(currentPage); // Reload data
     } catch (err) {
       console.error('Error marking commission as paid:', err);
       showError('Error', err instanceof Error ? err.message : 'Failed to mark commission as paid');
     }
   };
 
-  const fetchCommissions = async () => {
+  const fetchCommissions = async (page: number = currentPage) => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/commissions');
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('limit', itemsPerPage.toString());
+      
+      if (searchTerm) {
+        params.append('search', searchTerm);
+      }
+      if (statusFilter) {
+        params.append('status', statusFilter);
+      }
+      if (typeFilter) {
+        params.append('type', typeFilter);
+      }
+      if (sortBy) {
+        params.append('sortBy', sortBy);
+      }
+      if (sortOrder) {
+        params.append('sortOrder', sortOrder);
+      }
+      
+      const response = await fetch(`/api/commissions?${params.toString()}`, {
+        credentials: 'include',
+      });
+      
       if (!response.ok) throw new Error('Failed to fetch commissions');
       
       const data = await response.json();
-      setCommissions(data.commissions);
+      setCommissions(Array.isArray(data.commissions) ? data.commissions : []);
+      setTotalPages(data.pagination?.pages || 1);
+      setTotalItems(data.pagination?.total || 0);
+      setCurrentPage(page);
       
-      // Calculate metrics
+      // Calculate metrics from current page data (or fetch separately if needed)
       const total = data.commissions.reduce((sum: number, c: Commission) => sum + c.commissionAmount, 0);
       const pending = data.commissions
         .filter((c: Commission) => c.status === 'PENDING')
@@ -197,7 +261,7 @@ export default function CommissionsPage() {
         .reduce((sum: number, c: Commission) => sum + c.commissionAmount, 0);
       
       setMetrics({
-        totalCommissions: total,
+        totalCommissions: total, // This is only for current page, consider fetching separately
         pendingCommissions: pending,
         approvedCommissions: approved,
         paidCommissions: paid
@@ -205,37 +269,18 @@ export default function CommissionsPage() {
     } catch (error) {
       console.error('Error fetching commissions:', error);
       showError('Error', 'Failed to load commissions');
+      setCommissions([]);
+      setTotalPages(1);
+      setTotalItems(0);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const filterCommissions = () => {
-    let filtered = commissions;
-
-    // Status filter
-    if (statusFilter !== "ALL") {
-      filtered = filtered.filter(c => c.status === statusFilter);
-    }
-
-    // Type filter
-    if (typeFilter !== "ALL") {
-      filtered = filtered.filter(c => c.commissionType === typeFilter);
-    }
-
-    // Search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(c =>
-        c.agent.user.name?.toLowerCase().includes(term) ||
-        c.agent.agentCode.toLowerCase().includes(term) ||
-        c.invoice?.number.toLowerCase().includes(term) ||
-        c.quotation?.number.toLowerCase().includes(term) ||
-        c.order?.orderNumber.toLowerCase().includes(term)
-      );
-    }
-
-    setFilteredCommissions(filtered);
+  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
+    setCurrentPage(1);
   };
 
   const getStatusBadge = (status: string) => {
@@ -498,60 +543,82 @@ export default function CommissionsPage() {
             <CardTitle>Commissions List</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Search and Filters */}
-            <div className="flex flex-col md:flex-row gap-4 mb-6">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search commissions..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="ALL">All Status</option>
-                <option value="PENDING">Pending</option>
-                <option value="APPROVED">Approved</option>
-                <option value="PAID">Paid</option>
-                <option value="CANCELLED">Cancelled</option>
-                <option value="DISPUTED">Disputed</option>
-              </select>
-
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="ALL">All Types</option>
-                <option value="INVOICE_SALE">Invoice Sale</option>
-                <option value="QUOTATION_SENT">Quotation Sent</option>
-                <option value="ORDER_PLACED">Order Placed</option>
-                <option value="OPPORTUNITY_WON">Opportunity Won</option>
-                <option value="RECURRING_REVENUE">Recurring Revenue</option>
-                <option value="BONUS">Bonus</option>
-              </select>
-            </div>
-            {filteredCommissions.length === 0 ? (
-              <div className="text-center py-12">
-                <DollarSign className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600">
-                  {searchTerm || statusFilter !== "ALL" || typeFilter !== "ALL"
-                    ? "No commissions found matching your filters" 
-                    : "No commissions yet."}
-                </p>
-              </div>
-            ) : (
-              <DataTable
-                data={filteredCommissions}
-                columns={columns}
-              />
-            )}
+            <DataTable
+              data={commissions}
+              columns={columns.map(col => ({
+                ...col,
+                sortable: col.key !== 'actions' && col.key !== 'source',
+                exportable: col.key !== 'actions',
+                exportFormat: col.key === 'status'
+                  ? (c: Commission) => c.status
+                  : col.key === 'type'
+                  ? (c: Commission) => getTypeLabel(c.commissionType)
+                  : col.key === 'agent'
+                  ? (c: Commission) => `${c.agent.user.name} (${c.agent.agentCode})`
+                  : col.key === 'source'
+                  ? (c: Commission) => {
+                      const source = getSourceInfo(c);
+                      return `${source.label} - ${source.customer}`;
+                    }
+                  : col.key === 'commission'
+                  ? (c: Commission) => formatCurrency(c.commissionAmount, 'GHS')
+                  : col.key === 'baseAmount'
+                  ? (c: Commission) => formatCurrency(c.baseAmount, 'GHS')
+                  : undefined
+              }))}
+              itemsPerPage={itemsPerPage}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              onPageChange={(page) => {
+                setCurrentPage(page);
+                fetchCommissions(page);
+              }}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSortChange={handleSortChange}
+              searchValue={searchTerm}
+              onSearchChange={setSearchTerm}
+              searchPlaceholder="Search commissions by agent, invoice, quote, or order..."
+              enableExport={true}
+              exportFilename="commissions"
+              isLoading={isLoading}
+              customFilters={
+                <>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All Status</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="APPROVED">Approved</option>
+                    <option value="PAID">Paid</option>
+                    <option value="CANCELLED">Cancelled</option>
+                    <option value="DISPUTED">Disputed</option>
+                  </select>
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => {
+                      setTypeFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All Types</option>
+                    <option value="INVOICE_SALE">Invoice Sale</option>
+                    <option value="QUOTATION_SENT">Quotation Sent</option>
+                    <option value="ORDER_PLACED">Order Placed</option>
+                    <option value="OPPORTUNITY_WON">Opportunity Won</option>
+                    <option value="RECURRING_REVENUE">Recurring Revenue</option>
+                    <option value="BONUS">Bonus</option>
+                  </select>
+                </>
+              }
+            />
           </CardContent>
         </Card>
       </div>

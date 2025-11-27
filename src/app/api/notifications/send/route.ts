@@ -101,6 +101,18 @@ const NOTIFICATION_TEMPLATES = {
   }
 };
 
+// Helper function to get setting value from database
+async function getSettingValue(key: string, defaultValue: string = ''): Promise<string> {
+  try {
+    const setting = await prisma.systemSettings.findUnique({
+      where: { key }
+    });
+    return setting?.value || process.env[key] || defaultValue;
+  } catch (error) {
+    return process.env[key] || defaultValue;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -109,7 +121,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { type, data, test = false } = body;
+    const { type, data, test = false, channel, contact } = body;
 
     if (!type) {
       return NextResponse.json(
@@ -118,23 +130,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get notification settings
-    const emailEnabled = process.env.EMAIL_ENABLED === 'true';
-    const smsEnabled = process.env.SMS_ENABLED === 'true';
-    const emailTypeEnabled = process.env[`EMAIL_${type.toUpperCase()}`] === 'true';
-    const smsTypeEnabled = process.env[`SMS_${type.toUpperCase()}`] === 'true';
+    // Get notification settings from database
+    const emailEnabled = (await getSettingValue('EMAIL_ENABLED', 'false')) === 'true';
+    const smsEnabled = (await getSettingValue('SMS_ENABLED', 'false')) === 'true';
+    const emailTypeEnabled = (await getSettingValue(`EMAIL_${type.toUpperCase()}`, 'false')) === 'true';
+    const smsTypeEnabled = (await getSettingValue(`SMS_${type.toUpperCase()}`, 'false')) === 'true';
+
+    // For test notifications, bypass the enabled checks
+    const shouldSendEmail = test ? (!channel || channel === 'email') : (emailEnabled && emailTypeEnabled && (!channel || channel === 'email'));
+    const shouldSendSMS = test ? (!channel || channel === 'sms') : (smsEnabled && smsTypeEnabled && (!channel || channel === 'sms'));
 
     const results = [];
 
     // Send email notification
-    if (emailEnabled && emailTypeEnabled) {
-      const emailResult = await sendEmailNotification(type, data, test);
+    if (shouldSendEmail) {
+      const emailResult = await sendEmailNotification(type, data, test, contact);
       results.push({ channel: 'email', ...emailResult });
     }
 
     // Send SMS notification
-    if (smsEnabled && smsTypeEnabled) {
-      const smsResult = await sendSMSNotification(type, data, test);
+    if (shouldSendSMS) {
+      const smsResult = await sendSMSNotification(type, data, test, contact);
       results.push({ channel: 'sms', ...smsResult });
     }
 
@@ -159,21 +175,56 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function sendEmailNotification(type: string, data: any, test: boolean) {
+async function sendEmailNotification(type: string, data: any, test: boolean, contact?: string) {
   try {
-    const template = NOTIFICATION_TEMPLATES[type as keyof typeof NOTIFICATION_TEMPLATES];
+    let template = NOTIFICATION_TEMPLATES[type as keyof typeof NOTIFICATION_TEMPLATES];
+    
+    // If template doesn't exist, use a generic one
     if (!template) {
-      return { success: false, message: `No template found for type: ${type}` };
+      template = {
+        email: {
+          subject: `Test Notification - ${type}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #3b82f6;">Test Notification</h2>
+              <p>This is a test notification for: <strong>${type}</strong></p>
+              <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                <p><strong>Type:</strong> ${type}</p>
+                <p><strong>Test Mode:</strong> ${test ? 'Yes' : 'No'}</p>
+                <p><strong>Timestamp:</strong> {timestamp}</p>
+              </div>
+              <p style="color: #666; font-size: 12px;">Sent at: {timestamp}</p>
+            </div>
+          `
+        },
+        sms: `Test notification for ${type}`
+      };
+    }
+
+    // Get SMTP configuration from database
+    const smtpHost = await getSettingValue('SMTP_HOST', '');
+    const smtpPort = await getSettingValue('SMTP_PORT', '587');
+    const smtpUsername = await getSettingValue('SMTP_USERNAME', '');
+    const smtpPassword = await getSettingValue('SMTP_PASSWORD', '');
+    const smtpFromAddress = await getSettingValue('SMTP_FROM_ADDRESS', '');
+    const smtpFromName = await getSettingValue('SMTP_FROM_NAME', 'AdPools Group');
+    const smtpEncryption = await getSettingValue('SMTP_ENCRYPTION', 'tls');
+
+    if (!smtpHost || !smtpUsername || !smtpPassword || !smtpFromAddress) {
+      return {
+        success: false,
+        message: "SMTP configuration not found. Please configure email settings."
+      };
     }
 
     // Create transporter
-    const transporter = nodemailer.createTransporter({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_ENCRYPTION === 'ssl',
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: parseInt(smtpPort),
+      secure: smtpEncryption === 'ssl',
       auth: {
-        user: process.env.SMTP_USERNAME,
-        pass: process.env.SMTP_PASSWORD
+        user: smtpUsername,
+        pass: smtpPassword
       }
     });
 
@@ -194,13 +245,17 @@ async function sendEmailNotification(type: string, data: any, test: boolean) {
       html = html.replace(new RegExp(placeholder, 'g'), String(value));
     });
 
-    const recipient = test 
-      ? process.env.SMTP_USERNAME 
-      : 'admin@adpoolsgroup.com'; // In real app, get from user settings
+    const recipient = contact || smtpFromAddress;
+    if (!recipient) {
+      return {
+        success: false,
+        message: "Email recipient is required"
+      };
+    }
 
     // Send email
     const info = await transporter.sendMail({
-      from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_ADDRESS || process.env.SMTP_USERNAME}>`,
+      from: `"${smtpFromName}" <${smtpFromAddress}>`,
       to: recipient,
       subject: test ? `[TEST] ${subject}` : subject,
       html: html
@@ -219,11 +274,19 @@ async function sendEmailNotification(type: string, data: any, test: boolean) {
   }
 }
 
-async function sendSMSNotification(type: string, data: any, test: boolean) {
+async function sendSMSNotification(type: string, data: any, test: boolean, contact?: string) {
   try {
-    const template = NOTIFICATION_TEMPLATES[type as keyof typeof NOTIFICATION_TEMPLATES];
+    let template = NOTIFICATION_TEMPLATES[type as keyof typeof NOTIFICATION_TEMPLATES];
+    
+    // If template doesn't exist, use a generic one
     if (!template) {
-      return { success: false, message: `No template found for type: ${type}` };
+      template = {
+        email: {
+          subject: `Test Notification - ${type}`,
+          html: `<p>Test notification for ${type}</p>`
+        },
+        sms: `Test notification for ${type}. This is a test message.`
+      };
     }
 
     // Replace template variables
@@ -238,14 +301,64 @@ async function sendSMSNotification(type: string, data: any, test: boolean) {
       message = `[TEST] ${message}`;
     }
 
-    // For now, simulate SMS sending
-    // In a real implementation, integrate with your SMS provider
-    console.log('SMS would be sent:', message);
+    const phoneNumber = contact || '';
+    if (!phoneNumber) {
+      return {
+        success: false,
+        message: "Phone number is required for SMS"
+      };
+    }
 
+    // Get SMS configuration from database
+    const username = await getSettingValue('SMS_USERNAME', '');
+    const password = await getSettingValue('SMS_PASSWORD', '');
+    const senderId = await getSettingValue('SMS_SENDER_ID', 'AdPools');
+
+    if (!username || !password) {
+      return {
+        success: false,
+        message: "SMS configuration not found. Please configure SMS settings."
+      };
+    }
+
+    // Send SMS via Deywuro
+    const response = await fetch('https://deywuro.com/api/sms', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        username: username,
+        password: password,
+        destination: phoneNumber,
+        source: senderId,
+        message: message
+      })
+    });
+
+    const responseText = await response.text();
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      return {
+        success: false,
+        message: `SMS provider returned non-JSON response: ${response.status} - ${responseText.substring(0, 100)}...`
+      };
+    }
+
+    if (result.code === 0) {
     return {
       success: true,
-      message: "SMS sent successfully (simulated)"
+        message: "SMS sent successfully",
+        messageId: result.id || `deywuro_${Date.now()}`
+      };
+    } else {
+      return {
+        success: false,
+        message: `SMS failed: ${result.message || 'Unknown error'}`
     };
+    }
   } catch (error) {
     return {
       success: false,

@@ -14,7 +14,8 @@ import {
   Edit,
   Trash2,
   Users,
-  Copy
+  Copy,
+  RefreshCw
 } from "lucide-react";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { ConfirmationModal } from "@/components/modals/confirmation-modal";
@@ -160,6 +161,19 @@ const MOCK_ROLES: Role[] = [
 ];
 
 export default function RoleManagementPage() {
+  const formatRoleName = (name: string) => {
+    if (!name) return "";
+    if (/[a-z]/.test(name)) {
+      return name
+        .split(" ")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+    }
+    return name
+      .split("_")
+      .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+      .join(" ");
+  };
   const { success, error: showError } = useToast();
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
@@ -170,6 +184,7 @@ export default function RoleManagementPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const deleteConfirmation = useAsyncConfirmation();
 
   useEffect(() => {
@@ -203,6 +218,39 @@ export default function RoleManagementPage() {
       setRoles(MOCK_ROLES);
     }
     setIsLoading(false);
+  };
+
+  const handleSyncPermissions = async () => {
+    setIsSyncing(true);
+    try {
+      const response = await fetch("/api/system/permissions/sync", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        const errorMessage = errorData?.error || "Failed to sync permissions";
+        const errorDetails = errorData?.details ? `: ${errorData.details}` : "";
+        const errorCode = errorData?.code ? ` (Code: ${errorData.code})` : "";
+        throw new Error(`${errorMessage}${errorDetails}${errorCode}`);
+      }
+
+      const data = await response.json();
+      success(
+        data?.message ||
+          "Permissions synchronized. Refreshing role catalog..."
+      );
+      await loadData();
+    } catch (error: any) {
+      console.error("Permission sync failed:", error);
+      showError(error.message || "Failed to sync permissions");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleEditRole = (role: Role) => {
@@ -298,6 +346,21 @@ export default function RoleManagementPage() {
             <h1 className="text-2xl font-bold text-gray-900">Manage Roles</h1>
             <p className="text-gray-600">View and manage existing roles</p>
           </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              onClick={handleSyncPermissions}
+              disabled={isSyncing}
+              className="flex items-center gap-2"
+            >
+              {isSyncing ? (
+                <div className="h-4 w-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              <span>{isSyncing ? "Syncing..." : "Sync system roles"}</span>
+            </Button>
+
           <Button
             onClick={() => router.push('/settings/roles/create')}
             className={`bg-${theme.primary} hover:bg-${theme.primaryDark} text-white`}
@@ -305,6 +368,7 @@ export default function RoleManagementPage() {
             <Plus className="h-4 w-4 mr-2" />
             Add Role
           </Button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -382,7 +446,7 @@ export default function RoleManagementPage() {
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center space-x-2">
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-${theme.primaryBg} text-${theme.primaryText}`}>
-                          {role.name}
+                          {formatRoleName(role.name)}
                         </span>
                         {role.isSystem && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">

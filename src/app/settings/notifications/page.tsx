@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useTheme } from '@/contexts/theme-context';
 import { useToast } from '@/contexts/toast-context';
 import { useSession } from 'next-auth/react';
+import { useCompany } from '@/contexts/company-context';
 import { 
   Mail, 
   MessageSquare, 
@@ -26,7 +27,21 @@ import {
   MessageCircle,
   UserPlus,
   UserCheck,
-  User
+  User,
+  FolderKanban,
+  CheckSquare,
+  Receipt,
+  FileCheck,
+  CreditCard,
+  Package,
+  Building,
+  TrendingUp,
+  Calendar,
+  MessageSquareMore,
+  ClipboardList,
+  Warehouse,
+  BarChart3,
+  Globe
 } from 'lucide-react';
 
 // Template interfaces
@@ -62,10 +77,10 @@ const DEFAULT_EMAIL_TEMPLATES: NotificationTemplate[] = [
   <p>Please consider placing a new order to avoid stockouts.</p>
   
   <p>Best regards,<br>
-  AdPools Group Inventory System</p>
+  {{companyName}} Inventory System</p>
 </div>
     `.trim(),
-    variables: ['recipientName', 'productName', 'productSku', 'currentStock', 'reorderPoint', 'warehouseName']
+    variables: ['recipientName', 'productName', 'productSku', 'currentStock', 'reorderPoint', 'warehouseName', 'companyName']
   },
   {
     id: 'stock_out',
@@ -88,10 +103,10 @@ const DEFAULT_EMAIL_TEMPLATES: NotificationTemplate[] = [
   <p>Please place an urgent order to restock this item.</p>
   
   <p>Best regards,<br>
-  AdPools Group Inventory System</p>
+  {{companyName}} Inventory System</p>
 </div>
     `.trim(),
-    variables: ['recipientName', 'productName', 'productSku', 'warehouseName']
+    variables: ['recipientName', 'productName', 'productSku', 'warehouseName', 'companyName']
   },
   {
     id: 'new_order',
@@ -115,10 +130,10 @@ const DEFAULT_EMAIL_TEMPLATES: NotificationTemplate[] = [
   <p>Please process this order as soon as possible.</p>
   
   <p>Best regards,<br>
-  AdPools Group Order System</p>
+  {{companyName}} Order System</p>
 </div>
     `.trim(),
-    variables: ['recipientName', 'orderNumber', 'customerName', 'totalAmount', 'currency', 'itemCount', 'orderDate']
+    variables: ['recipientName', 'orderNumber', 'customerName', 'totalAmount', 'currency', 'itemCount', 'orderDate', 'companyName']
   },
   {
     id: 'lead_created',
@@ -144,7 +159,7 @@ const DEFAULT_EMAIL_TEMPLATES: NotificationTemplate[] = [
   <p>Please review and follow up with this lead as soon as possible.</p>
   
   <p>Best regards,<br>
-  AdPools Group CRM System</p>
+  {{companyName}} CRM System</p>
 </div>
     `.trim(),
     variables: ['recipientName', 'leadName', 'leadEmail', 'leadPhone', 'leadCompany', 'leadSource', 'leadStatus', 'creatorName']
@@ -172,10 +187,10 @@ const DEFAULT_EMAIL_TEMPLATES: NotificationTemplate[] = [
   <p>Please contact this lead promptly to begin the sales process.</p>
   
   <p>Best regards,<br>
-  AdPools Group CRM System</p>
+  {{companyName}} CRM System</p>
 </div>
     `.trim(),
-    variables: ['recipientName', 'leadName', 'leadEmail', 'leadPhone', 'leadCompany', 'leadSource', 'assignedByName']
+    variables: ['recipientName', 'leadName', 'leadEmail', 'leadPhone', 'leadCompany', 'leadSource', 'assignedByName', 'companyName']
   },
   {
     id: 'lead_owner_notification',
@@ -201,7 +216,7 @@ const DEFAULT_EMAIL_TEMPLATES: NotificationTemplate[] = [
   <p>This lead is now part of your account and you can manage it from your CRM dashboard.</p>
   
   <p>Best regards,<br>
-  AdPools Group CRM System</p>
+  {{companyName}} CRM System</p>
 </div>
     `.trim(),
     variables: ['recipientName', 'leadName', 'leadEmail', 'leadPhone', 'leadCompany', 'leadSource', 'leadStatus', 'creatorName']
@@ -209,10 +224,10 @@ const DEFAULT_EMAIL_TEMPLATES: NotificationTemplate[] = [
   {
     id: 'lead_welcome',
     name: 'Lead Welcome Email',
-    subject: 'Welcome to AdPools Group - Thank You for Your Interest!',
+    subject: 'Welcome to {{companyName}} - Thank You for Your Interest!',
     body: `
 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-  <h2 style="color: #27ae60;">Welcome to AdPools Group!</h2>
+  <h2 style="color: #27ae60;">Welcome to {{companyName}}!</h2>
   <p>Hello {{leadName}},</p>
   
   <p>Thank you for your interest in our products and services. We're excited to have you as a potential customer!</p>
@@ -232,10 +247,1287 @@ const DEFAULT_EMAIL_TEMPLATES: NotificationTemplate[] = [
   <p>We look forward to working with you!</p>
   
   <p>Best regards,<br>
-  <strong>AdPools Group Team</strong></p>
+  <strong>{{companyName}} Team</strong></p>
 </div>
     `.trim(),
-    variables: ['leadName', 'assignedUserName']
+    variables: ['leadName', 'assignedUserName', 'companyName']
+  },
+  // Inventory - Additional
+  {
+    id: 'stock_movement',
+    name: 'Stock Movement',
+    subject: 'Stock Movement: {{productName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">Stock Movement</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A stock movement has been recorded:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Product:</strong> {{productName}}<br>
+    <strong>SKU:</strong> {{productSku}}<br>
+    <strong>From Warehouse:</strong> {{fromWarehouse}}<br>
+    <strong>To Warehouse:</strong> {{toWarehouse}}<br>
+    <strong>Quantity:</strong> {{quantity}} units<br>
+    <strong>Date:</strong> {{movementDate}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Inventory System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'productName', 'productSku', 'fromWarehouse', 'toWarehouse', 'quantity', 'movementDate', 'companyName']
+  },
+  {
+    id: 'warehouse_update',
+    name: 'Warehouse Update',
+    subject: 'Warehouse Updated: {{warehouseName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #9b59b6;">Warehouse Information Updated</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>The following warehouse information has been updated:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Warehouse:</strong> {{warehouseName}}<br>
+    <strong>Location:</strong> {{warehouseLocation}}<br>
+    <strong>Updated By:</strong> {{updatedByName}}<br>
+    <strong>Date:</strong> {{updateDate}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Inventory System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'warehouseName', 'warehouseLocation', 'updatedByName', 'updateDate', 'companyName']
+  },
+  // Orders - Additional
+  {
+    id: 'order_status',
+    name: 'Order Status Change',
+    subject: 'Order Status Updated: #{{orderNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">Order Status Updated</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>The status of order #{{orderNumber}} has been updated:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Order Number:</strong> #{{orderNumber}}<br>
+    <strong>Customer:</strong> {{customerName}}<br>
+    <strong>Previous Status:</strong> {{oldStatus}}<br>
+    <strong>New Status:</strong> {{newStatus}}<br>
+    <strong>Updated By:</strong> {{updatedByName}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Order System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'orderNumber', 'customerName', 'oldStatus', 'newStatus', 'updatedByName', 'companyName']
+  },
+  {
+    id: 'order_cancelled',
+    name: 'Order Cancelled',
+    subject: 'Order Cancelled: #{{orderNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #e74c3c;">Order Cancelled</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Order #{{orderNumber}} has been cancelled:</p>
+  
+  <div style="background: #fdf2f2; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #e74c3c;">
+    <strong>Order Number:</strong> #{{orderNumber}}<br>
+    <strong>Customer:</strong> {{customerName}}<br>
+    <strong>Total Amount:</strong> GHS {{totalAmount}}<br>
+    <strong>Cancellation Reason:</strong> {{cancellationReason}}<br>
+    <strong>Cancelled By:</strong> {{cancelledByName}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Order System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'orderNumber', 'customerName', 'totalAmount', 'cancellationReason', 'cancelledByName', 'companyName']
+  },
+  {
+    id: 'backorder_created',
+    name: 'Backorder Created',
+    subject: 'Backorder Created: #{{orderNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #e67e22;">Backorder Created</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A backorder has been created for order #{{orderNumber}}:</p>
+  
+  <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #e67e22;">
+    <strong>Order Number:</strong> #{{orderNumber}}<br>
+    <strong>Product:</strong> {{productName}}<br>
+    <strong>SKU:</strong> {{productSku}}<br>
+    <strong>Quantity:</strong> {{quantity}} units<br>
+    <strong>Reason:</strong> {{reason}}
+  </div>
+  
+  <p>Please restock this item as soon as possible.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Order System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'orderNumber', 'productName', 'productSku', 'quantity', 'reason', 'companyName']
+  },
+  // Payments - Additional
+  {
+    id: 'payment_received',
+    name: 'Payment Received',
+    subject: 'Payment Received: GHS {{paymentAmount}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">Payment Received</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A payment has been received:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Payment Amount:</strong> GHS {{paymentAmount}}<br>
+    <strong>Invoice Number:</strong> #{{invoiceNumber}}<br>
+    <strong>Payment Method:</strong> {{paymentMethod}}<br>
+    <strong>Remaining Balance:</strong> GHS {{balance}}<br>
+    <strong>Date:</strong> {{paymentDate}}
+  </div>
+  
+  <p>Thank you for your payment!</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Finance Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'paymentAmount', 'invoiceNumber', 'paymentMethod', 'balance', 'paymentDate', 'companyName']
+  },
+  {
+    id: 'payment_failed',
+    name: 'Payment Failed',
+    subject: 'Payment Failed: Invoice #{{invoiceNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #e74c3c;">Payment Failed</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A payment attempt has failed:</p>
+  
+  <div style="background: #fdf2f2; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #e74c3c;">
+    <strong>Invoice Number:</strong> #{{invoiceNumber}}<br>
+    <strong>Amount:</strong> GHS {{amount}}<br>
+    <strong>Payment Method:</strong> {{paymentMethod}}<br>
+    <strong>Error:</strong> {{errorMessage}}
+  </div>
+  
+  <p>Please try again or contact support if the issue persists.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Finance Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'invoiceNumber', 'amount', 'paymentMethod', 'errorMessage', 'companyName']
+  },
+  {
+    id: 'payment_refunded',
+    name: 'Payment Refunded',
+    subject: 'Payment Refunded: GHS {{refundAmount}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">Payment Refunded</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A refund has been processed:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Refund Amount:</strong> GHS {{refundAmount}}<br>
+    <strong>Payment Number:</strong> #{{paymentNumber}}<br>
+    <strong>Refund Reason:</strong> {{refundReason}}<br>
+    <strong>Date:</strong> {{refundDate}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Finance Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'refundAmount', 'paymentNumber', 'refundReason', 'refundDate', 'companyName']
+  },
+  // Invoices
+  {
+    id: 'invoice_created',
+    name: 'Invoice Created',
+    subject: 'Invoice Created: #{{invoiceNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">Invoice Created</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A new invoice has been created:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Invoice Number:</strong> #{{invoiceNumber}}<br>
+    <strong>Customer:</strong> {{customerName}}<br>
+    <strong>Total Amount:</strong> GHS {{totalAmount}}<br>
+    <strong>Due Date:</strong> {{dueDate}}<br>
+    <strong>Created By:</strong> {{createdByName}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Finance Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'invoiceNumber', 'customerName', 'totalAmount', 'dueDate', 'createdByName', 'companyName']
+  },
+  {
+    id: 'invoice_sent',
+    name: 'Invoice Sent',
+    subject: 'Invoice Sent: #{{invoiceNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">Invoice Sent</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Invoice #{{invoiceNumber}} has been sent to {{customerName}}:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Invoice Number:</strong> #{{invoiceNumber}}<br>
+    <strong>Customer:</strong> {{customerName}}<br>
+    <strong>Total Amount:</strong> GHS {{totalAmount}}<br>
+    <strong>Due Date:</strong> {{dueDate}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Finance Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'invoiceNumber', 'customerName', 'totalAmount', 'dueDate', 'companyName']
+  },
+  {
+    id: 'invoice_overdue',
+    name: 'Invoice Overdue',
+    subject: 'URGENT: Invoice Overdue - #{{invoiceNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #e74c3c;">Invoice Overdue</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p><strong>URGENT:</strong> The following invoice is now overdue:</p>
+  
+  <div style="background: #fdf2f2; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #e74c3c;">
+    <strong>Invoice Number:</strong> #{{invoiceNumber}}<br>
+    <strong>Customer:</strong> {{customerName}}<br>
+    <strong>Total Amount:</strong> GHS {{totalAmount}}<br>
+    <strong>Due Date:</strong> {{dueDate}}<br>
+    <strong>Days Overdue:</strong> {{daysOverdue}} days
+  </div>
+  
+  <p>Please follow up with the customer immediately.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Finance Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'invoiceNumber', 'customerName', 'totalAmount', 'dueDate', 'daysOverdue', 'companyName']
+  },
+  {
+    id: 'invoice_paid',
+    name: 'Invoice Paid',
+    subject: 'Invoice Paid: #{{invoiceNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">Invoice Paid</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Invoice #{{invoiceNumber}} has been fully paid:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Invoice Number:</strong> #{{invoiceNumber}}<br>
+    <strong>Customer:</strong> {{customerName}}<br>
+    <strong>Total Amount:</strong> GHS {{totalAmount}}<br>
+    <strong>Payment Date:</strong> {{paymentDate}}
+  </div>
+  
+  <p>Thank you!</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Finance Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'invoiceNumber', 'customerName', 'totalAmount', 'paymentDate', 'companyName']
+  },
+  // Quotations
+  {
+    id: 'quotation_created',
+    name: 'Quotation Created',
+    subject: 'Quotation Created: #{{quotationNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">Quotation Created</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A new quotation has been created:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Quotation Number:</strong> #{{quotationNumber}}<br>
+    <strong>Customer:</strong> {{customerName}}<br>
+    <strong>Total Amount:</strong> GHS {{totalAmount}}<br>
+    <strong>Valid Until:</strong> {{expiryDate}}<br>
+    <strong>Created By:</strong> {{createdByName}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Sales Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'quotationNumber', 'customerName', 'totalAmount', 'expiryDate', 'createdByName', 'companyName']
+  },
+  {
+    id: 'quotation_sent',
+    name: 'Quotation Sent',
+    subject: 'Quotation Sent: #{{quotationNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">Quotation Sent</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Quotation #{{quotationNumber}} has been sent to {{customerName}}:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Quotation Number:</strong> #{{quotationNumber}}<br>
+    <strong>Customer:</strong> {{customerName}}<br>
+    <strong>Total Amount:</strong> GHS {{totalAmount}}<br>
+    <strong>Valid Until:</strong> {{expiryDate}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Sales Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'quotationNumber', 'customerName', 'totalAmount', 'expiryDate', 'companyName']
+  },
+  {
+    id: 'quotation_accepted',
+    name: 'Quotation Accepted',
+    subject: 'Quotation Accepted: #{{quotationNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">Quotation Accepted!</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p><strong>Great news!</strong> Quotation #{{quotationNumber}} has been accepted by {{customerName}}:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Quotation Number:</strong> #{{quotationNumber}}<br>
+    <strong>Customer:</strong> {{customerName}}<br>
+    <strong>Total Amount:</strong> GHS {{totalAmount}}<br>
+    <strong>Accepted Date:</strong> {{acceptedDate}}
+  </div>
+  
+  <p>Please proceed with order processing.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Sales Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'quotationNumber', 'customerName', 'totalAmount', 'acceptedDate', 'companyName']
+  },
+  {
+    id: 'quotation_expired',
+    name: 'Quotation Expired',
+    subject: 'Quotation Expired: #{{quotationNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #e67e22;">Quotation Expired</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Quotation #{{quotationNumber}} has expired:</p>
+  
+  <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #e67e22;">
+    <strong>Quotation Number:</strong> #{{quotationNumber}}<br>
+    <strong>Customer:</strong> {{customerName}}<br>
+    <strong>Total Amount:</strong> GHS {{totalAmount}}<br>
+    <strong>Expiry Date:</strong> {{expiryDate}}
+  </div>
+  
+  <p>Please create a new quotation if the customer is still interested.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Sales Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'quotationNumber', 'customerName', 'totalAmount', 'expiryDate', 'companyName']
+  },
+  // Projects
+  {
+    id: 'project_created',
+    name: 'Project Created',
+    subject: 'New Project: {{projectName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">New Project Created</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A new project has been created and you have been assigned:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Project Name:</strong> {{projectName}}<br>
+    <strong>Your Role:</strong> {{role}}<br>
+    <strong>Start Date:</strong> {{startDate}}<br>
+    <strong>End Date:</strong> {{endDate}}<br>
+    <strong>Created By:</strong> {{createdByName}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Project Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'projectName', 'role', 'startDate', 'endDate', 'createdByName', 'companyName']
+  },
+  {
+    id: 'project_updated',
+    name: 'Project Updated',
+    subject: 'Project Updated: {{projectName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">Project Updated</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Project "{{projectName}}" has been updated:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Project Name:</strong> {{projectName}}<br>
+    <strong>Changes:</strong> {{changes}}<br>
+    <strong>Updated By:</strong> {{updatedByName}}<br>
+    <strong>Date:</strong> {{updateDate}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Project Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'projectName', 'changes', 'updatedByName', 'updateDate', 'companyName']
+  },
+  {
+    id: 'project_completed',
+    name: 'Project Completed',
+    subject: 'Project Completed: {{projectName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">Project Completed!</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p><strong>Congratulations!</strong> Project "{{projectName}}" has been completed successfully:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Project Name:</strong> {{projectName}}<br>
+    <strong>Completion Date:</strong> {{completionDate}}<br>
+    <strong>Duration:</strong> {{duration}}
+  </div>
+  
+  <p>Great work on completing this project!</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Project Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'projectName', 'completionDate', 'duration', 'companyName']
+  },
+  {
+    id: 'project_member_added',
+    name: 'Project Member Added',
+    subject: 'Added to Project: {{projectName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #9b59b6;">Added to Project</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>You have been added to project "{{projectName}}":</p>
+  
+  <div style="background: #f4f0f7; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Project Name:</strong> {{projectName}}<br>
+    <strong>Your Role:</strong> {{role}}<br>
+    <strong>Added By:</strong> {{addedByName}}<br>
+    <strong>Date:</strong> {{addedDate}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Project Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'projectName', 'role', 'addedByName', 'addedDate', 'companyName']
+  },
+  // Tasks
+  {
+    id: 'task_created',
+    name: 'Task Created',
+    subject: 'New Task: {{taskTitle}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">New Task Created</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A new task has been created:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Task:</strong> {{taskTitle}}<br>
+    <strong>Project:</strong> {{projectName}}<br>
+    <strong>Due Date:</strong> {{dueDate}}<br>
+    <strong>Priority:</strong> {{priority}}<br>
+    <strong>Created By:</strong> {{createdByName}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Project Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'taskTitle', 'projectName', 'dueDate', 'priority', 'createdByName', 'companyName']
+  },
+  {
+    id: 'task_assigned',
+    name: 'Task Assigned',
+    subject: 'Task Assigned to You: {{taskTitle}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #e67e22;">Task Assigned to You</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>You have been assigned a new task:</p>
+  
+  <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #e67e22;">
+    <strong>Task:</strong> {{taskTitle}}<br>
+    <strong>Project:</strong> {{projectName}}<br>
+    <strong>Due Date:</strong> {{dueDate}}<br>
+    <strong>Priority:</strong> {{priority}}<br>
+    <strong>Assigned By:</strong> {{assignedByName}}
+  </div>
+  
+  <p>Please review and start working on this task.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Project Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'taskTitle', 'projectName', 'dueDate', 'priority', 'assignedByName', 'companyName']
+  },
+  {
+    id: 'task_due_soon',
+    name: 'Task Due Soon',
+    subject: 'REMINDER: Task Due Soon - {{taskTitle}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #e67e22;">Task Due Soon</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p><strong>REMINDER:</strong> The following task is due soon:</p>
+  
+  <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #e67e22;">
+    <strong>Task:</strong> {{taskTitle}}<br>
+    <strong>Project:</strong> {{projectName}}<br>
+    <strong>Due Date:</strong> {{dueDate}}<br>
+    <strong>Priority:</strong> {{priority}}
+  </div>
+  
+  <p>Please complete this task before the due date.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Project Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'taskTitle', 'projectName', 'dueDate', 'priority', 'companyName']
+  },
+  {
+    id: 'task_overdue',
+    name: 'Task Overdue',
+    subject: 'URGENT: Task Overdue - {{taskTitle}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #e74c3c;">Task Overdue</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p><strong>URGENT:</strong> The following task is overdue:</p>
+  
+  <div style="background: #fdf2f2; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #e74c3c;">
+    <strong>Task:</strong> {{taskTitle}}<br>
+    <strong>Project:</strong> {{projectName}}<br>
+    <strong>Due Date:</strong> {{dueDate}}<br>
+    <strong>Days Overdue:</strong> {{daysOverdue}} days<br>
+    <strong>Priority:</strong> {{priority}}
+  </div>
+  
+  <p>Please complete this task immediately.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Project Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'taskTitle', 'projectName', 'dueDate', 'daysOverdue', 'priority', 'companyName']
+  },
+  {
+    id: 'task_completed',
+    name: 'Task Completed',
+    subject: 'Task Completed: {{taskTitle}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">Task Completed</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Task "{{taskTitle}}" has been marked as completed:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Task:</strong> {{taskTitle}}<br>
+    <strong>Project:</strong> {{projectName}}<br>
+    <strong>Completed By:</strong> {{completedByName}}<br>
+    <strong>Completion Date:</strong> {{completionDate}}
+  </div>
+  
+  <p>Great work!</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Project Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'taskTitle', 'projectName', 'completedByName', 'completionDate', 'companyName']
+  },
+  {
+    id: 'task_comment',
+    name: 'Task Comment',
+    subject: 'New Comment on Task: {{taskTitle}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">New Task Comment</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>{{commenterName}} commented on task "{{taskTitle}}":</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Task:</strong> {{taskTitle}}<br>
+    <strong>Project:</strong> {{projectName}}<br>
+    <strong>Comment:</strong> {{commentPreview}}<br>
+    <strong>Commented By:</strong> {{commenterName}}<br>
+    <strong>Date:</strong> {{commentDate}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Project Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'taskTitle', 'projectName', 'commentPreview', 'commenterName', 'commentDate', 'companyName']
+  },
+  // Leads - Additional
+  {
+    id: 'lead_converted',
+    name: 'Lead Converted',
+    subject: 'Lead Converted: {{leadName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">Lead Converted</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Lead "{{leadName}}" has been converted to an opportunity:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Lead Name:</strong> {{leadName}}<br>
+    <strong>Opportunity Value:</strong> GHS {{opportunityValue}}<br>
+    <strong>Stage:</strong> {{stage}}<br>
+    <strong>Converted By:</strong> {{convertedByName}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} CRM System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'leadName', 'opportunityValue', 'stage', 'convertedByName', 'companyName']
+  },
+  // Opportunities
+  {
+    id: 'opportunity_created',
+    name: 'Opportunity Created',
+    subject: 'New Opportunity: {{opportunityName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">New Opportunity Created</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A new opportunity has been created:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Opportunity:</strong> {{opportunityName}}<br>
+    <strong>Value:</strong> GHS {{value}}<br>
+    <strong>Stage:</strong> {{stage}}<br>
+    <strong>Account:</strong> {{accountName}}<br>
+    <strong>Created By:</strong> {{createdByName}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} CRM System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'opportunityName', 'value', 'stage', 'accountName', 'createdByName', 'companyName']
+  },
+  {
+    id: 'opportunity_won',
+    name: 'Opportunity Won',
+    subject: 'Opportunity Won: {{opportunityName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">Opportunity Won!</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p><strong>Congratulations!</strong> Opportunity "{{opportunityName}}" has been won:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Opportunity:</strong> {{opportunityName}}<br>
+    <strong>Value:</strong> GHS {{value}}<br>
+    <strong>Account:</strong> {{accountName}}<br>
+    <strong>Won Date:</strong> {{wonDate}}
+  </div>
+  
+  <p>Excellent work!</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} CRM System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'opportunityName', 'value', 'accountName', 'wonDate', 'companyName']
+  },
+  {
+    id: 'opportunity_lost',
+    name: 'Opportunity Lost',
+    subject: 'Opportunity Lost: {{opportunityName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #e74c3c;">Opportunity Lost</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Opportunity "{{opportunityName}}" has been marked as lost:</p>
+  
+  <div style="background: #fdf2f2; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #e74c3c;">
+    <strong>Opportunity:</strong> {{opportunityName}}<br>
+    <strong>Value:</strong> GHS {{value}}<br>
+    <strong>Reason:</strong> {{reason}}<br>
+    <strong>Lost Date:</strong> {{lostDate}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} CRM System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'opportunityName', 'value', 'reason', 'lostDate', 'companyName']
+  },
+  // Accounts & Contacts
+  {
+    id: 'account_created',
+    name: 'Account Created',
+    subject: 'New Account: {{accountName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">New Account Created</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A new account has been created and assigned to you:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Account Name:</strong> {{accountName}}<br>
+    <strong>Industry:</strong> {{industry}}<br>
+    <strong>Created By:</strong> {{createdByName}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} CRM System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'accountName', 'industry', 'createdByName', 'companyName']
+  },
+  {
+    id: 'contact_created',
+    name: 'Contact Created',
+    subject: 'New Contact: {{contactName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">New Contact Created</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A new contact has been added:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Contact Name:</strong> {{contactName}}<br>
+    <strong>Email:</strong> {{contactEmail}}<br>
+    <strong>Phone:</strong> {{contactPhone}}<br>
+    <strong>Account:</strong> {{accountName}}<br>
+    <strong>Created By:</strong> {{createdByName}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} CRM System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'contactName', 'contactEmail', 'contactPhone', 'accountName', 'createdByName', 'companyName']
+  },
+  // Ecommerce
+  {
+    id: 'ecommerce_order_placed',
+    name: 'Ecommerce Order Placed',
+    subject: 'New Ecommerce Order: #{{orderNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">New Ecommerce Order</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A new order has been placed on the storefront:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Order Number:</strong> #{{orderNumber}}<br>
+    <strong>Customer:</strong> {{customerName}}<br>
+    <strong>Email:</strong> {{customerEmail}}<br>
+    <strong>Total Amount:</strong> GHS {{totalAmount}}<br>
+    <strong>Items:</strong> {{itemCount}} items<br>
+    <strong>Date:</strong> {{orderDate}}
+  </div>
+  
+  <p>Please process this order as soon as possible.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Ecommerce Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'orderNumber', 'customerName', 'customerEmail', 'totalAmount', 'itemCount', 'orderDate', 'companyName']
+  },
+  {
+    id: 'ecommerce_order_status',
+    name: 'Ecommerce Order Status',
+    subject: 'Your Order Status: #{{orderNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">Order Status Update</h2>
+  <p>Hello {{customerName}},</p>
+  
+  <p>Your order status has been updated:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Order Number:</strong> #{{orderNumber}}<br>
+    <strong>Status:</strong> {{status}}<br>
+    <strong>Delivery Info:</strong> {{deliveryInfo}}
+  </div>
+  
+  <p>Thank you for shopping with us!</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Team</p>
+</div>
+    `.trim(),
+    variables: ['customerName', 'orderNumber', 'status', 'deliveryInfo', 'companyName']
+  },
+  {
+    id: 'ecommerce_customer_registered',
+    name: 'Customer Registered',
+    subject: 'New Customer Registration',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">New Customer Registered</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A new customer has registered on the storefront:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Customer Name:</strong> {{customerName}}<br>
+    <strong>Email:</strong> {{customerEmail}}<br>
+    <strong>Phone:</strong> {{customerPhone}}<br>
+    <strong>Registration Date:</strong> {{registrationDate}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Ecommerce Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'customerName', 'customerEmail', 'customerPhone', 'registrationDate', 'companyName']
+  },
+  {
+    id: 'ecommerce_product_low_stock',
+    name: 'Ecommerce Product Low Stock',
+    subject: 'Ecommerce Product Low Stock: {{productName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #e67e22;">Ecommerce Product Low Stock</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>An ecommerce product is running low on stock:</p>
+  
+  <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #e67e22;">
+    <strong>Product:</strong> {{productName}}<br>
+    <strong>SKU:</strong> {{productSku}}<br>
+    <strong>Current Stock:</strong> {{currentStock}} units<br>
+    <strong>Reorder Point:</strong> {{reorderPoint}} units
+  </div>
+  
+  <p>Please restock this item to avoid out-of-stock situations on the storefront.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Ecommerce Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'productName', 'productSku', 'currentStock', 'reorderPoint', 'companyName']
+  },
+  // DRM
+  {
+    id: 'distributor_lead_created',
+    name: 'Distributor Lead Created',
+    subject: 'New Distributor Lead: {{leadName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">New Distributor Lead</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A new distributor lead has been created:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Lead Name:</strong> {{leadName}}<br>
+    <strong>Email:</strong> {{leadEmail}}<br>
+    <strong>Phone:</strong> {{leadPhone}}<br>
+    <strong>Company:</strong> {{leadCompany}}<br>
+    <strong>Created By:</strong> {{createdByName}}
+  </div>
+  
+  <p>Please review and follow up with this distributor lead.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} DRM Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'leadName', 'leadEmail', 'leadPhone', 'leadCompany', 'createdByName', 'companyName']
+  },
+  {
+    id: 'distributor_approved',
+    name: 'Distributor Approved',
+    subject: 'Distributor Approved: {{distributorName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">Distributor Approved</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Distributor "{{distributorName}}" has been approved:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Distributor:</strong> {{distributorName}}<br>
+    <strong>Email:</strong> {{distributorEmail}}<br>
+    <strong>Approved By:</strong> {{approvedByName}}<br>
+    <strong>Approval Date:</strong> {{approvalDate}}
+  </div>
+  
+  <p>They can now place orders through the DRM system.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} DRM Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'distributorName', 'distributorEmail', 'approvedByName', 'approvalDate', 'companyName']
+  },
+  {
+    id: 'drm_order_created',
+    name: 'DRM Order Created',
+    subject: 'New DRM Order: #{{orderNumber}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">New DRM Order</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A new order has been placed by a distributor:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Order Number:</strong> #{{orderNumber}}<br>
+    <strong>Distributor:</strong> {{distributorName}}<br>
+    <strong>Total Amount:</strong> GHS {{totalAmount}}<br>
+    <strong>Items:</strong> {{itemCount}} items<br>
+    <strong>Date:</strong> {{orderDate}}
+  </div>
+  
+  <p>Please process this order as soon as possible.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} DRM Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'orderNumber', 'distributorName', 'totalAmount', 'itemCount', 'orderDate', 'companyName']
+  },
+  // Commissions
+  {
+    id: 'commission_calculated',
+    name: 'Commission Calculated',
+    subject: 'Commission Calculated: GHS {{commissionAmount}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">Commission Calculated</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Your commission has been calculated:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Commission Amount:</strong> GHS {{commissionAmount}}<br>
+    <strong>Period:</strong> {{period}}<br>
+    <strong>Calculated Date:</strong> {{calculatedDate}}
+  </div>
+  
+  <p>View details in your commissions dashboard.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Finance Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'commissionAmount', 'period', 'calculatedDate', 'companyName']
+  },
+  {
+    id: 'commission_paid',
+    name: 'Commission Paid',
+    subject: 'Commission Paid: GHS {{commissionAmount}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">Commission Paid</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Your commission has been paid:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Commission Amount:</strong> GHS {{commissionAmount}}<br>
+    <strong>Period:</strong> {{period}}<br>
+    <strong>Payment Date:</strong> {{paymentDate}}<br>
+    <strong>Payment Method:</strong> {{paymentMethod}}
+  </div>
+  
+  <p>Thank you for your hard work!</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Finance Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'commissionAmount', 'period', 'paymentDate', 'paymentMethod', 'companyName']
+  },
+  // Users & System
+  {
+    id: 'user_created',
+    name: 'New User Created',
+    subject: 'New User Account Created',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">New User Account</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>A new user account has been created:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Name:</strong> {{userName}}<br>
+    <strong>Email:</strong> {{userEmail}}<br>
+    <strong>Role:</strong> {{userRole}}<br>
+    <strong>Created By:</strong> {{createdByName}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Admin Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'userName', 'userEmail', 'userRole', 'createdByName', 'companyName']
+  },
+  {
+    id: 'user_login',
+    name: 'User Login',
+    subject: 'User Login Notification',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">User Login</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>User {{userName}} logged into the system:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>User:</strong> {{userName}}<br>
+    <strong>Email:</strong> {{userEmail}}<br>
+    <strong>Login Time:</strong> {{loginTime}}<br>
+    <strong>IP Address:</strong> {{ipAddress}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'userName', 'userEmail', 'loginTime', 'ipAddress', 'companyName']
+  },
+  {
+    id: 'user_role_changed',
+    name: 'User Role Changed',
+    subject: 'Your Role Has Been Changed',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #9b59b6;">Role Changed</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Your role has been changed:</p>
+  
+  <div style="background: #f4f0f7; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Previous Role:</strong> {{oldRole}}<br>
+    <strong>New Role:</strong> {{newRole}}<br>
+    <strong>Changed By:</strong> {{changedByName}}<br>
+    <strong>Date:</strong> {{changeDate}}
+  </div>
+  
+  <p>Please log out and log back in for changes to take effect.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Admin Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'oldRole', 'newRole', 'changedByName', 'changeDate', 'companyName']
+  },
+  {
+    id: 'system_backup',
+    name: 'System Backup',
+    subject: 'System Backup Completed',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #27ae60;">System Backup Completed</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>System backup has been completed successfully:</p>
+  
+  <div style="background: #f0fff4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Backup Size:</strong> {{backupSize}}<br>
+    <strong>Backup Date:</strong> {{backupDate}}<br>
+    <strong>Files Included:</strong> {{fileCount}} files
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'backupSize', 'backupDate', 'fileCount', 'companyName']
+  },
+  {
+    id: 'system_error',
+    name: 'System Error',
+    subject: 'URGENT: System Error Detected',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #e74c3c;">System Error</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p><strong>URGENT:</strong> A system error has been detected:</p>
+  
+  <div style="background: #fdf2f2; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #e74c3c;">
+    <strong>Error:</strong> {{errorMessage}}<br>
+    <strong>Error Type:</strong> {{errorType}}<br>
+    <strong>Time:</strong> {{errorTime}}
+  </div>
+  
+  <p>Please check system logs immediately.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} System</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'errorMessage', 'errorType', 'errorTime', 'companyName']
+  },
+  // Communication
+  {
+    id: 'email_campaign_sent',
+    name: 'Email Campaign Sent',
+    subject: 'Email Campaign Sent: {{campaignName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">Email Campaign Sent</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Email campaign has been sent successfully:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Campaign Name:</strong> {{campaignName}}<br>
+    <strong>Recipients:</strong> {{recipientCount}} recipients<br>
+    <strong>Sent Date:</strong> {{sentDate}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Marketing Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'campaignName', 'recipientCount', 'sentDate', 'companyName']
+  },
+  {
+    id: 'sms_campaign_sent',
+    name: 'SMS Campaign Sent',
+    subject: 'SMS Campaign Sent: {{campaignName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">SMS Campaign Sent</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>SMS campaign has been sent successfully:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Campaign Name:</strong> {{campaignName}}<br>
+    <strong>Recipients:</strong> {{recipientCount}} recipients<br>
+    <strong>Sent Date:</strong> {{sentDate}}
+  </div>
+  
+  <p>Best regards,<br>
+  {{companyName}} Marketing Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'campaignName', 'recipientCount', 'sentDate', 'companyName']
+  },
+  // Reports
+  {
+    id: 'report_generated',
+    name: 'Report Generated',
+    subject: 'Report Generated: {{reportName}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #3498db;">Report Generated</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>Your scheduled report has been generated:</p>
+  
+  <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+    <strong>Report Name:</strong> {{reportName}}<br>
+    <strong>Generated Date:</strong> {{generatedDate}}<br>
+    <strong>Format:</strong> {{reportFormat}}
+  </div>
+  
+  <p>You can download the report from your reports dashboard.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Reports Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'reportName', 'generatedDate', 'reportFormat', 'companyName']
+  },
+  {
+    id: 'analytics_alert',
+    name: 'Analytics Alert',
+    subject: 'Analytics Alert: {{alertMessage}}',
+    body: `
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #e67e22;">Analytics Alert</h2>
+  <p>Hello {{recipientName}},</p>
+  
+  <p>An analytics threshold has been reached:</p>
+  
+  <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #e67e22;">
+    <strong>Alert:</strong> {{alertMessage}}<br>
+    <strong>Threshold:</strong> {{threshold}}<br>
+    <strong>Current Value:</strong> {{currentValue}}<br>
+    <strong>Metric:</strong> {{metric}}
+  </div>
+  
+  <p>Please review the analytics dashboard for more details.</p>
+  
+  <p>Best regards,<br>
+  {{companyName}} Analytics Team</p>
+</div>
+    `.trim(),
+    variables: ['recipientName', 'alertMessage', 'threshold', 'currentValue', 'metric', 'companyName']
   }
 ];
 
@@ -256,8 +1548,8 @@ const DEFAULT_SMS_TEMPLATES: NotificationTemplate[] = [
   {
     id: 'new_order',
     name: 'New Order Notification',
-    body: 'New Order #{{orderNumber}} received from {{customerName}} for {{currency}}{{totalAmount}}. {{itemCount}} items.',
-    variables: ['orderNumber', 'customerName', 'totalAmount', 'currency', 'itemCount']
+    body: 'New Order #{{orderNumber}} received from {{customerName}} for GHS {{totalAmount}}. {{itemCount}} items.',
+    variables: ['orderNumber', 'customerName', 'totalAmount', 'itemCount']
   },
   {
     id: 'lead_created',
@@ -280,13 +1572,330 @@ const DEFAULT_SMS_TEMPLATES: NotificationTemplate[] = [
   {
     id: 'lead_welcome',
     name: 'Lead Welcome SMS',
-    body: 'Welcome to AdPools Group! Thank you for your interest. We will contact you within 24 hours.',
-    variables: ['assignedUserName']
+    body: 'Welcome to {{companyName}}! Thank you for your interest. We will contact you within 24 hours.',
+    variables: ['assignedUserName', 'companyName']
+  },
+  // Inventory - Additional
+  {
+    id: 'stock_movement',
+    name: 'Stock Movement',
+    body: 'Stock movement: {{productName}} moved from {{fromWarehouse}} to {{toWarehouse}}. Quantity: {{quantity}} units.',
+    variables: ['productName', 'fromWarehouse', 'toWarehouse', 'quantity']
+  },
+  {
+    id: 'warehouse_update',
+    name: 'Warehouse Update',
+    body: 'Warehouse {{warehouseName}} information has been updated.',
+    variables: ['warehouseName']
+  },
+  // Orders - Additional
+  {
+    id: 'order_status',
+    name: 'Order Status Change',
+    body: 'Order #{{orderNumber}} status changed: {{oldStatus}} → {{newStatus}}.',
+    variables: ['orderNumber', 'oldStatus', 'newStatus']
+  },
+  {
+    id: 'order_cancelled',
+    name: 'Order Cancelled',
+    body: 'Order #{{orderNumber}} has been cancelled. Reason: {{cancellationReason}}.',
+    variables: ['orderNumber', 'cancellationReason']
+  },
+  {
+    id: 'backorder_created',
+    name: 'Backorder Created',
+    body: 'Backorder created for Order #{{orderNumber}}. Product: {{productName}}. Quantity: {{quantity}}.',
+    variables: ['orderNumber', 'productName', 'quantity']
+  },
+  // Payments - Additional
+  {
+    id: 'payment_received',
+    name: 'Payment Received',
+    body: 'Payment of GHS {{paymentAmount}} received for Invoice #{{invoiceNumber}}. Balance: GHS {{balance}}.',
+    variables: ['paymentAmount', 'invoiceNumber', 'balance']
+  },
+  {
+    id: 'payment_failed',
+    name: 'Payment Failed',
+    body: 'Payment failed for Invoice #{{invoiceNumber}}. Amount: GHS {{amount}}. Please try again.',
+    variables: ['invoiceNumber', 'amount']
+  },
+  {
+    id: 'payment_refunded',
+    name: 'Payment Refunded',
+    body: 'Refund of GHS {{refundAmount}} processed for Payment #{{paymentNumber}}.',
+    variables: ['refundAmount', 'paymentNumber']
+  },
+  // Invoices
+  {
+    id: 'invoice_created',
+    name: 'Invoice Created',
+    body: 'Invoice #{{invoiceNumber}} created for {{customerName}}. Amount: GHS {{totalAmount}}. Due: {{dueDate}}.',
+    variables: ['invoiceNumber', 'customerName', 'totalAmount', 'dueDate']
+  },
+  {
+    id: 'invoice_sent',
+    name: 'Invoice Sent',
+    body: 'Invoice #{{invoiceNumber}} has been sent to {{customerName}}. Amount: GHS {{totalAmount}}.',
+    variables: ['invoiceNumber', 'customerName', 'totalAmount']
+  },
+  {
+    id: 'invoice_overdue',
+    name: 'Invoice Overdue',
+    body: 'URGENT: Invoice #{{invoiceNumber}} is overdue. Amount: GHS {{totalAmount}}. Please pay immediately.',
+    variables: ['invoiceNumber', 'totalAmount']
+  },
+  {
+    id: 'invoice_paid',
+    name: 'Invoice Paid',
+    body: 'Invoice #{{invoiceNumber}} has been fully paid. Amount: GHS {{totalAmount}}. Thank you!',
+    variables: ['invoiceNumber', 'totalAmount']
+  },
+  // Quotations
+  {
+    id: 'quotation_created',
+    name: 'Quotation Created',
+    body: 'Quotation #{{quotationNumber}} created for {{customerName}}. Amount: GHS {{totalAmount}}.',
+    variables: ['quotationNumber', 'customerName', 'totalAmount']
+  },
+  {
+    id: 'quotation_sent',
+    name: 'Quotation Sent',
+    body: 'Quotation #{{quotationNumber}} sent to {{customerName}}. Valid until {{expiryDate}}.',
+    variables: ['quotationNumber', 'customerName', 'expiryDate']
+  },
+  {
+    id: 'quotation_accepted',
+    name: 'Quotation Accepted',
+    body: 'Great news! Quotation #{{quotationNumber}} has been accepted by {{customerName}}. Amount: GHS {{totalAmount}}.',
+    variables: ['quotationNumber', 'customerName', 'totalAmount']
+  },
+  {
+    id: 'quotation_expired',
+    name: 'Quotation Expired',
+    body: 'Quotation #{{quotationNumber}} has expired. Please create a new quotation if needed.',
+    variables: ['quotationNumber']
+  },
+  // Projects
+  {
+    id: 'project_created',
+    name: 'Project Created',
+    body: 'New project "{{projectName}}" has been created. You have been assigned as {{role}}.',
+    variables: ['projectName', 'role']
+  },
+  {
+    id: 'project_updated',
+    name: 'Project Updated',
+    body: 'Project "{{projectName}}" has been updated. Changes: {{changes}}.',
+    variables: ['projectName', 'changes']
+  },
+  {
+    id: 'project_completed',
+    name: 'Project Completed',
+    body: 'Congratulations! Project "{{projectName}}" has been completed successfully.',
+    variables: ['projectName']
+  },
+  {
+    id: 'project_member_added',
+    name: 'Project Member Added',
+    body: 'You have been added to project "{{projectName}}" as {{role}}.',
+    variables: ['projectName', 'role']
+  },
+  // Tasks
+  {
+    id: 'task_created',
+    name: 'Task Created',
+    body: 'New task "{{taskTitle}}" created in project "{{projectName}}". Due: {{dueDate}}.',
+    variables: ['taskTitle', 'projectName', 'dueDate']
+  },
+  {
+    id: 'task_assigned',
+    name: 'Task Assigned',
+    body: 'Task "{{taskTitle}}" assigned to you. Due: {{dueDate}}. Priority: {{priority}}.',
+    variables: ['taskTitle', 'dueDate', 'priority']
+  },
+  {
+    id: 'task_due_soon',
+    name: 'Task Due Soon',
+    body: 'REMINDER: Task "{{taskTitle}}" is due soon ({{dueDate}}). Please complete it.',
+    variables: ['taskTitle', 'dueDate']
+  },
+  {
+    id: 'task_overdue',
+    name: 'Task Overdue',
+    body: 'URGENT: Task "{{taskTitle}}" is overdue. Please complete it immediately.',
+    variables: ['taskTitle']
+  },
+  {
+    id: 'task_completed',
+    name: 'Task Completed',
+    body: 'Task "{{taskTitle}}" has been marked as completed. Great work!',
+    variables: ['taskTitle']
+  },
+  {
+    id: 'task_comment',
+    name: 'Task Comment',
+    body: 'New comment on task "{{taskTitle}}" by {{commenterName}}: {{commentPreview}}.',
+    variables: ['taskTitle', 'commenterName', 'commentPreview']
+  },
+  // Leads - Additional
+  {
+    id: 'lead_converted',
+    name: 'Lead Converted',
+    body: 'Lead "{{leadName}}" has been converted to opportunity. Value: GHS {{opportunityValue}}.',
+    variables: ['leadName', 'opportunityValue']
+  },
+  // Opportunities
+  {
+    id: 'opportunity_created',
+    name: 'Opportunity Created',
+    body: 'New opportunity "{{opportunityName}}" created. Value: GHS {{value}}. Stage: {{stage}}.',
+    variables: ['opportunityName', 'value', 'stage']
+  },
+  {
+    id: 'opportunity_won',
+    name: 'Opportunity Won',
+    body: 'Congratulations! Opportunity "{{opportunityName}}" has been won. Value: GHS {{value}}.',
+    variables: ['opportunityName', 'value']
+  },
+  {
+    id: 'opportunity_lost',
+    name: 'Opportunity Lost',
+    body: 'Opportunity "{{opportunityName}}" has been marked as lost. Reason: {{reason}}.',
+    variables: ['opportunityName', 'reason']
+  },
+  // Accounts & Contacts
+  {
+    id: 'account_created',
+    name: 'Account Created',
+    body: 'New account "{{accountName}}" has been created and assigned to you.',
+    variables: ['accountName']
+  },
+  {
+    id: 'contact_created',
+    name: 'Contact Created',
+    body: 'New contact "{{contactName}}" has been added to account "{{accountName}}".',
+    variables: ['contactName', 'accountName']
+  },
+  // Ecommerce
+  {
+    id: 'ecommerce_order_placed',
+    name: 'Ecommerce Order Placed',
+    body: 'New ecommerce order #{{orderNumber}} placed by {{customerName}}. Total: GHS {{totalAmount}}.',
+    variables: ['orderNumber', 'customerName', 'totalAmount']
+  },
+  {
+    id: 'ecommerce_order_status',
+    name: 'Ecommerce Order Status',
+    body: 'Your order #{{orderNumber}} status: {{status}}. {{deliveryInfo}}',
+    variables: ['orderNumber', 'status', 'deliveryInfo']
+  },
+  {
+    id: 'ecommerce_customer_registered',
+    name: 'Customer Registered',
+    body: 'New customer registered: {{customerName}} ({{customerEmail}}).',
+    variables: ['customerName', 'customerEmail']
+  },
+  {
+    id: 'ecommerce_product_low_stock',
+    name: 'Ecommerce Product Low Stock',
+    body: 'Ecommerce product "{{productName}}" is running low. Current stock: {{currentStock}} units.',
+    variables: ['productName', 'currentStock']
+  },
+  // DRM
+  {
+    id: 'distributor_lead_created',
+    name: 'Distributor Lead Created',
+    body: 'New distributor lead created: {{leadName}} ({{leadEmail}}). Company: {{leadCompany}}.',
+    variables: ['leadName', 'leadEmail', 'leadCompany']
+  },
+  {
+    id: 'distributor_approved',
+    name: 'Distributor Approved',
+    body: 'Distributor "{{distributorName}}" has been approved. They can now place orders.',
+    variables: ['distributorName']
+  },
+  {
+    id: 'drm_order_created',
+    name: 'DRM Order Created',
+    body: 'New DRM order #{{orderNumber}} from distributor {{distributorName}}. Total: GHS {{totalAmount}}.',
+    variables: ['orderNumber', 'distributorName', 'totalAmount']
+  },
+  // Commissions
+  {
+    id: 'commission_calculated',
+    name: 'Commission Calculated',
+    body: 'Commission calculated: GHS {{commissionAmount}} for {{period}}. View details in commissions.',
+    variables: ['commissionAmount', 'period']
+  },
+  {
+    id: 'commission_paid',
+    name: 'Commission Paid',
+    body: 'Commission of GHS {{commissionAmount}} has been paid for {{period}}. Payment date: {{paymentDate}}.',
+    variables: ['commissionAmount', 'period', 'paymentDate']
+  },
+  // Users & System
+  {
+    id: 'user_created',
+    name: 'New User Created',
+    body: 'New user account created: {{userName}} ({{userEmail}}) with role {{userRole}}.',
+    variables: ['userName', 'userEmail', 'userRole']
+  },
+  {
+    id: 'user_login',
+    name: 'User Login',
+    body: 'User {{userName}} logged into the system at {{loginTime}}.',
+    variables: ['userName', 'loginTime']
+  },
+  {
+    id: 'user_role_changed',
+    name: 'User Role Changed',
+    body: 'Your role has been changed from {{oldRole}} to {{newRole}}.',
+    variables: ['oldRole', 'newRole']
+  },
+  {
+    id: 'system_backup',
+    name: 'System Backup',
+    body: 'System backup completed successfully. Backup size: {{backupSize}}. Date: {{backupDate}}.',
+    variables: ['backupSize', 'backupDate']
+  },
+  {
+    id: 'system_error',
+    name: 'System Error',
+    body: 'URGENT: System error detected. Error: {{errorMessage}}. Please check system logs.',
+    variables: ['errorMessage']
+  },
+  // Communication
+  {
+    id: 'email_campaign_sent',
+    name: 'Email Campaign Sent',
+    body: 'Email campaign "{{campaignName}}" has been sent to {{recipientCount}} recipients.',
+    variables: ['campaignName', 'recipientCount']
+  },
+  {
+    id: 'sms_campaign_sent',
+    name: 'SMS Campaign Sent',
+    body: 'SMS campaign "{{campaignName}}" has been sent to {{recipientCount}} recipients.',
+    variables: ['campaignName', 'recipientCount']
+  },
+  // Reports
+  {
+    id: 'report_generated',
+    name: 'Report Generated',
+    body: 'Report "{{reportName}}" has been generated and is ready for download.',
+    variables: ['reportName']
+  },
+  {
+    id: 'analytics_alert',
+    name: 'Analytics Alert',
+    body: 'Analytics alert: {{alertMessage}}. Threshold: {{threshold}}. Current value: {{currentValue}}.',
+    variables: ['alertMessage', 'threshold', 'currentValue']
   }
 ];
 
-// System notification types
+// System notification types - Comprehensive list covering all modules
 const NOTIFICATION_TYPES = [
+  // Inventory
   {
     id: 'stock_low',
     name: 'Low Stock Alert',
@@ -302,6 +1911,21 @@ const NOTIFICATION_TYPES = [
     category: 'Inventory'
   },
   {
+    id: 'stock_movement',
+    name: 'Stock Movement',
+    description: 'When stock is moved between warehouses',
+    icon: Package,
+    category: 'Inventory'
+  },
+  {
+    id: 'warehouse_update',
+    name: 'Warehouse Update',
+    description: 'When warehouse information is updated',
+    icon: Warehouse,
+    category: 'Inventory'
+  },
+  // Orders
+  {
     id: 'new_order',
     name: 'New Order',
     description: 'When a new order is placed',
@@ -316,6 +1940,21 @@ const NOTIFICATION_TYPES = [
     category: 'Orders'
   },
   {
+    id: 'order_cancelled',
+    name: 'Order Cancelled',
+    description: 'When an order is cancelled',
+    icon: ShoppingCart,
+    category: 'Orders'
+  },
+  {
+    id: 'backorder_created',
+    name: 'Backorder Created',
+    description: 'When a backorder is created',
+    icon: ClipboardList,
+    category: 'Orders'
+  },
+  // Payments
+  {
     id: 'payment_received',
     name: 'Payment Received',
     description: 'When payment is received for an order',
@@ -323,26 +1962,150 @@ const NOTIFICATION_TYPES = [
     category: 'Payments'
   },
   {
-    id: 'user_created',
-    name: 'New User Created',
-    description: 'When a new user account is created',
-    icon: Users,
-    category: 'Users'
+    id: 'payment_failed',
+    name: 'Payment Failed',
+    description: 'When a payment transaction fails',
+    icon: CreditCard,
+    category: 'Payments'
   },
   {
-    id: 'user_login',
-    name: 'User Login',
-    description: 'When a user logs into the system',
-    icon: Users,
-    category: 'Users'
+    id: 'payment_refunded',
+    name: 'Payment Refunded',
+    description: 'When a payment is refunded',
+    icon: DollarSign,
+    category: 'Payments'
+  },
+  // Invoices
+  {
+    id: 'invoice_created',
+    name: 'Invoice Created',
+    description: 'When a new invoice is created',
+    icon: Receipt,
+    category: 'Invoices'
   },
   {
-    id: 'system_backup',
-    name: 'System Backup',
-    description: 'System backup completion notifications',
-    icon: Settings,
-    category: 'System'
+    id: 'invoice_sent',
+    name: 'Invoice Sent',
+    description: 'When an invoice is sent to customer',
+    icon: Receipt,
+    category: 'Invoices'
   },
+  {
+    id: 'invoice_overdue',
+    name: 'Invoice Overdue',
+    description: 'When an invoice becomes overdue',
+    icon: AlertTriangle,
+    category: 'Invoices'
+  },
+  {
+    id: 'invoice_paid',
+    name: 'Invoice Paid',
+    description: 'When an invoice is fully paid',
+    icon: Receipt,
+    category: 'Invoices'
+  },
+  // Quotations
+  {
+    id: 'quotation_created',
+    name: 'Quotation Created',
+    description: 'When a new quotation is created',
+    icon: FileCheck,
+    category: 'Quotations'
+  },
+  {
+    id: 'quotation_sent',
+    name: 'Quotation Sent',
+    description: 'When a quotation is sent to customer',
+    icon: FileCheck,
+    category: 'Quotations'
+  },
+  {
+    id: 'quotation_accepted',
+    name: 'Quotation Accepted',
+    description: 'When a quotation is accepted by customer',
+    icon: FileCheck,
+    category: 'Quotations'
+  },
+  {
+    id: 'quotation_expired',
+    name: 'Quotation Expired',
+    description: 'When a quotation expires',
+    icon: FileCheck,
+    category: 'Quotations'
+  },
+  // Projects
+  {
+    id: 'project_created',
+    name: 'Project Created',
+    description: 'When a new project is created',
+    icon: FolderKanban,
+    category: 'Projects'
+  },
+  {
+    id: 'project_updated',
+    name: 'Project Updated',
+    description: 'When project details are updated',
+    icon: FolderKanban,
+    category: 'Projects'
+  },
+  {
+    id: 'project_completed',
+    name: 'Project Completed',
+    description: 'When a project is marked as completed',
+    icon: FolderKanban,
+    category: 'Projects'
+  },
+  {
+    id: 'project_member_added',
+    name: 'Project Member Added',
+    description: 'When a member is added to a project',
+    icon: UserPlus,
+    category: 'Projects'
+  },
+  // Tasks
+  {
+    id: 'task_created',
+    name: 'Task Created',
+    description: 'When a new task is created',
+    icon: CheckSquare,
+    category: 'Tasks'
+  },
+  {
+    id: 'task_assigned',
+    name: 'Task Assigned',
+    description: 'When a task is assigned to you',
+    icon: CheckSquare,
+    category: 'Tasks'
+  },
+  {
+    id: 'task_due_soon',
+    name: 'Task Due Soon',
+    description: 'When a task is approaching its due date',
+    icon: Calendar,
+    category: 'Tasks'
+  },
+  {
+    id: 'task_overdue',
+    name: 'Task Overdue',
+    description: 'When a task becomes overdue',
+    icon: AlertTriangle,
+    category: 'Tasks'
+  },
+  {
+    id: 'task_completed',
+    name: 'Task Completed',
+    description: 'When a task is marked as completed',
+    icon: CheckSquare,
+    category: 'Tasks'
+  },
+  {
+    id: 'task_comment',
+    name: 'Task Comment',
+    description: 'When someone comments on a task',
+    icon: MessageSquareMore,
+    category: 'Tasks'
+  },
+  // CRM - Leads
   {
     id: 'lead_created',
     name: 'Lead Created',
@@ -370,6 +2133,182 @@ const NOTIFICATION_TYPES = [
     description: 'Welcome email sent to new leads',
     icon: Mail,
     category: 'Leads'
+  },
+  {
+    id: 'lead_converted',
+    name: 'Lead Converted',
+    description: 'When a lead is converted to an opportunity',
+    icon: TrendingUp,
+    category: 'Leads'
+  },
+  // CRM - Opportunities
+  {
+    id: 'opportunity_created',
+    name: 'Opportunity Created',
+    description: 'When a new opportunity is created',
+    icon: TrendingUp,
+    category: 'Opportunities'
+  },
+  {
+    id: 'opportunity_won',
+    name: 'Opportunity Won',
+    description: 'When an opportunity is marked as won',
+    icon: TrendingUp,
+    category: 'Opportunities'
+  },
+  {
+    id: 'opportunity_lost',
+    name: 'Opportunity Lost',
+    description: 'When an opportunity is marked as lost',
+    icon: TrendingUp,
+    category: 'Opportunities'
+  },
+  // CRM - Accounts & Contacts
+  {
+    id: 'account_created',
+    name: 'Account Created',
+    description: 'When a new account is created',
+    icon: Building,
+    category: 'Accounts'
+  },
+  {
+    id: 'contact_created',
+    name: 'Contact Created',
+    description: 'When a new contact is created',
+    icon: User,
+    category: 'Contacts'
+  },
+  // Ecommerce
+  {
+    id: 'ecommerce_order_placed',
+    name: 'Ecommerce Order Placed',
+    description: 'When a customer places an order on the storefront',
+    icon: ShoppingCart,
+    category: 'Ecommerce'
+  },
+  {
+    id: 'ecommerce_order_status',
+    name: 'Ecommerce Order Status',
+    description: 'When an ecommerce order status changes',
+    icon: ShoppingCart,
+    category: 'Ecommerce'
+  },
+  {
+    id: 'ecommerce_customer_registered',
+    name: 'Customer Registered',
+    description: 'When a new customer registers on the storefront',
+    icon: UserPlus,
+    category: 'Ecommerce'
+  },
+  {
+    id: 'ecommerce_product_low_stock',
+    name: 'Ecommerce Product Low Stock',
+    description: 'When an ecommerce product is low in stock',
+    icon: Package,
+    category: 'Ecommerce'
+  },
+  // DRM
+  {
+    id: 'distributor_lead_created',
+    name: 'Distributor Lead Created',
+    description: 'When a new distributor lead is created',
+    icon: UserPlus,
+    category: 'DRM'
+  },
+  {
+    id: 'distributor_approved',
+    name: 'Distributor Approved',
+    description: 'When a distributor is approved',
+    icon: UserCheck,
+    category: 'DRM'
+  },
+  {
+    id: 'drm_order_created',
+    name: 'DRM Order Created',
+    description: 'When a new DRM order is created',
+    icon: ShoppingCart,
+    category: 'DRM'
+  },
+  // Commissions
+  {
+    id: 'commission_calculated',
+    name: 'Commission Calculated',
+    description: 'When a commission is calculated',
+    icon: DollarSign,
+    category: 'Commissions'
+  },
+  {
+    id: 'commission_paid',
+    name: 'Commission Paid',
+    description: 'When a commission is paid',
+    icon: DollarSign,
+    category: 'Commissions'
+  },
+  // Users & System
+  {
+    id: 'user_created',
+    name: 'New User Created',
+    description: 'When a new user account is created',
+    icon: Users,
+    category: 'Users'
+  },
+  {
+    id: 'user_login',
+    name: 'User Login',
+    description: 'When a user logs into the system',
+    icon: Users,
+    category: 'Users'
+  },
+  {
+    id: 'user_role_changed',
+    name: 'User Role Changed',
+    description: 'When a user role is changed',
+    icon: Users,
+    category: 'Users'
+  },
+  {
+    id: 'system_backup',
+    name: 'System Backup',
+    description: 'System backup completion notifications',
+    icon: Settings,
+    category: 'System'
+  },
+  {
+    id: 'system_error',
+    name: 'System Error',
+    description: 'Critical system error notifications',
+    icon: AlertTriangle,
+    category: 'System'
+  },
+  // Communication
+  {
+    id: 'email_campaign_sent',
+    name: 'Email Campaign Sent',
+    description: 'When an email campaign is sent',
+    icon: Mail,
+    category: 'Communication'
+  },
+  {
+    id: 'sms_campaign_sent',
+    name: 'SMS Campaign Sent',
+    description: 'When an SMS campaign is sent',
+    icon: MessageSquare,
+    category: 'Communication'
+  },
+  // Analytics & Reports
+  {
+    id: 'report_generated',
+    name: 'Report Generated',
+    description: 'When a scheduled report is generated',
+    icon: BarChart3,
+    category: 'Reports'
+  },
+  {
+    id: 'analytics_alert',
+    name: 'Analytics Alert',
+    description: 'When analytics thresholds are reached',
+    icon: BarChart3,
+    category: 'Reports'
   }
 ];
 
@@ -418,7 +2357,7 @@ const defaultSettings: NotificationSettings = {
       password: '',
       encryption: 'tls',
       fromAddress: '',
-      fromName: 'AdPools Group'
+      fromName: '{{companyName}}'
     },
     notifications: {}
   },
@@ -457,6 +2396,10 @@ export default function NotificationSettingsPage() {
   const [showEmailPopup, setShowEmailPopup] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const [showSMSPopup, setShowSMSPopup] = useState(false);
+  const [testNotificationType, setTestNotificationType] = useState<string | null>(null);
+  const [testNotificationChannel, setTestNotificationChannel] = useState<'email' | 'sms' | null>(null);
+  const [showTestNotificationPopup, setShowTestNotificationPopup] = useState(false);
+  const [savingTimeout, setSavingTimeout] = useState<NodeJS.Timeout | null>(null);
   const [emailTemplates, setEmailTemplates] = useState<NotificationTemplate[]>(DEFAULT_EMAIL_TEMPLATES);
   const [smsTemplates, setSmsTemplates] = useState<NotificationTemplate[]>(DEFAULT_SMS_TEMPLATES);
   const [runnerStatus, setRunnerStatus] = useState<'running' | 'stopped' | 'loading'>('loading');
@@ -523,27 +2466,38 @@ export default function NotificationSettingsPage() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSaveSettings = async (settingsToSave?: NotificationSettings, showMessage: boolean = true) => {
+    const settingsToUse = settingsToSave || settings;
     try {
       setIsSaving(true);
       const response = await fetch('/api/settings/notifications', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ settings }),
+        body: JSON.stringify({ settings: settingsToUse }),
       });
 
       if (response.ok) {
+        if (showMessage) {
         showSuccess('Notification settings saved successfully');
+        }
       } else {
         const errorData = await response.json();
+        if (showMessage) {
         showError(errorData.error || 'Failed to save notification settings');
+        }
       }
     } catch (error) {
       console.error('Error saving settings:', error);
+      if (showMessage) {
       showError('Failed to save notification settings');
+      }
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSave = async () => {
+    await handleSaveSettings();
   };
 
   const handleTestClick = (type: 'email' | 'sms') => {
@@ -597,33 +2551,67 @@ export default function NotificationSettingsPage() {
     }
   };
 
-  const sendTestNotification = async (notificationType: string) => {
+  const handleTestNotificationClick = (notificationType: string, channel: 'email' | 'sms') => {
+    setTestNotificationType(notificationType);
+    setTestNotificationChannel(channel);
+    if (channel === 'email') {
+      setTestEmail(session?.user?.email || '');
+    } else {
+      setTestPhone('');
+    }
+    setShowTestNotificationPopup(true);
+  };
+
+  const sendTestNotification = async () => {
+    if (!testNotificationType || !testNotificationChannel) return;
+    
+    const contact = testNotificationChannel === 'email' ? testEmail : testPhone;
+    if (!contact) {
+      showError(`Please enter a ${testNotificationChannel === 'email' ? 'email address' : 'phone number'}`);
+      return;
+    }
+
     try {
+      setIsTesting(testNotificationType);
       const response = await fetch('/api/notifications/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: notificationType,
+          type: testNotificationType,
           test: true,
+          channel: testNotificationChannel,
+          contact: contact,
           data: { message: 'This is a test notification' }
         }),
       });
 
       if (response.ok) {
-        showSuccess(`Test ${notificationType} notification sent`);
+        const result = await response.json();
+        if (result.success) {
+          showSuccess(`Test ${testNotificationType} ${testNotificationChannel.toUpperCase()} notification sent successfully`);
+          setShowTestNotificationPopup(false);
+          setTestNotificationType(null);
+          setTestNotificationChannel(null);
       } else {
-        showError(`Failed to send test notification`);
+          showError(result.message || `Failed to send test ${testNotificationChannel.toUpperCase()} notification`);
+        }
+      } else {
+        const errorData = await response.json();
+        showError(errorData.error || errorData.message || `Failed to send test ${testNotificationChannel.toUpperCase()} notification`);
       }
     } catch (error) {
       console.error('Error sending test notification:', error);
-      showError('Failed to send test notification');
+      showError(`Failed to send test ${testNotificationChannel.toUpperCase()} notification`);
+    } finally {
+      setIsTesting(null);
     }
   };
 
-  const updateEmailSetting = (key: string, value: string | boolean) => {
+  const updateEmailSetting = (key: string, value: string | boolean, autoSave: boolean = false) => {
     if (key.startsWith('notifications.')) {
       const notificationKey = key.replace('notifications.', '');
-      setSettings(prev => ({
+      setSettings(prev => {
+        const newSettings = {
         ...prev,
         email: {
           ...prev.email,
@@ -632,7 +2620,24 @@ export default function NotificationSettingsPage() {
             [notificationKey]: value as boolean
           }
         }
-      }));
+        };
+        
+        // Auto-save notification settings after state update (debounced)
+        if (autoSave) {
+          // Clear existing timeout
+          if (savingTimeout) {
+            clearTimeout(savingTimeout);
+          }
+          // Set new timeout
+          const timeout = setTimeout(() => {
+            handleSaveSettings(newSettings, false); // Don't show message for auto-save
+            setSavingTimeout(null);
+          }, 500);
+          setSavingTimeout(timeout);
+        }
+        
+        return newSettings;
+      });
     } else if (key.startsWith('smtp.')) {
       const smtpKey = key.replace('smtp.', '');
       setSettings(prev => ({
@@ -656,10 +2661,11 @@ export default function NotificationSettingsPage() {
     }
   };
 
-  const updateSMSSetting = (key: string, value: string | boolean) => {
+  const updateSMSSetting = (key: string, value: string | boolean, autoSave: boolean = false) => {
     if (key.startsWith('notifications.')) {
       const notificationKey = key.replace('notifications.', '');
-      setSettings(prev => ({
+      setSettings(prev => {
+        const newSettings = {
         ...prev,
         sms: {
           ...prev.sms,
@@ -668,7 +2674,24 @@ export default function NotificationSettingsPage() {
             [notificationKey]: value as boolean
           }
         }
-      }));
+        };
+        
+        // Auto-save notification settings after state update (debounced)
+        if (autoSave) {
+          // Clear existing timeout
+          if (savingTimeout) {
+            clearTimeout(savingTimeout);
+          }
+          // Set new timeout
+          const timeout = setTimeout(() => {
+            handleSaveSettings(newSettings, false); // Don't show message for auto-save
+            setSavingTimeout(null);
+          }, 500);
+          setSavingTimeout(timeout);
+        }
+        
+        return newSettings;
+      });
     } else if (key.startsWith('provider.')) {
       const providerKey = key.replace('provider.', '');
       setSettings(prev => ({
@@ -914,7 +2937,7 @@ export default function NotificationSettingsPage() {
                   <Label htmlFor="fromName">From Name</Label>
                   <Input
                     id="fromName"
-                    placeholder="AdPools Group"
+                    placeholder="{{companyName}}"
                     value={settings.email.smtp.fromName}
                     onChange={(e) => updateEmailSetting('smtp.fromName', e.target.value)}
                     disabled={!settings.email.enabled}
@@ -952,7 +2975,7 @@ export default function NotificationSettingsPage() {
                         <label key={type.id} className="flex items-start gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
                           <Checkbox
                             checked={settings.email.notifications[type.id] || false}
-                            onCheckedChange={(checked) => updateEmailSetting(`notifications.${type.id}`, checked as boolean)}
+                            onCheckedChange={(checked) => updateEmailSetting(`notifications.${type.id}`, checked as boolean, true)}
                             disabled={!settings.email.enabled}
                           />
                           <div className="flex items-start gap-2 flex-1">
@@ -967,7 +2990,7 @@ export default function NotificationSettingsPage() {
                             variant="outline"
                             onClick={(e) => {
                               e.preventDefault();
-                              sendTestNotification(type.id);
+                              handleTestNotificationClick(type.id, 'email');
                             }}
                             disabled={!settings.email.enabled || !settings.email.notifications[type.id]}
                             className="text-xs"
@@ -1109,7 +3132,7 @@ export default function NotificationSettingsPage() {
                         <label key={type.id} className="flex items-start gap-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
                           <Checkbox
                             checked={settings.sms.notifications[type.id] || false}
-                            onCheckedChange={(checked) => updateSMSSetting(`notifications.${type.id}`, checked as boolean)}
+                            onCheckedChange={(checked) => updateSMSSetting(`notifications.${type.id}`, checked as boolean, true)}
                             disabled={!settings.sms.enabled}
                           />
                           <div className="flex items-start gap-2 flex-1">
@@ -1124,7 +3147,7 @@ export default function NotificationSettingsPage() {
                             variant="outline"
                             onClick={(e) => {
                               e.preventDefault();
-                              sendTestNotification(type.id);
+                              handleTestNotificationClick(type.id, 'sms');
                             }}
                             disabled={!settings.sms.enabled || !settings.sms.notifications[type.id]}
                             className="text-xs"
@@ -1674,6 +3697,84 @@ export default function NotificationSettingsPage() {
         </div>
       )}
 
+      {/* Test Notification Popup */}
+      {showTestNotificationPopup && testNotificationType && testNotificationChannel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-96">
+            <h3 className="text-lg font-semibold mb-4">
+              Send Test {testNotificationChannel === 'email' ? 'Email' : 'SMS'}
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {testNotificationChannel === 'email' 
+                ? `Enter an email address to receive a test ${testNotificationType} notification:`
+                : `Enter a phone number to receive a test ${testNotificationType} notification:`
+              }
+            </p>
+            <div className="space-y-4">
+              {testNotificationChannel === 'email' ? (
+                <div>
+                  <Label htmlFor="testNotificationEmailInput">Email Address</Label>
+                  <Input
+                    id="testNotificationEmailInput"
+                    type="email"
+                    value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)}
+                    placeholder="Enter email address"
+                    className="mt-1"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Label htmlFor="testNotificationPhoneInput">Phone Number</Label>
+                  <Input
+                    id="testNotificationPhoneInput"
+                    type="tel"
+                    value={testPhone}
+                    onChange={(e) => setTestPhone(e.target.value)}
+                    placeholder="e.g., +233244000000 or 0244000000"
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Include country code (e.g., +233 for Ghana) or start with 0
+                  </p>
+                </div>
+              )}
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowTestNotificationPopup(false);
+                    setTestNotificationType(null);
+                    setTestNotificationChannel(null);
+                  }}
+                  disabled={isTesting === testNotificationType}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={sendTestNotification}
+                  disabled={isTesting === testNotificationType || (testNotificationChannel === 'email' ? !testEmail : !testPhone)}
+                  style={{ backgroundColor: getThemeColor(), color: 'white' }}
+                  className="hover:opacity-90"
+                >
+                  {isTesting === testNotificationType ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <TestTube className="h-4 w-4 mr-2" />
+                      Send Test {testNotificationChannel === 'email' ? 'Email' : 'SMS'}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* SMS Test Popup */}
       {showSMSPopup && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1777,7 +3878,6 @@ export default function NotificationSettingsPage() {
                 </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox
-                    id="task-notifications-enabled"
                     checked={settings.taskNotifications.enabled}
                     onCheckedChange={(checked) =>
                       setSettings(prev => ({
@@ -1859,7 +3959,6 @@ export default function NotificationSettingsPage() {
                 <div className="space-y-4">
                   <div className="flex items-center space-x-3">
                     <Checkbox
-                      id="send-due-soon"
                       checked={settings.taskNotifications.sendDueSoon}
                       onCheckedChange={(checked) =>
                         setSettings(prev => ({
@@ -1882,7 +3981,6 @@ export default function NotificationSettingsPage() {
 
                   <div className="flex items-center space-x-3">
                     <Checkbox
-                      id="send-overdue"
                       checked={settings.taskNotifications.sendOverdue}
                       onCheckedChange={(checked) =>
                         setSettings(prev => ({
@@ -1905,7 +4003,6 @@ export default function NotificationSettingsPage() {
 
                   <div className="flex items-center space-x-3">
                     <Checkbox
-                      id="send-escalation"
                       checked={settings.taskNotifications.sendEscalation}
                       onCheckedChange={(checked) =>
                         setSettings(prev => ({
@@ -2020,7 +4117,7 @@ export default function NotificationSettingsPage() {
                         showError(`Failed: ${errorData.error}`);
                       }
                     } catch (error) {
-                      showError(`Error: ${error.message}`);
+                      showError(`Error: ${error instanceof Error ? error.message : 'An unknown error occurred'}`);
                     }
                   }}
                   variant="outline"

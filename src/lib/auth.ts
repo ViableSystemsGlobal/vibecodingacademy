@@ -69,11 +69,78 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt"
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
+      // Initial login - set token from user
       if (user) {
         token.id = user.id
         token.role = user.role
+        return token
       }
+
+      // On subsequent requests, refresh role from database
+      // This ensures role changes are reflected without requiring re-login
+      if (token?.id) {
+        try {
+          // First, check UserRoleAssignment to get the primary role
+          const userRoleAssignments = await prisma.userRoleAssignment.findMany({
+            where: {
+              userId: token.id as string,
+              isActive: true,
+              OR: [
+                { expiresAt: null },
+                { expiresAt: { gt: new Date() } }
+              ]
+            },
+            include: {
+              role: {
+                select: { name: true }
+              }
+            },
+            orderBy: { assignedAt: 'asc' }, // Get first assigned role as primary
+            take: 1
+          })
+
+          let currentRole: string | null = null
+
+          // ALWAYS prioritize UserRoleAssignment over User.role
+          // If user has role assignments, use the first one
+          if (userRoleAssignments.length > 0) {
+            const roleName = userRoleAssignments[0].role.name
+            console.log(`🔍 JWT: Found role assignment: "${roleName}" for user ${token.id}`)
+            
+            // For custom roles, use the role name as-is (don't try to map to enum)
+            // This ensures "Test Role" stays as "Test Role", not mapped to an enum
+            currentRole = roleName
+            console.log(`🔍 JWT: Using role name "${roleName}" for session`)
+          } else {
+            // Only fallback to User.role if no role assignments exist
+            console.log(`🔍 JWT: No role assignments found, falling back to User.role`)
+            const dbUser = await prisma.user.findUnique({
+              where: { id: token.id as string },
+              select: { role: true }
+            })
+            currentRole = dbUser?.role || null
+            console.log(`🔍 JWT: User.role fallback: ${currentRole}`)
+          }
+          
+          // Always update token role to ensure it's current
+          // This ensures role changes are reflected immediately
+          if (currentRole) {
+            if (currentRole !== token.role) {
+              console.log(`🔄 JWT: Role updated: ${token.role} -> ${currentRole}`)
+            } else {
+              console.log(`✅ JWT: Role unchanged: ${currentRole}`)
+            }
+            token.role = currentRole
+          } else {
+            console.warn(`⚠️ JWT: No role found for user ${token.id}, keeping existing role: ${token.role}`)
+          }
+        } catch (error) {
+          console.error("❌ JWT: Error refreshing user role:", error)
+          // Continue with existing token role on error
+        }
+      }
+
       return token
     },
     async session({ session, token }) {
@@ -86,5 +153,11 @@ export const authOptions: NextAuthOptions = {
   },
   pages: {
     signIn: "/auth/signin",
+  },
+  events: {
+    async signOut({ token }) {
+      // Log signout for debugging
+      console.log('User signed out:', token?.email);
+    }
   }
 }

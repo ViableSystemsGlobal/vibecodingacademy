@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { logAuditEvent } from "@/lib/audit-log";
+import { mapRoleNameToUserRole, syncUserRoleAssignments } from "@/lib/user-role-service";
 
 // GET /api/users/[id] - Get a specific user
 export async function GET(
@@ -46,21 +48,16 @@ export async function PUT(
 
     const resolvedParams = await params;
     const body = await request.json();
-    const { name, email, phone, role, isActive } = body;
+    const { name, email, phone, role, roleIds, isActive } = body;
 
-    // Map role name to enum value
-    const roleMapping: { [key: string]: string } = {
-      'Super Admin': 'ADMIN',
-      'Administrator': 'ADMIN', 
-      'Sales Manager': 'SALES_MANAGER',
-      'Sales Rep': 'SALES_REP',
-      'Staff': 'SALES_REP',
-      'Inventory Manager': 'INVENTORY_MANAGER',
-      'Finance Officer': 'FINANCE_OFFICER',
-      'Executive Viewer': 'EXECUTIVE_VIEWER'
-    };
+    if (roleIds && !Array.isArray(roleIds)) {
+      return NextResponse.json(
+        { error: "roleIds must be an array" },
+        { status: 400 }
+      );
+    }
 
-    const mappedRole = role ? roleMapping[role] || role : undefined;
+    const mappedRole = role ? mapRoleNameToUserRole(role) : undefined;
 
     // Get current user data for audit trail
     const currentUser = await prisma.user.findUnique({
@@ -71,7 +68,7 @@ export async function PUT(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const updatedUser = await prisma.user.update({
+    let updatedUser = await prisma.user.update({
       where: { id: resolvedParams.id },
       data: {
         ...(name !== undefined && { name }),
@@ -80,19 +77,71 @@ export async function PUT(
         ...(mappedRole !== undefined && { role: mappedRole }),
         ...(isActive !== undefined && { isActive })
       },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        role: true,
+        isActive: true
+      }
     });
 
-    // Log audit trail (temporarily disabled)
-    // await prisma.auditLog.create({
-    //   data: {
-    //     userId: session.user.id,
-    //     action: 'user.updated',
-    //     resource: 'User',
-    //     resourceId: params.id,
-    //     oldData: currentUser,
-    //     newData: updatedUser
-    //   }
-    // });
+    if (Array.isArray(roleIds)) {
+      const assignmentResult = await syncUserRoleAssignments(
+        resolvedParams.id,
+        roleIds,
+        (session.user as any).id
+      );
+
+      const primaryAssignedRole = assignmentResult.roles[0]?.name;
+      const derivedRole = mapRoleNameToUserRole(primaryAssignedRole);
+
+      // Always try to update User.role if we have a valid enum mapping
+      // If it's a custom role that doesn't map, User.role will remain unchanged
+      // but the session will use the role from UserRoleAssignment
+      if (derivedRole && derivedRole !== updatedUser.role) {
+        updatedUser = await prisma.user.update({
+          where: { id: resolvedParams.id },
+          data: { role: derivedRole },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            phone: true,
+            role: true,
+            isActive: true
+          }
+        });
+      } else if (!derivedRole && primaryAssignedRole) {
+        // Custom role that doesn't map to enum - log it but don't update User.role
+        // The JWT callback will use UserRoleAssignment to get the role name
+        console.log(`Custom role "${primaryAssignedRole}" assigned to user ${resolvedParams.id} - User.role field not updated (not a valid enum value)`);
+      }
+    }
+
+    await logAuditEvent({
+      userId: (session.user as any).id,
+      action: 'user.updated',
+      resource: 'User',
+      resourceId: resolvedParams.id,
+      oldData: {
+        id: currentUser.id,
+        email: currentUser.email,
+        name: currentUser.name,
+        phone: currentUser.phone,
+        role: currentUser.role,
+        isActive: currentUser.isActive,
+      },
+      newData: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        phone: updatedUser.phone,
+        role: updatedUser.role,
+        isActive: updatedUser.isActive,
+      },
+    });
 
     return NextResponse.json({ user: updatedUser });
   } catch (error) {

@@ -1575,7 +1575,11 @@ AdPools System`,
               variant="outline"
               onClick={() => handleSave(false)}
               disabled={isSaving}
-              className="border-gray-300 hover:bg-gray-50"
+              className="hover:bg-gray-50"
+              style={{
+                borderColor: themeColor || "#dc2626",
+                color: themeColor || "#dc2626",
+              }}
             >
               <Save className="h-4 w-4 mr-2" />
               Save Draft
@@ -1583,7 +1587,7 @@ AdPools System`,
             <Button
               onClick={() => handleSave(true)}
               disabled={isSaving}
-              className="text-white hover:opacity-90 transition-opacity border-0 !bg-transparent"
+              className="text-white hover:opacity-90 transition-opacity border-0 disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ backgroundColor: themeColor || '#dc2626', color: '#ffffff' }}
             >
               {isSaving ? (

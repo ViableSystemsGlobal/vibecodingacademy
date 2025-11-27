@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
+import {
+  EcommercePaymentStatus,
+  EcommerceOrderStatus,
+} from "@prisma/client";
 
 // Helper to find or create Account from Lead
 async function findOrCreateAccountFromLead(leadId: string, userId: string) {
@@ -161,8 +165,23 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
+    // Helper function to get setting value
+    async function getSettingValue(key: string, defaultValue: string = ''): Promise<string> {
+      try {
+        const setting = await prisma.systemSettings.findUnique({
+          where: { key },
+          select: { value: true }
+        });
+        return setting?.value || defaultValue;
+      } catch (error) {
+        console.error(`Error fetching setting ${key}:`, error);
+        return defaultValue;
+      }
+    }
+    
     // Verify webhook signature (Paystack)
-    const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
+    // Get secret key from settings (with fallback to environment variable)
+    const paystackSecretKey = await getSettingValue("PAYSTACK_SECRET_KEY", "") || process.env.PAYSTACK_SECRET_KEY || "";
     if (paystackSecretKey) {
       const signature = request.headers.get("x-paystack-signature");
       if (signature) {
@@ -285,6 +304,49 @@ export async function POST(request: NextRequest) {
 
       // Update invoice payment status
       await updateInvoicePaymentStatus(invoice.id, systemUser.id);
+
+      // Update ecommerce order status (linked by orderNumber = invoice.number)
+      const ecommerceOrder = await prisma.ecommerceOrder.findFirst({
+        where: { orderNumber: invoice.number },
+      });
+
+      if (ecommerceOrder && ecommerceOrder.paymentStatus !== EcommercePaymentStatus.PAID) {
+        const updatedOrder = await prisma.ecommerceOrder.update({
+          where: { id: ecommerceOrder.id },
+          data: {
+            paymentStatus: EcommercePaymentStatus.PAID,
+            status: ecommerceOrder.status === EcommerceOrderStatus.CANCELLED 
+              ? ecommerceOrder.status 
+              : EcommerceOrderStatus.PROCESSING, // Set to PROCESSING after payment, not COMPLETED
+            paymentId: reference,
+            paymentMethod: "ONLINE",
+          },
+        });
+        
+        // Send order confirmation email/SMS AFTER payment is confirmed
+        try {
+          const { sendOrderCreatedNotifications } = await import('@/lib/payment-order-notifications');
+          const customerInfo = {
+            email: updatedOrder.customerEmail || null,
+            phone: updatedOrder.customerPhone || null,
+            name: updatedOrder.customerName || 'Valued Customer',
+          };
+          const orderInfo = {
+            ...updatedOrder,
+            orderNumber: updatedOrder.orderNumber,
+            total: Number(updatedOrder.total),
+            createdAt: updatedOrder.createdAt,
+            deliveryAddress: updatedOrder.shippingAddress,
+            status: updatedOrder.status,
+            paymentStatus: updatedOrder.paymentStatus,
+          };
+          sendOrderCreatedNotifications(orderInfo, customerInfo, true).catch(error => {
+            console.error('Error sending order confirmation after payment (webhook):', error);
+          });
+        } catch (error) {
+          console.error('Error importing/executing order notifications (webhook):', error);
+        }
+      }
 
       console.log(`✅ Payment processed successfully: ${paymentNumber} for invoice ${invoice.number}`);
 

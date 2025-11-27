@@ -100,6 +100,13 @@ export async function GET(
             },
           },
         },
+        stage: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+          },
+        },
         dependencies: {
           include: {
             dependsOnTask: {
@@ -167,7 +174,22 @@ export async function PUT(
     // Check if task exists
     const existingTask = await (prisma as any).task.findUnique({
       where: { id: resolvedParams.id },
-      include: { assignee: true },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        projectId: true,
+        stageId: true,
+        assignedTo: true,
+        createdBy: true,
+        assignee: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
     });
 
     if (!existingTask) {
@@ -216,8 +238,40 @@ export async function PUT(
       }
 
       updateData.completedAt = new Date();
+      
+      // If task belongs to a project, find the "Done" stage and move task there
+      if (existingTask.projectId) {
+        // SQLite doesn't support mode: 'insensitive', so fetch all stages and filter in JavaScript
+        const allStages = await prisma.projectStage.findMany({
+          where: {
+            projectId: existingTask.projectId,
+            stageType: 'TASK',
+          },
+          select: { id: true, name: true },
+        });
+        
+        const doneStage = allStages.find(
+          stage => stage.name.toLowerCase().includes('done')
+        );
+        
+        if (doneStage) {
+          updateData.stageId = doneStage.id;
+        }
+      }
     } else if (status !== 'COMPLETED' && existingTask.status === 'COMPLETED') {
       updateData.completedAt = null;
+      
+      // If task was in a "Done" stage, remove it from that stage
+      if (existingTask.projectId && existingTask.stageId) {
+        const currentStage = await prisma.projectStage.findUnique({
+          where: { id: existingTask.stageId },
+          select: { name: true },
+        });
+        
+        if (currentStage && currentStage.name.toLowerCase().includes('done')) {
+          updateData.stageId = null; // Remove from Done stage
+        }
+      }
     }
 
     // If assignee is being changed, also update the assignees relationship
@@ -414,8 +468,19 @@ export async function PUT(
     return NextResponse.json(updatedTask);
   } catch (error) {
     console.error('Error updating task:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('Error name:', error instanceof Error ? error.name : 'Unknown');
+    
+    // Provide more detailed error information
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorDetails = error instanceof Error && error.stack ? error.stack : errorMessage;
+    
     return NextResponse.json(
-      { error: 'Failed to update task', details: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        error: 'Failed to update task', 
+        details: errorMessage,
+        ...(process.env.NODE_ENV === 'development' && { stack: errorDetails })
+      },
       { status: 500 }
     );
   }

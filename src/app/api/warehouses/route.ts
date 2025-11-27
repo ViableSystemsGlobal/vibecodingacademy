@@ -3,19 +3,66 @@ import { prisma } from '@/lib/prisma';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import { parseTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
 
 export async function GET(request: NextRequest) {
   try {
-    const warehouses = await prisma.warehouse.findMany({
-      where: {
-        isActive: true,
-      },
-      orderBy: {
-        name: 'asc',
-      },
+    const params = parseTableQuery(request);
+
+    // Custom filter handler
+    const customFilters = (filters: Record<string, string | string[] | null>) => {
+      const where: any = {};
+
+      // Default to active only if no status filter
+      if (!filters.status || filters.status === 'active') {
+        where.isActive = true;
+      } else if (filters.status === 'inactive') {
+        where.isActive = false;
+      }
+
+      return where;
+    };
+
+    const where = buildWhereClause(params, {
+      searchFields: ['name', 'code', 'address', 'city', 'country'],
+      customFilters,
     });
 
-    return NextResponse.json({ warehouses });
+    // Ensure isActive filter is applied if not explicitly set
+    if (!params.filters?.status) {
+      where.isActive = true;
+    }
+
+    const orderBy = buildOrderBy(params.sortBy, params.sortOrder);
+    const page = params.page || 1;
+    const limit = params.limit || 10;
+    const skip = (page - 1) * limit;
+
+    const [warehouses, total] = await Promise.all([
+      prisma.warehouse.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limit,
+      }),
+      prisma.warehouse.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      warehouses,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+      sort: params.sortBy
+        ? {
+            field: params.sortBy,
+            order: params.sortOrder || 'desc',
+          }
+        : undefined,
+    });
   } catch (error) {
     console.error('Error fetching warehouses:', error);
     return NextResponse.json(

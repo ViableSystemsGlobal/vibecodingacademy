@@ -1,5 +1,7 @@
 "use client";
 
+/// <reference types="@types/google.maps" />
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useToast } from "@/contexts/toast-context";
@@ -24,9 +26,19 @@ import {
   GripVertical,
   GanttChart,
   Grid3x3,
+  Pencil,
+  Eye,
+  Sparkles,
+  FileText,
+  Upload,
+  Trash2,
+  Download,
+  MapPin,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { EditProjectModal } from "@/components/modals/edit-project-modal";
-import { AddProjectUpdateModal } from "@/components/modals/add-project-update-modal";
 import { AddProjectMemberModal } from "@/components/modals/add-project-member-modal";
 import { ManageProjectStagesModal } from "@/components/modals/manage-project-stages-modal";
 import { CreateProjectTaskModal } from "@/components/modals/create-project-task-modal";
@@ -35,8 +47,12 @@ import { ViewProjectTaskModal } from "@/components/modals/view-project-task-moda
 import { CreateProjectIncidentModal } from "@/components/modals/create-project-incident-modal";
 import { ViewEditProjectIncidentModal } from "@/components/modals/view-edit-project-incident-modal";
 import { CreateProjectResourceRequestModal } from "@/components/modals/create-project-resource-request-modal";
+import { EditProjectResourceRequestModal } from "@/components/modals/edit-project-resource-request-modal";
+import { ViewProjectResourceRequestModal } from "@/components/modals/view-project-resource-request-modal";
+import { GenerateAiReportModal } from "@/components/modals/generate-ai-report-modal";
 import { ProjectGanttChart } from "@/components/project-gantt-chart";
 import { ProjectCalendarView } from "@/components/project-calendar-view";
+import { DailyReportsTab } from "@/components/daily-reports-tab";
 
 type ProjectMember = {
   id: string;
@@ -159,6 +175,14 @@ type ProjectResourceRequest = {
   incidentId: string | null;
   stageId: string | null;
   createdAt: string;
+  emailTo?: string | null;
+  emailCc?: string | null;
+  items?: Array<{
+    id?: string;
+    productName: string;
+    quantity: number;
+    unit: string;
+  }>;
   requester?: {
     id: string;
     name: string | null;
@@ -194,12 +218,15 @@ type ProjectDetail = {
   name: string;
   code: string | null;
   description: string | null;
+  scope: string | null;
   status: string;
   visibility: string;
   startDate: string | null;
   dueDate: string | null;
   budget: number | null;
   budgetCurrency: string | null;
+  latitude: number | null;
+  longitude: number | null;
   createdAt: string;
   updatedAt: string;
   owner?: {
@@ -231,12 +258,12 @@ const STATUS_LABELS: Record<string, string> = {
   ACTIVE: "Active",
   ON_HOLD: "On Hold",
   COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
   ARCHIVED: "Archived",
   SUBMITTED: "Submitted",
   APPROVED: "Approved",
   FULFILLED: "Fulfilled",
   DECLINED: "Declined",
-  CANCELLED: "Cancelled",
 };
 
 const VISIBILITY_LABELS: Record<string, string> = {
@@ -251,12 +278,426 @@ const STAGE_TYPE_LABELS: Record<string, string> = {
   RESOURCE: "Resources",
 };
 
+// Project Location Map Component
+function ProjectLocationMap({ projectId, project }: { projectId: string; project: ProjectDetail | null }) {
+  const { getThemeColor } = useTheme();
+  const { success, error: showError } = useToast();
+  const [map, setMap] = useState<any>(null);
+  const [marker, setMarker] = useState<any>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [isSettingLocation, setIsSettingLocation] = useState(false);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
+    project?.latitude && project?.longitude 
+      ? { lat: project.latitude, lng: project.longitude }
+      : null
+  );
+
+  useEffect(() => {
+    if (project?.latitude && project?.longitude) {
+      setLocation({ lat: project.latitude, lng: project.longitude });
+    }
+  }, [project]);
+
+  useEffect(() => {
+    const initializeMap = async () => {
+      try {
+        const response = await fetch('/api/settings/google-maps', {
+          credentials: 'include'
+        });
+        
+        if (!response.ok) {
+          console.error('Failed to fetch Google Maps config:', response.status);
+          return;
+        }
+        
+        const data = await response.json();
+        const googleMapsApiKey = data.config?.apiKey;
+
+        if (!googleMapsApiKey || mapLoaded) {
+          if (!googleMapsApiKey) {
+            console.warn('Google Maps API key not found in settings');
+          }
+          return;
+        }
+
+        if (window.google && window.google.maps) {
+          createMap();
+          return;
+        }
+
+        const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+        if (existingScript) {
+          existingScript.addEventListener('load', createMap);
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}&libraries=geometry`;
+        script.async = true;
+        script.defer = true;
+        
+        script.onload = () => {
+          console.log('Google Maps script loaded successfully');
+          createMap();
+        };
+        script.onerror = (error) => {
+          console.error('Failed to load Google Maps script:', error);
+          showError('Error', 'Failed to load Google Maps. Please check your API key in settings.');
+        };
+        
+        document.head.appendChild(script);
+      } catch (error) {
+        console.error('Error initializing map:', error);
+        showError('Error', 'Failed to initialize map');
+      }
+    };
+
+    if (!mapLoaded) {
+      initializeMap();
+    }
+  }, [mapLoaded]);
+
+  const createMap = () => {
+    setTimeout(() => {
+      try {
+        const mapElement = document.getElementById('project-location-map');
+        if (!mapElement) {
+          console.error('Map element not found');
+          return;
+        }
+        
+        if ((window as any).google && (window as any).google.maps) {
+          const center = location || { lat: 5.6037, lng: -0.1870 }; // Default to Accra
+          const googleMap = new (window as any).google.maps.Map(mapElement, {
+            zoom: location ? 15 : 10,
+            center,
+            mapTypeId: (window as any).google.maps.MapTypeId.ROADMAP
+          });
+
+          console.log('Google Maps created successfully');
+          setMap(googleMap);
+          setMapLoaded(true);
+
+          if (location) {
+            const projectMarker = new (window as any).google.maps.Marker({
+              position: location,
+              map: googleMap,
+              title: project?.name || 'Project Location',
+              draggable: true
+            });
+            setMarker(projectMarker);
+
+            projectMarker.addListener('dragend', (e: any) => {
+              if (e.latLng) {
+                const newLocation = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                setLocation(newLocation);
+                updateProjectLocation(newLocation);
+              }
+            });
+          }
+
+          googleMap.addListener('click', (e: any) => {
+            if (e.latLng && isSettingLocation) {
+              const newLocation = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+              setLocation(newLocation);
+              
+              if (marker) {
+                marker.setPosition(newLocation);
+              } else {
+                const newMarker = new (window as any).google.maps.Marker({
+                  position: newLocation,
+                  map: googleMap,
+                  title: project?.name || 'Project Location',
+                  draggable: true
+                });
+                setMarker(newMarker);
+                
+                newMarker.addListener('dragend', (e: any) => {
+                  if (e.latLng) {
+                    const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                    setLocation(newLoc);
+                    updateProjectLocation(newLoc);
+                  }
+                });
+              }
+              
+              updateProjectLocation(newLocation);
+              setIsSettingLocation(false);
+            }
+          });
+        } else {
+          console.error('Google Maps API not available');
+          showError('Error', 'Google Maps API not loaded. Please check your API key in settings.');
+        }
+      } catch (error) {
+        console.error('Error creating Google Maps:', error);
+        showError('Error', 'Failed to create map');
+      }
+    }, 100);
+  };
+
+  const updateProjectLocation = async (loc: { lat: number; lng: number }) => {
+    try {
+      console.log('Updating project location:', loc);
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latitude: loc.lat, longitude: loc.lng })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Location updated successfully:', data);
+        success('Project location updated');
+        // Update local state to reflect the change
+        setLocation(loc);
+      } else {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || 'Unknown error' };
+        }
+        console.error('Failed to update location:', response.status, errorData);
+        showError('Error', errorData.error || errorData.details || 'Failed to update location');
+      }
+    } catch (error) {
+      console.error('Error updating location:', error);
+      showError('Error', 'Failed to update location');
+    }
+  };
+
+  const handleSetLocation = () => {
+    setIsSettingLocation(true);
+    if (map) {
+      map.setOptions({ cursor: 'crosshair' });
+    }
+  };
+
+  const handleUseCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      showError('Error', 'Geolocation is not supported');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const newLocation = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+        setLocation(newLocation);
+        
+        if (map) {
+          map.setCenter(newLocation);
+          map.setZoom(15);
+        }
+        
+        if (marker) {
+          marker.setPosition(newLocation);
+        } else if (map) {
+          const newMarker = new (window as any).google.maps.Marker({
+            position: newLocation,
+            map,
+            title: project?.name || 'Project Location',
+            draggable: true
+          });
+          setMarker(newMarker);
+          
+          newMarker.addListener('dragend', (e: any) => {
+            if (e.latLng) {
+              const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+              setLocation(newLoc);
+              updateProjectLocation(newLoc);
+            }
+          });
+        }
+        
+        updateProjectLocation(newLocation);
+      },
+      (error) => {
+        console.error('Error getting location:', error);
+        showError('Error', 'Unable to get your location');
+      }
+    );
+  };
+
+  return (
+    <Card className="h-full flex flex-col">
+      <CardHeader className="px-3 py-2 pb-2 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-xs font-semibold uppercase text-gray-500 flex items-center gap-1">
+            <MapPin className="h-3 w-3" />
+            Project Location
+          </CardTitle>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSetLocation}
+              className="text-xs h-6 px-2"
+              disabled={!mapLoaded}
+              title={isSettingLocation ? "Click on the map to set location" : "Click to enable map selection mode"}
+            >
+              {isSettingLocation ? 'Click Map' : 'Set Location'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleUseCurrentLocation}
+              className="text-xs h-6 px-2"
+              disabled={!mapLoaded}
+              title="Use your current GPS location"
+            >
+              Use My Location
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="px-3 pb-3 flex-1 flex flex-col">
+        <div 
+          id="project-location-map" 
+          className="w-full flex-1 rounded-lg border border-gray-200"
+          style={{ minHeight: '200px' }}
+        />
+        {!mapLoaded && (
+          <div className="flex items-center justify-center h-full text-xs text-gray-500">
+            Loading map...
+          </div>
+        )}
+        {isSettingLocation && (
+          <p className="mt-2 text-xs text-blue-600">Click on the map to set the project location</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// AI Summary Card Component
+function ProjectAISummaryCard({ projectId }: { projectId: string }) {
+  const { getThemeColor, getThemeClasses } = useTheme();
+  const theme = getThemeClasses();
+  const [summary, setSummary] = useState<string>("");
+  const [score, setScore] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSummary = async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch(`/api/projects/${projectId}/ai-summary`);
+        if (response.ok) {
+          const data = await response.json();
+          setSummary(data.summary || "Unable to generate summary at this time.");
+          setScore(data.score ?? null);
+        } else {
+          setSummary("Unable to generate summary at this time.");
+          setScore(null);
+        }
+      } catch (error) {
+        console.error("Error fetching AI summary:", error);
+        setSummary("Unable to generate summary at this time.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSummary();
+  }, [projectId]);
+
+  const getGradientBackgroundClasses = () => {
+    switch (theme.primary) {
+      case 'blue': return 'bg-gradient-to-br from-blue-500 to-blue-600';
+      case 'green': return 'bg-gradient-to-br from-green-500 to-green-600';
+      case 'purple': return 'bg-gradient-to-br from-purple-500 to-purple-600';
+      case 'red': return 'bg-gradient-to-br from-red-500 to-red-600';
+      case 'orange': return 'bg-gradient-to-br from-orange-500 to-orange-600';
+      case 'pink': return 'bg-gradient-to-br from-pink-500 to-pink-600';
+      case 'indigo': return 'bg-gradient-to-br from-indigo-500 to-indigo-600';
+      case 'teal': return 'bg-gradient-to-br from-teal-500 to-teal-600';
+      default: return 'bg-gradient-to-br from-blue-500 to-blue-600';
+    }
+  };
+
+  return (
+    <Card className="bg-gradient-to-br from-slate-50 to-slate-100 border-0 shadow-lg flex flex-col h-full">
+      <CardHeader className="pb-3 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className={`p-2 rounded-lg ${getGradientBackgroundClasses()} shadow-lg`}>
+              <Sparkles className="h-4 w-4 text-white" />
+            </div>
+            <div>
+              <CardTitle className="text-sm font-bold text-gray-900">AI Project Summary</CardTitle>
+              <p className="text-xs text-gray-600">Current status & insights</p>
+            </div>
+          </div>
+          {score !== null && (
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <p className="text-xs text-gray-500 font-medium">Project Score</p>
+                <div className="flex items-center gap-1.5">
+                  <div className="relative w-10 h-10">
+                    <svg className="transform -rotate-90 w-10 h-10">
+                      <circle
+                        cx="20"
+                        cy="20"
+                        r="16"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                        className="text-gray-200"
+                      />
+                      <circle
+                        cx="20"
+                        cy="20"
+                        r="16"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                        strokeDasharray={`${(score / 100) * 100.5} 100.5`}
+                        className={score >= 80 ? "text-green-500" : score >= 60 ? "text-yellow-500" : "text-red-500"}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className={`text-xs font-bold ${score >= 80 ? "text-green-600" : score >= 60 ? "text-yellow-600" : "text-red-600"}`}>
+                        {score}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="flex-1 overflow-y-auto">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+            <span className="ml-2 text-sm text-gray-600">Generating summary...</span>
+          </div>
+        ) : (
+          <div className="prose prose-sm max-w-none">
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+              {summary}
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 const TABS = [
   { id: "overview", label: "Overview", icon: Activity },
   { id: "board", label: "Task Board", icon: ClipboardList },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "incidents", label: "Incidents", icon: AlertTriangle },
   { id: "resources", label: "Resource Requests", icon: Share2 },
+  { id: "daily-reports", label: "Daily Report Writing", icon: Calendar },
+  { id: "documents", label: "Documents", icon: FileText },
   { id: "reports", label: "Reports & Analytics", icon: BarChart3 },
   { id: "settings", label: "Project Setup", icon: Settings },
 ];
@@ -264,13 +705,12 @@ const TABS = [
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { error: showError } = useToast();
+  const { success, error: showError } = useToast();
   const { getThemeColor } = useTheme();
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isAddUpdateModalOpen, setIsAddUpdateModalOpen] = useState(false);
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [isManageStagesModalOpen, setIsManageStagesModalOpen] = useState(false);
   const [manageStagesType, setManageStagesType] = useState<"TASK" | "INCIDENT" | "RESOURCE">("TASK");
@@ -287,8 +727,19 @@ export default function ProjectDetailPage() {
   const [incidents, setIncidents] = useState<ProjectIncident[]>([]);
   const [isLoadingIncidents, setIsLoadingIncidents] = useState(false);
   const [isCreateResourceRequestModalOpen, setIsCreateResourceRequestModalOpen] = useState(false);
+  const [isEditResourceRequestModalOpen, setIsEditResourceRequestModalOpen] = useState(false);
+  const [isViewResourceRequestModalOpen, setIsViewResourceRequestModalOpen] = useState(false);
+  const [selectedResourceRequest, setSelectedResourceRequest] = useState<ProjectResourceRequest | null>(null);
   const [resourceRequests, setResourceRequests] = useState<ProjectResourceRequest[]>([]);
   const [isLoadingResourceRequests, setIsLoadingResourceRequests] = useState(false);
+  const [isAiReportModalOpen, setIsAiReportModalOpen] = useState(false);
+  const [isEditingScope, setIsEditingScope] = useState(false);
+  const [scopeValue, setScopeValue] = useState<string>("");
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [documentDescription, setDocumentDescription] = useState<string>("");
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
 
   const fetchTasks = useCallback(async (projectId: string) => {
     try {
@@ -335,6 +786,144 @@ export default function ProjectDetailPage() {
     }
   }, []);
 
+  const fetchDocuments = useCallback(async (projectId: string) => {
+    try {
+      setIsLoadingDocuments(true);
+      const response = await fetch(`/api/projects/${projectId}/documents`);
+      if (response.ok) {
+        const data = await response.json();
+        setDocuments(data);
+      }
+    } catch (error) {
+      console.error("Error fetching documents:", error);
+    } finally {
+      setIsLoadingDocuments(false);
+    }
+  }, []);
+
+  const handleUpdateScope = async () => {
+    if (!project) return;
+    try {
+      const response = await fetch(`/api/projects/${project.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: project.name,
+          scope: scopeValue,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setProject(data.project);
+        setIsEditingScope(false);
+      } else {
+        const errorData = await response.json().catch(() => null);
+        showError("Error", errorData?.error || "Failed to update scope");
+      }
+    } catch (error) {
+      console.error("Error updating scope:", error);
+      showError("Error", "Failed to update scope");
+    }
+  };
+
+  const handleUploadDocument = async () => {
+    if (!selectedFile || !project) return;
+
+    try {
+      setIsUploadingDocument(true);
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      if (documentDescription.trim()) {
+        formData.append("description", documentDescription.trim());
+      }
+
+      const response = await fetch(`/api/projects/${project.id}/documents`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.ok) {
+        const newDocument = await response.json();
+        setDocuments((prev) => [newDocument, ...prev]);
+        setSelectedFile(null);
+        setDocumentDescription("");
+        // Reset file input
+        const fileInput = document.getElementById("document-file") as HTMLInputElement;
+        if (fileInput) fileInput.value = "";
+      } else {
+        const errorData = await response.json().catch(() => null);
+        showError("Error", errorData?.error || "Failed to upload document");
+      }
+    } catch (error) {
+      console.error("Error uploading document:", error);
+      showError("Error", "Failed to upload document");
+    } finally {
+      setIsUploadingDocument(false);
+    }
+  };
+
+  const handleDeleteDocument = async (documentId: string) => {
+    if (!project) return;
+    if (!confirm("Are you sure you want to delete this document?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `/api/projects/${project.id}/documents/${documentId}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      if (response.ok) {
+        setDocuments((prev) => prev.filter((doc) => doc.id !== documentId));
+      } else {
+        const errorData = await response.json().catch(() => null);
+        showError("Error", errorData?.error || "Failed to delete document");
+      }
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      showError("Error", "Failed to delete document");
+    }
+  };
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (!project) return;
+    
+    try {
+      const response = await fetch(`/api/projects/${project.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: newStatus,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || "Failed to update project status");
+      }
+
+      const data = await response.json();
+      setProject({ ...project, status: data.project.status });
+      success("Project status updated successfully");
+    } catch (error) {
+      console.error("Error updating project status:", error);
+      showError("Error", error instanceof Error ? error.message : "Failed to update project status");
+      // Revert the select value on error
+      if (project) {
+        const select = document.getElementById("project-status-select") as HTMLSelectElement;
+        if (select) select.value = project.status;
+      }
+    }
+  };
+
   const fetchProject = useCallback(async (id: string) => {
     try {
       setIsLoading(true);
@@ -348,17 +937,19 @@ export default function ProjectDetailPage() {
       }
       const data = await response.json();
       setProject(data.project);
+      setScopeValue(data.project.scope || "");
       // Fetch tasks, incidents, and resource requests when project is loaded
       fetchTasks(id);
       fetchIncidents(id);
       fetchResourceRequests(id);
+      fetchDocuments(id);
     } catch (error) {
       console.error("❌ Error fetching project:", error);
       showError("Error", "Unable to load project details");
     } finally {
       setIsLoading(false);
     }
-  }, [router, showError, fetchTasks, fetchIncidents, fetchResourceRequests]);
+  }, [router, showError, fetchTasks, fetchIncidents, fetchResourceRequests, fetchDocuments]);
 
   useEffect(() => {
     const projectId = params?.id;
@@ -374,14 +965,14 @@ export default function ProjectDetailPage() {
   );
 
   const activeStages = useMemo(() => {
-    if (!project) return [];
+    if (!project || !project.stages) return [];
     return project.stages
       .filter((s) => s.stageType === "TASK")
       .sort((a, b) => a.order - b.order);
   }, [project]);
 
   const incidentStages = useMemo(() => {
-    if (!project) return [];
+    if (!project || !project.stages) return [];
     return project.stages
       .filter((s) => s.stageType === "INCIDENT")
       .sort((a, b) => a.order - b.order);
@@ -443,11 +1034,15 @@ export default function ProjectDetailPage() {
   };
 
   const resourceStages = useMemo(() => {
-    if (!project) return [];
+    if (!project || !project.stages) return [];
     return project.stages
       .filter((s) => s.stageType === "RESOURCE")
       .sort((a, b) => a.order - b.order);
   }, [project]);
+
+  const defaultTaskStageId = activeStages.length > 0 ? activeStages[0].id : null;
+  const defaultIncidentStageId = incidentStages.length > 0 ? incidentStages[0].id : null;
+  const defaultResourceStageId = resourceStages.length > 0 ? resourceStages[0].id : null;
 
   const resourceRequestsByStage = useMemo(() => {
     const grouped: Record<string, ProjectResourceRequest[]> = {};
@@ -599,9 +1194,19 @@ export default function ProjectDetailPage() {
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <Badge variant="outline" className="rounded-full px-3 py-1 text-xs font-semibold">
-              {STATUS_LABELS[project.status] ?? project.status}
-            </Badge>
+            <select
+              id="project-status-select"
+              value={project.status}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              className="rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-semibold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer hover:bg-gray-50 transition-colors"
+            >
+              <option value="DRAFT">Draft</option>
+              <option value="ACTIVE">Active</option>
+              <option value="ON_HOLD">On Hold</option>
+              <option value="COMPLETED">Completed</option>
+              <option value="CANCELLED">Cancelled</option>
+              <option value="ARCHIVED">Archived</option>
+            </select>
             <Badge variant="outline" className="rounded-full px-3 py-1 text-xs font-semibold text-gray-600">
               {VISIBILITY_LABELS[project.visibility] ?? project.visibility}
             </Badge>
@@ -631,20 +1236,6 @@ export default function ProjectDetailPage() {
           <Button variant="outline" size="sm" onClick={() => setIsEditModalOpen(true)}>
             Edit Project
           </Button>
-          <Button 
-            size="sm"
-            className="text-white border-0"
-            style={{ backgroundColor: getThemeColor() }}
-            onClick={() => setIsAddUpdateModalOpen(true)}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.opacity = '0.9';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.opacity = '1';
-            }}
-          >
-            Add Update
-          </Button>
         </div>
       </div>
 
@@ -656,13 +1247,13 @@ export default function ProjectDetailPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition ${
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
                 activeTab === tab.id
                   ? "bg-gray-900 text-white shadow-sm"
                   : "text-gray-600 hover:bg-gray-100"
               }`}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="h-3.5 w-3.5" />
               {tab.label}
             </button>
           );
@@ -673,86 +1264,170 @@ export default function ProjectDetailPage() {
       <div className="space-y-4">
         {activeTab === "overview" ? (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/* First Row: AI Card and Metrics */}
+            <div className="grid gap-4 lg:grid-cols-5">
+              {/* Column 1: AI Summary Card (3/5 width - wider) */}
+              <div className="lg:col-span-3 flex">
+                <ProjectAISummaryCard projectId={params.id as string} />
+              </div>
+
+              {/* Column 2: Metric Cards (2/5 width) */}
+              <div className="lg:col-span-2">
+                <div className="grid grid-cols-2 gap-2 h-full">
               <Card>
-                <CardContent className="p-5">
-                  <p className="text-sm font-medium text-gray-500">Total Tasks</p>
-                  <p className="mt-2 text-2xl font-bold">{project._count.tasks}</p>
+                    <CardContent className="p-3">
+                      <p className="text-xs font-medium text-gray-500">Total Tasks</p>
+                      <p className="mt-1 text-lg font-bold">{project._count.tasks}</p>
                 </CardContent>
               </Card>
               <Card>
-                <CardContent className="p-5">
-                  <p className="text-sm font-medium text-gray-500">Incidents</p>
-                  <p className="mt-2 text-2xl font-bold">{project._count.incidents}</p>
+                    <CardContent className="p-3">
+                      <p className="text-xs font-medium text-gray-500">Incidents</p>
+                      <p className="mt-1 text-lg font-bold">{project._count.incidents}</p>
                 </CardContent>
               </Card>
               <Card>
-                <CardContent className="p-5">
-                  <p className="text-sm font-medium text-gray-500">Resource Requests</p>
-                  <p className="mt-2 text-2xl font-bold">{project._count.resourceRequests}</p>
+                    <CardContent className="p-3">
+                      <p className="text-xs font-medium text-gray-500">Resource Requests</p>
+                      <p className="mt-1 text-lg font-bold">{project._count.resourceRequests}</p>
                 </CardContent>
               </Card>
               <Card>
-                <CardContent className="p-5">
-                  <p className="text-sm font-medium text-gray-500">Team Members</p>
-                  <p className="mt-2 text-2xl font-bold">{project._count.members}</p>
+                    <CardContent className="p-3">
+                      <p className="text-xs font-medium text-gray-500">Team Members</p>
+                      <p className="mt-1 text-lg font-bold">{project._count.members}</p>
                 </CardContent>
               </Card>
+                </div>
+              </div>
             </div>
 
-            <Card>
-              <CardHeader className="px-4 py-3">
+            {/* Second Row: Project Team, Scope, and Project Location (half size) */}
+            <div className="grid gap-4 lg:grid-cols-6">
+              {/* Column 1: Project Team (1/6 width - half size) */}
+              <Card className="lg:col-span-2 flex flex-col h-[300px]">
+                <CardHeader className="px-3 py-2 flex-shrink-0">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold uppercase text-gray-500">
+                    <CardTitle className="text-xs font-semibold uppercase text-gray-500">
                     Project Team
                   </CardTitle>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => setIsAddMemberModalOpen(true)}
-                    className="text-xs"
+                      className="text-xs h-6 px-2"
                   >
-                    + Add Member
+                      + Add
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="grid gap-3 px-4 pb-4 md:grid-cols-2 lg:grid-cols-3">
+                <CardContent className="px-3 pb-3 flex-1 overflow-y-auto">
+                  {project.members && project.members.length > 0 ? (
+                    <div className="space-y-2">
                 {project.members.map((member) => (
                   <div
                     key={member.id}
-                    className="rounded-lg border border-gray-200 bg-white p-4"
+                          className="rounded-lg border border-gray-200 bg-white p-2"
                   >
-                    <p className="font-medium text-gray-900">
+                          <p className="font-medium text-gray-900 text-xs">
                       {member.user?.name || member.user?.email || "Member"}
                     </p>
-                    <p className="text-xs text-gray-500">{member.user?.email}</p>
-                    <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
-                      <Badge variant="outline" className="rounded-full px-2 py-0.5 text-xs">
+                          <p className="text-xs text-gray-500 truncate">{member.user?.email}</p>
+                          <div className="mt-1 flex items-center gap-1 text-xs text-gray-600">
+                            <Badge variant="outline" className="rounded-full px-1.5 py-0.5 text-xs">
                         {member.role}
                       </Badge>
-                      {member.isExternal ? (
-                        <Badge variant="outline" className="rounded-full px-2 py-0.5 text-xs">
+                            {member.isExternal && (
+                              <Badge variant="outline" className="rounded-full px-1.5 py-0.5 text-xs">
                           External
                         </Badge>
-                      ) : null}
+                            )}
                     </div>
                   </div>
                 ))}
-                {project.members.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-500">
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-gray-300 p-3 text-xs text-gray-500">
                     No team members assigned yet.
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => setIsAddMemberModalOpen(true)}
-                      className="mt-2 w-full"
+                        className="mt-2 w-full text-xs h-6"
                     >
                       + Add First Member
                     </Button>
                   </div>
-                ) : null}
+                  )}
               </CardContent>
             </Card>
+
+              {/* Column 2: Scope of Project (1/6 width - half size) */}
+              <Card className="lg:col-span-2 flex flex-col h-[300px]">
+                <CardHeader className="px-3 py-2 flex-shrink-0">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-xs font-semibold uppercase text-gray-500">
+                      Scope of Project
+                    </CardTitle>
+                    {!isEditingScope ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsEditingScope(true)}
+                        className="text-xs h-6 px-2"
+                      >
+                        <Pencil className="h-3 w-3 mr-1" />
+                        Edit
+                      </Button>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setIsEditingScope(false);
+                            setScopeValue(project?.scope || "");
+                          }}
+                          className="text-xs h-6 px-2"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleUpdateScope}
+                          className="text-xs h-6 px-2"
+                          style={{ backgroundColor: getThemeColor(), color: "white" }}
+                        >
+                          Save
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="px-3 pb-3 flex-1 overflow-y-auto">
+                  {isEditingScope ? (
+                    <Textarea
+                      value={scopeValue}
+                      onChange={(e) => setScopeValue(e.target.value)}
+                      placeholder="Enter the scope of the project..."
+                      rows={6}
+                      className="w-full text-xs"
+                    />
+                  ) : (
+                    <div className="text-xs text-gray-700 whitespace-pre-wrap">
+                      {project?.scope || (
+                        <span className="text-gray-400 italic">No scope defined yet. Click Edit to add scope.</span>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Column 3: Project Location Map (1/6 width - half size) */}
+              <div className="lg:col-span-2 h-[300px]">
+                <ProjectLocationMap projectId={params.id as string} project={project} />
+              </div>
+            </div>
           </>
         ) : null}
 
@@ -1518,9 +2193,45 @@ export default function ProjectDetailPage() {
                                 className="rounded-lg border border-gray-200 bg-white p-3 cursor-move hover:shadow-md transition-shadow"
                               >
                                 <div className="flex items-start justify-between mb-2">
-                                  <p className="font-medium text-sm text-gray-900 line-clamp-2">
+                                  <p 
+                                    className="font-medium text-sm text-gray-900 line-clamp-2 flex-1 cursor-pointer hover:text-blue-600"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedResourceRequest(request);
+                                      setIsViewResourceRequestModalOpen(true);
+                                    }}
+                                    title="View resource request"
+                                  >
                                     {request.title}
                                   </p>
+                                  <div className="flex items-center gap-1 ml-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 w-6 p-0 flex-shrink-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedResourceRequest(request);
+                                        setIsViewResourceRequestModalOpen(true);
+                                      }}
+                                      title="View resource request"
+                                    >
+                                      <Eye className="h-3 w-3 text-gray-500 hover:text-blue-600" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 w-6 p-0 flex-shrink-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedResourceRequest(request);
+                                        setIsEditResourceRequestModalOpen(true);
+                                      }}
+                                      title="Edit resource request"
+                                    >
+                                      <Pencil className="h-3 w-3 text-gray-500 hover:text-blue-600" />
+                                    </Button>
+                                  </div>
                                 </div>
                                 <div className="flex items-center gap-2 flex-wrap mb-2">
                                   <Badge
@@ -1626,9 +2337,45 @@ export default function ProjectDetailPage() {
                               className="rounded-lg border border-gray-200 bg-white p-3 cursor-move hover:shadow-md transition-shadow"
                             >
                               <div className="flex items-start justify-between mb-2">
-                                <p className="font-medium text-sm text-gray-900 line-clamp-2">
+                                <p 
+                                  className="font-medium text-sm text-gray-900 line-clamp-2 flex-1 cursor-pointer hover:text-blue-600"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedResourceRequest(request);
+                                    setIsViewResourceRequestModalOpen(true);
+                                  }}
+                                  title="View resource request"
+                                >
                                   {request.title}
                                 </p>
+                                <div className="flex items-center gap-1 ml-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0 flex-shrink-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedResourceRequest(request);
+                                      setIsViewResourceRequestModalOpen(true);
+                                    }}
+                                    title="View resource request"
+                                  >
+                                    <Eye className="h-3 w-3 text-gray-500 hover:text-blue-600" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0 flex-shrink-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedResourceRequest(request);
+                                      setIsEditResourceRequestModalOpen(true);
+                                    }}
+                                    title="Edit resource request"
+                                  >
+                                    <Pencil className="h-3 w-3 text-gray-500 hover:text-blue-600" />
+                                  </Button>
+                                </div>
                               </div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <Badge
@@ -1651,11 +2398,62 @@ export default function ProjectDetailPage() {
         ) : null}
 
         {activeTab === "reports" ? (
+          <div className="space-y-6">
+            {/* Analytics Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="border-0 shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600">Total Tasks</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">{tasks.length}</div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {tasks.filter(t => t.status === "COMPLETED").length} completed
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600">Incidents</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">{incidents.length}</div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {incidents.filter(i => i.status === "RESOLVED").length} resolved
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600">Resource Requests</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">{resourceRequests.length}</div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {resourceRequests.filter(r => r.status === "APPROVED" || r.status === "FULFILLED").length} approved
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-0 shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600">Team Members</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900">{project?.members?.length || 0}</div>
+                  <p className="text-xs text-gray-500 mt-1">Active contributors</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Report Generation Section */}
           <Card>
             <CardHeader className="px-4 py-3">
               <CardTitle className="flex items-center gap-2 text-gray-700">
                 <BarChart3 className="h-5 w-5 text-blue-500" />
-                Project Analytics
+                  Project Reports
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 px-4 pb-4 text-sm text-gray-600">
@@ -1663,15 +2461,181 @@ export default function ProjectDetailPage() {
                 Export snapshots of task burndown, incident aging, and resource consumption to share
                 with stakeholders.
               </p>
-              <Button variant="outline" className="mt-2 inline-flex items-center gap-2">
+                <div className="flex items-center gap-3">
+                  <Button 
+                    variant="outline" 
+                    className="inline-flex items-center gap-2"
+                    onClick={() => {
+                      // TODO: Implement standard report generation
+                      showError("Standard report generation coming soon");
+                    }}
+                  >
                 <BarChart3 className="h-4 w-4" />
                 Generate Report
               </Button>
+                  <Button 
+                    className="inline-flex items-center gap-2"
+                    style={{ backgroundColor: getThemeColor(), color: 'white' }}
+                    onClick={() => {
+                      setIsAiReportModalOpen(true);
+                    }}
+                  >
+                    <Activity className="h-4 w-4" />
+                    Generate Report by AI
+                  </Button>
+                </div>
               <p className="text-xs text-gray-400">
                 Reports are generated on demand. Historical exports will appear here once generated.
               </p>
             </CardContent>
           </Card>
+          </div>
+        ) : null}
+
+        {activeTab === "daily-reports" ? (
+          <DailyReportsTab projectId={params?.id as string} />
+        ) : null}
+
+        {activeTab === "documents" ? (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold uppercase text-gray-500">
+                    Project Documents
+                  </CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const fileInput = document.getElementById("document-file");
+                      fileInput?.click();
+                    }}
+                    className="text-xs"
+                  >
+                    <Upload className="h-3 w-3 mr-1" />
+                    Upload Document
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                {/* Hidden file input */}
+                <input
+                  id="document-file"
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.size > 10 * 1024 * 1024) {
+                        showError("Error", "File size must be less than 10MB");
+                        return;
+                      }
+                      setSelectedFile(file);
+                    }
+                  }}
+                />
+
+                {/* Upload form */}
+                {selectedFile && (
+                  <div className="mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-gray-500" />
+                        <span className="text-sm font-medium text-gray-700">{selectedFile.name}</span>
+                        <span className="text-xs text-gray-500">
+                          ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                        </span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setSelectedFile(null)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="document-description" className="text-xs text-gray-600">
+                        Description (Optional)
+                      </Label>
+                      <Input
+                        id="document-description"
+                        value={documentDescription}
+                        onChange={(e) => setDocumentDescription(e.target.value)}
+                        placeholder="Add a description for this document..."
+                        className="text-sm"
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={handleUploadDocument}
+                      disabled={isUploadingDocument}
+                      className="mt-3"
+                      style={{ backgroundColor: getThemeColor(), color: "white" }}
+                    >
+                      {isUploadingDocument ? "Uploading..." : "Upload Document"}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Documents list */}
+                {isLoadingDocuments ? (
+                  <div className="text-center py-8 text-gray-500">Loading documents...</div>
+                ) : documents.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                    <p>No documents uploaded yet.</p>
+                    <p className="text-xs text-gray-400 mt-1">Click "Upload Document" to add files.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {documents.map((doc) => (
+                      <div
+                        key={doc.id}
+                        className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50"
+                      >
+                        <div className="flex items-center gap-3 flex-1">
+                          <FileText className="h-5 w-5 text-gray-400 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {doc.originalName}
+                            </p>
+                            {doc.description && (
+                              <p className="text-xs text-gray-500 mt-1">{doc.description}</p>
+                            )}
+                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                              <span>{(doc.fileSize / 1024).toFixed(1)} KB</span>
+                              <span>•</span>
+                              <span>Uploaded by {doc.uploader?.name || doc.uploader?.email || "Unknown"}</span>
+                              <span>•</span>
+                              <span>{formatDate(doc.createdAt)}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => window.open(doc.filePath, "_blank")}
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteDocument(doc.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         ) : null}
 
         {activeTab === "settings" ? (
@@ -1926,20 +2890,12 @@ export default function ProjectDetailPage() {
         } : null}
       />
 
-      <AddProjectUpdateModal
-        isOpen={isAddUpdateModalOpen}
-        onClose={() => setIsAddUpdateModalOpen(false)}
-        onUpdateAdded={fetchProject.bind(null, params.id as string)}
-        projectId={params.id as string}
-        projectName={project?.name || "Project"}
-      />
-
       <AddProjectMemberModal
         isOpen={isAddMemberModalOpen}
         onClose={() => setIsAddMemberModalOpen(false)}
         onMemberAdded={fetchProject.bind(null, params.id as string)}
         projectId={params.id as string}
-        existingMemberIds={project?.members.map((m) => m.userId) || []}
+        existingMemberIds={project?.members?.map((m) => m.user?.id).filter((id): id is string => id !== undefined) || []}
       />
 
       <ManageProjectStagesModal
@@ -1960,6 +2916,7 @@ export default function ProjectDetailPage() {
         }}
         projectId={params.id as string}
         stages={activeStages}
+        defaultStageId={defaultTaskStageId}
         existingTasks={tasks.map((t) => ({ id: t.id, title: t.title, dueDate: t.dueDate }))}
       />
 
@@ -1971,7 +2928,8 @@ export default function ProjectDetailPage() {
           await fetchProject(params.id as string);
         }}
         projectId={params.id as string}
-        stages={project?.stages || []}
+        stages={incidentStages}
+        defaultStageId={defaultIncidentStageId}
         existingTasks={tasks}
       />
       <ViewEditProjectIncidentModal
@@ -2000,9 +2958,47 @@ export default function ProjectDetailPage() {
           }
         }}
         projectId={params.id as string}
+        stages={resourceStages}
+        defaultStageId={defaultResourceStageId}
+        existingTasks={tasks}
+        existingIncidents={incidents}
+      />
+      <EditProjectResourceRequestModal
+        isOpen={isEditResourceRequestModalOpen}
+        onClose={() => {
+          setIsEditResourceRequestModalOpen(false);
+          setSelectedResourceRequest(null);
+        }}
+        onRequestUpdated={async () => {
+          if (params?.id && typeof params.id === "string") {
+            await fetchResourceRequests(params.id);
+            await fetchProject(params.id);
+          }
+        }}
+        projectId={params.id as string}
+        resourceRequest={selectedResourceRequest}
         stages={project?.stages || []}
         existingTasks={tasks}
         existingIncidents={incidents}
+      />
+      <ViewProjectResourceRequestModal
+        isOpen={isViewResourceRequestModalOpen}
+        onClose={() => {
+          setIsViewResourceRequestModalOpen(false);
+          setSelectedResourceRequest(null);
+        }}
+        onEdit={() => {
+          setIsViewResourceRequestModalOpen(false);
+          setIsEditResourceRequestModalOpen(true);
+        }}
+        projectId={params.id as string}
+        resourceRequest={selectedResourceRequest}
+      />
+      <GenerateAiReportModal
+        isOpen={isAiReportModalOpen}
+        onClose={() => setIsAiReportModalOpen(false)}
+        projectId={params.id as string}
+        projectName={project?.name || "Project"}
       />
       <ViewProjectTaskModal
         isOpen={isViewTaskModalOpen}

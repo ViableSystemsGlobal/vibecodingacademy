@@ -38,6 +38,8 @@ type Product = {
   stockQuantity: number
   lowStock: boolean
   discountPercent?: number
+  isBestDeal?: boolean
+  bestDealPrice?: number | null
 }
 
 type HeroSlideContent = {
@@ -620,7 +622,7 @@ function ShopHomePage() {
                             <img
                               src={product.images[0]}
                               alt={product.name}
-                                className="h-40 w-full object-cover transition duration-300 group-hover:scale-105"
+                              className="h-48 w-full object-cover transition duration-300 group-hover:scale-105"
                             />
                           ) : (
                             <div className="flex h-48 w-full items-center justify-center bg-gray-100 text-gray-400">
@@ -862,6 +864,20 @@ function ShopHomePage() {
                     const wishlisted = isInWishlist(product.id)
                     const inCompare = isInCompare(product.id)
 
+                    const currentPrice = product.bestDealPrice ?? product.price
+                    const displayOriginalPrice =
+                      product.originalPrice && product.originalPrice > currentPrice
+                        ? product.originalPrice
+                        : null
+                    const effectiveDiscount =
+                      typeof product.discountPercent === "number"
+                        ? product.discountPercent
+                        : displayOriginalPrice
+                        ? Math.round(
+                            ((displayOriginalPrice - currentPrice) / displayOriginalPrice) * 100
+                          )
+                        : null
+
                     return (
                       <div
                       key={product.id}
@@ -917,21 +933,33 @@ function ShopHomePage() {
                             </button>
                           </div>
 
-                        {product.lowStock && (
-                          <span className="absolute top-2 left-2 bg-orange-500 text-white text-xs px-2 py-1 rounded">
-                            Low Stock
-                          </span>
-                        )}
-                        {!product.inStock && (
-                          <span className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded">
-                            Out of Stock
-                          </span>
-                        )}
-                        {product.originalPrice && product.originalPrice > product.price && (
-                          <span className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded">
-                            Sale
-                          </span>
-                        )}
+                          <div className="absolute top-2 left-2 flex flex-col gap-1">
+                            {product.lowStock && (
+                              <span className="bg-orange-500 text-white text-xs px-2 py-1 rounded">
+                                Low Stock
+                              </span>
+                            )}
+                            {!product.inStock && (
+                              <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
+                                Out of Stock
+                              </span>
+                            )}
+                            {product.isBestDeal && (
+                              <span className="flex items-center gap-1 rounded-full bg-[#23185c] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
+                                Best Deal
+                                {effectiveDiscount ? (
+                                  <span className="text-white/80">
+                                    {effectiveDiscount}% OFF
+                                  </span>
+                                ) : null}
+                              </span>
+                            )}
+                            {!product.isBestDeal && effectiveDiscount && (
+                              <span className="rounded-full bg-red-500 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
+                                {effectiveDiscount}% OFF
+                              </span>
+                            )}
+                          </div>
                         </Link>
 
                         <div className="flex flex-1 flex-col px-5 py-5">
@@ -943,11 +971,11 @@ function ShopHomePage() {
                           <div className="mt-3 flex items-center justify-between">
                           <div>
                             <span className="text-lg font-bold text-gray-900">
-                              {formatPrice(product.price, product.currency)}
+                              {formatPrice(currentPrice, product.currency)}
                             </span>
-                            {product.originalPrice && product.originalPrice > product.price && (
+                            {displayOriginalPrice && (
                               <span className="ml-2 text-sm text-gray-500 line-through">
-                                {formatPrice(product.originalPrice, product.currency)}
+                                {formatPrice(displayOriginalPrice, product.currency)}
                               </span>
                             )}
                           </div>
@@ -997,54 +1025,12 @@ function ShopHomePage() {
 
   // Default landing page for localhost or other cases (only show after mounted)
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="w-full max-w-4xl p-6">
-        <div className="text-center">
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">
-            The POOLSHOP
-          </h1>
-          <p className="text-xl text-gray-600 mb-12">
-            Your trusted partner for quality products and services
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Link
-              href="/shop"
-              className="bg-white rounded-xl shadow-lg p-8 hover:shadow-xl transition-shadow"
-            >
-              <ShoppingCart className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-              <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-                Shop Online
-              </h2>
-              <p className="text-gray-600 mb-4">
-                Browse our products and shop from the comfort of your home
-              </p>
-              <span className="inline-block bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
-                Visit Shop →
-              </span>
-            </Link>
-
-            <Link
-              href={session ? "/dashboard" : "/auth/signin"}
-              className="bg-white rounded-xl shadow-lg p-8 hover:shadow-xl transition-shadow"
-            >
-              <Shield className="h-12 w-12 text-green-600 mx-auto mb-4" />
-              <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-                Admin Portal
-              </h2>
-              <p className="text-gray-600 mb-4">
-                Manage inventory, orders, and business operations
-              </p>
-              <span className="inline-block bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition">
-                {session ? "Go to Dashboard →" : "Sign In →"}
-              </span>
-            </Link>
-          </div>
-
-          <div className="mt-12 text-sm text-gray-500">
-            © 2024 The POOLSHOP. All rights reserved.
-          </div>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex flex-col items-center space-y-4 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+        <p className="text-gray-600 text-sm">
+          Preparing your experience...
+        </p>
       </div>
     </div>
   )
