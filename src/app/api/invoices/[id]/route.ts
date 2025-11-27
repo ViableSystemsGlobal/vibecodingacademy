@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateInvoiceQRData, generateQRCode } from '@/lib/qrcode';
+import { logAuditEvent } from '@/lib/audit-log';
 
 // Helper function to generate sales order number
 async function generateSalesOrderNumber(): Promise<string> {
@@ -513,6 +514,28 @@ export async function PUT(
 
     console.log('✅ Invoice updated successfully:', invoice.number);
 
+    // Log audit trail
+    await logAuditEvent({
+      userId,
+      action: 'invoice.updated',
+      resource: 'Invoice',
+      resourceId: invoice.id,
+      oldData: {
+        subject: existingInvoice.subject,
+        status: existingInvoice.status,
+        paymentStatus: existingInvoice.paymentStatus,
+        total: existingInvoice.total,
+      },
+      newData: {
+        subject: subject || existingInvoice.subject,
+        status: status || existingInvoice.status,
+        paymentStatus: paymentStatus || existingInvoice.paymentStatus,
+        total: invoice.total,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
+    });
+
     return NextResponse.json({ invoice });
   } catch (error) {
     console.error('❌ PUT invoice API Error:', error);
@@ -553,6 +576,23 @@ export async function DELETE(
         { status: 404 }
       );
     }
+
+    // Log audit trail before deletion
+    await logAuditEvent({
+      userId,
+      action: 'invoice.deleted',
+      resource: 'Invoice',
+      resourceId: id,
+      oldData: {
+        number: existingInvoice.number,
+        subject: existingInvoice.subject,
+        status: existingInvoice.status,
+        paymentStatus: existingInvoice.paymentStatus,
+        total: existingInvoice.total,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
+    });
 
     // Delete invoice (cascade will handle lines)
     await prisma.invoice.delete({

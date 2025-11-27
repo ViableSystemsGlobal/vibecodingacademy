@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { parseTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
+import { logAuditEvent } from '@/lib/audit-log';
 
 // Helper function to generate invoice number
 async function generateInvoiceNumber(): Promise<string> {
@@ -475,6 +476,17 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('✅ Invoice created successfully:', invoice.id);
+
+    // Log audit trail
+    await logAuditEvent({
+      userId,
+      action: 'invoice.created',
+      resource: 'Invoice',
+      resourceId: invoice.id,
+      newData: { number: invoiceNumber, subject, total, status: 'DRAFT', paymentStatus: 'UNPAID' },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
+    });
 
     return NextResponse.json({ invoice }, { status: 201 });
   } catch (error) {

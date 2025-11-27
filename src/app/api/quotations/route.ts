@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateQuoteQRData, generateQRCode } from '@/lib/qrcode';
 import { parseTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
+import { logAuditEvent } from '@/lib/audit-log';
 
 export async function GET(request: NextRequest) {
   try {
@@ -514,6 +515,17 @@ export async function POST(request: NextRequest) {
         details: { quotation: { number, subject, total: subtotal + totalTax, accountId } },
         userId: userId,
       },
+    });
+
+    // Log audit trail
+    await logAuditEvent({
+      userId,
+      action: 'quotation.created',
+      resource: 'Quotation',
+      resourceId: quotation.id,
+      newData: { number, subject, total: subtotal + totalTax, status: 'DRAFT', accountId },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
     });
 
     // Fetch the updated quotation with QR code

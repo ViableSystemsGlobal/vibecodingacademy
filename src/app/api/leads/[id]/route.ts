@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { logAuditEvent } from '@/lib/audit-log';
 
 export async function GET(
   request: NextRequest,
@@ -218,6 +219,34 @@ export async function PUT(
       },
     });
 
+    // Log audit trail
+    await logAuditEvent({
+      userId,
+      action: 'lead.updated',
+      resource: 'Lead',
+      resourceId: lead.id,
+      oldData: {
+        firstName: existingLead.firstName,
+        lastName: existingLead.lastName,
+        email: existingLead.email,
+        phone: existingLead.phone,
+        company: existingLead.company,
+        source: existingLead.source,
+        status: existingLead.status,
+      },
+      newData: {
+        firstName,
+        lastName,
+        email,
+        phone,
+        company,
+        source,
+        status,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
+    });
+
     // Parse JSON fields
     const parsedLead = {
       ...lead,
@@ -294,6 +323,25 @@ export async function DELETE(
         details: { lead: existingLead },
         userId: userId,
       },
+    });
+
+    // Log audit trail
+    await logAuditEvent({
+      userId,
+      action: 'lead.deleted',
+      resource: 'Lead',
+      resourceId: id,
+      oldData: {
+        firstName: existingLead.firstName,
+        lastName: existingLead.lastName,
+        email: existingLead.email,
+        phone: existingLead.phone,
+        company: existingLead.company,
+        source: existingLead.source,
+        status: existingLead.status,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
     });
 
     return NextResponse.json({ message: 'Lead deleted successfully' });

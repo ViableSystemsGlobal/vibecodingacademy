@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NotificationService, SystemNotificationTriggers } from '@/lib/notification-service';
 import { parseTableQuery, buildTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
+import { logAuditEvent } from '@/lib/audit-log';
 
 export async function GET(request: NextRequest) {
   try {
@@ -232,6 +233,25 @@ export async function POST(request: NextRequest) {
       console.error('Error logging activity:', activityError);
       // Don't fail the request if activity logging fails
     }
+
+    // Log audit trail
+    await logAuditEvent({
+      userId,
+      action: 'lead.created',
+      resource: 'Lead',
+      resourceId: lead.id,
+      newData: {
+        firstName,
+        lastName,
+        email,
+        phone,
+        company,
+        source,
+        status,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
+    });
 
     // Parse JSON fields
     const parsedLead = {

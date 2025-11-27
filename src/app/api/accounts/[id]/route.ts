@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { logAuditEvent } from '@/lib/audit-log';
 
 export async function GET(
   request: NextRequest,
@@ -167,6 +168,24 @@ export async function PUT(
       },
     });
 
+    // Log audit trail
+    await logAuditEvent({
+      userId,
+      action: 'account.updated',
+      resource: 'Account',
+      resourceId: account.id,
+      oldData: {
+        name: existingAccount.name,
+        type: existingAccount.type,
+        email: existingAccount.email,
+        phone: existingAccount.phone,
+        website: existingAccount.website,
+      },
+      newData: { name, type, email, phone, website },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
+    });
+
     return NextResponse.json(account);
   } catch (error) {
     console.error('Error updating account:', error);
@@ -218,6 +237,23 @@ export async function DELETE(
         details: { account: existingAccount },
         userId: userId,
       },
+    });
+
+    // Log audit trail
+    await logAuditEvent({
+      userId,
+      action: 'account.deleted',
+      resource: 'Account',
+      resourceId: id,
+      oldData: {
+        name: existingAccount.name,
+        type: existingAccount.type,
+        email: existingAccount.email,
+        phone: existingAccount.phone,
+        website: existingAccount.website,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
     });
 
     return NextResponse.json({ message: 'Account deleted successfully' });

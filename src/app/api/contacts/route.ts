@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { parseTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
+import { logAuditEvent } from '@/lib/audit-log';
 
 export async function GET(request: NextRequest) {
   try {
@@ -170,6 +171,17 @@ export async function POST(request: NextRequest) {
         details: { contact: { firstName, lastName, email, position } },
         userId: userId,
       },
+    });
+
+    // Log audit trail
+    await logAuditEvent({
+      userId,
+      action: 'contact.created',
+      resource: 'Contact',
+      resourceId: contact.id,
+      newData: { firstName, lastName, email, phone, position, accountId },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
     });
 
     return NextResponse.json(contact, { status: 201 });

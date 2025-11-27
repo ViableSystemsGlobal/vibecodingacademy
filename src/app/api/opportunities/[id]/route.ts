@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { logAuditEvent } from '@/lib/audit-log';
 
 export async function GET(
   request: NextRequest,
@@ -172,6 +173,15 @@ export async function PUT(
       }
     }
 
+    // Get existing opportunity for audit trail
+    const existingOpportunity = await prisma.opportunity.findUnique({
+      where: { id: params.id },
+    });
+
+    if (!existingOpportunity) {
+      return NextResponse.json({ error: 'Opportunity not found' }, { status: 404 });
+    }
+
     // If stage is being set to WON and value is not provided or is 0, 
     // automatically populate from invoices (preferred) or quotations
     let dealValue = value;
@@ -252,6 +262,28 @@ export async function PUT(
       }
     });
 
+    // Log audit trail
+    await logAuditEvent({
+      userId: (session.user as any).id,
+      action: 'opportunity.updated',
+      resource: 'Opportunity',
+      resourceId: opportunity.id,
+      oldData: {
+        name: existingOpportunity.name,
+        stage: existingOpportunity.stage,
+        value: existingOpportunity.value,
+        probability: existingOpportunity.probability,
+      },
+      newData: {
+        name: name || existingOpportunity.name,
+        stage: stage || existingOpportunity.stage,
+        value: dealValue !== undefined ? dealValue : existingOpportunity.value,
+        probability: dealProbability !== undefined ? dealProbability : existingOpportunity.probability,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
+    });
+
     return NextResponse.json(opportunity);
   } catch (error) {
     console.error('Error updating opportunity:', error);
@@ -304,6 +336,22 @@ export async function DELETE(
       console.log(`🔗 Unlinked ${opportunity.invoices.length} invoices from opportunity`);
     }
     
+    // Log audit trail before deletion
+    await logAuditEvent({
+      userId: (session.user as any).id,
+      action: 'opportunity.deleted',
+      resource: 'Opportunity',
+      resourceId: params.id,
+      oldData: {
+        name: opportunity.name,
+        stage: opportunity.stage,
+        value: opportunity.value,
+        probability: opportunity.probability,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
+    });
+
     // Now delete the opportunity
     await prisma.opportunity.delete({
       where: {

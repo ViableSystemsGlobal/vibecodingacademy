@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { parseTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
+import { logAuditEvent } from '@/lib/audit-log';
 
 export async function GET(request: NextRequest) {
   try {
@@ -277,6 +278,17 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('✅ Created opportunity from account:', opportunity.id);
+
+    // Log audit trail
+    await logAuditEvent({
+      userId,
+      action: 'opportunity.created',
+      resource: 'Opportunity',
+      resourceId: opportunity.id,
+      newData: { name, accountId, stage: opportunityStage, value: dealValue, probability: oppProbability },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
+    });
 
     return NextResponse.json(opportunity, { status: 201 });
   } catch (error) {

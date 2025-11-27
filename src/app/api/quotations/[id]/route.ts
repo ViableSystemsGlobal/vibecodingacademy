@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { logAuditEvent } from '@/lib/audit-log';
 
 // GET /api/quotations/[id] - Get a single quotation
 export async function GET(
@@ -375,6 +376,26 @@ export async function PUT(
       });
     }
 
+    // Log audit trail
+    await logAuditEvent({
+      userId,
+      action: 'quotation.updated',
+      resource: 'Quotation',
+      resourceId: quotation.id,
+      oldData: {
+        subject: existingQuotation.subject,
+        status: existingQuotation.status,
+        total: existingQuotation.total,
+      },
+      newData: {
+        subject,
+        status: status || existingQuotation.status,
+        total: quotation.total,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
+    });
+
     return NextResponse.json(quotation);
   } catch (error: any) {
     console.error('Error updating quotation:', error);
@@ -421,6 +442,22 @@ export async function DELETE(
         { status: 404 }
       );
     }
+
+    // Log audit trail before deletion
+    await logAuditEvent({
+      userId,
+      action: 'quotation.deleted',
+      resource: 'Quotation',
+      resourceId: id,
+      oldData: {
+        number: existingQuotation.number,
+        subject: existingQuotation.subject,
+        status: existingQuotation.status,
+        total: existingQuotation.total,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+      userAgent: request.headers.get('user-agent') || null,
+    });
 
     // Delete quotation lines first (since cascade delete isn't set up)
     await prisma.quotationLine.deleteMany({

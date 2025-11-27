@@ -45,10 +45,34 @@ const ACTION_LABELS: Record<string, string> = {
   "user.password_changed": "Password changed",
   "user.activated": "User activated",
   "user.deactivated": "User deactivated",
+  "lead.created": "Lead created",
+  "lead.updated": "Lead updated",
+  "lead.deleted": "Lead deleted",
+  "account.created": "Account created",
+  "account.updated": "Account updated",
+  "account.deleted": "Account deleted",
+  "contact.created": "Contact created",
+  "contact.updated": "Contact updated",
+  "contact.deleted": "Contact deleted",
+  "opportunity.created": "Opportunity created",
+  "opportunity.updated": "Opportunity updated",
+  "opportunity.deleted": "Opportunity deleted",
+  "invoice.created": "Invoice created",
+  "invoice.updated": "Invoice updated",
+  "invoice.deleted": "Invoice deleted",
+  "quotation.created": "Quotation created",
+  "quotation.updated": "Quotation updated",
+  "quotation.deleted": "Quotation deleted",
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
   User: "User",
+  Lead: "Lead",
+  Account: "Account",
+  Contact: "Contact",
+  Opportunity: "Opportunity",
+  Invoice: "Invoice",
+  Quotation: "Quotation",
 };
 
 export default function AuditTrailPage() {
