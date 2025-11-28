@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useTheme } from "@/contexts/theme-context";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -313,26 +314,28 @@ export default function SettingsPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {systemSettings.map((setting) => (
-              <Card key={setting.id} className="border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer group">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-4">
-                      <div className={`p-2 bg-${theme.primaryBg} rounded-lg group-hover:bg-${theme.primaryHover} transition-colors`}>
-                        <setting.icon className={`h-5 w-5 text-${theme.primary}`} />
+              <Link key={setting.id} href={setting.href}>
+                <Card className="border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer group">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-4">
+                        <div className={`p-2 bg-${theme.primaryBg} rounded-lg group-hover:bg-${theme.primaryHover} transition-colors`}>
+                          <setting.icon className={`h-5 w-5 text-${theme.primary}`} />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className={`font-medium text-gray-900 group-hover:text-${theme.primaryText} transition-colors`}>
+                            {setting.title}
+                          </h3>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {setting.description}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <h3 className={`font-medium text-gray-900 group-hover:text-${theme.primaryText} transition-colors`}>
-                          {setting.title}
-                        </h3>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {setting.description}
-                        </p>
-                      </div>
+                      <ChevronRight className={`h-5 w-5 text-gray-400 group-hover:text-${theme.primary} transition-colors`} />
                     </div>
-                    <ChevronRight className={`h-5 w-5 text-gray-400 group-hover:text-${theme.primary} transition-colors`} />
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </Link>
             ))}
           </div>
         </div>

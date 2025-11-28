@@ -3,6 +3,7 @@ import {
   Bell,
   Building,
   CheckSquare,
+  Clock,
   CreditCard,
   Database,
   DollarSign,
@@ -48,8 +49,17 @@ export default defineModule({
         { name: "AI Settings", href: "/settings/ai", icon: BarChart3, module: "ai-settings", order: 120 },
         { name: "Backup & Restore", href: "/settings/backup", icon: Database, module: "backup-settings", order: 130 },
         { name: "Modules", href: "/settings/modules", icon: Package, module: "modules", order: 135 },
-        { name: "System Settings", href: "/settings/system", icon: SettingsIcon, module: "system-settings", order: 140 },
-        { name: "Audit Trail", href: "/settings/system/audit-trail", icon: Activity, module: "audit-trail", order: 150 },
+        { 
+          name: "System Settings", 
+          href: "/settings/system", 
+          icon: SettingsIcon, 
+          module: "system-settings", 
+          order: 140,
+          children: [
+            { name: "Audit Trail", href: "/settings/system/audit-trail", icon: Activity, module: "audit-trail", order: 150 },
+            { name: "Cron Jobs & Reminders", href: "/settings/system/cron", icon: Clock, module: "cron-settings", order: 151 },
+          ]
+        },
       ],
     },
   ],
