@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         response: {
-          text: "AI Business Analyst is currently disabled. Please enable it in Settings > AI Settings.",
+          text: "Strategic Business Partner (Jayne) is currently disabled. Please enable it in Settings > AI Settings.",
           chart: null
         }
       });
@@ -81,8 +81,9 @@ export async function POST(request: NextRequest) {
     const businessData = await fetchComprehensiveBusinessData(userId);
     console.log('✅ AI Chat API: Business data fetched');
 
-    // Replace company name in prompt
-    const promptWithCompanyName = BUSINESS_ANALYST_PROMPT.replace(/AdPools Group/g, companyName);
+    // Replace company name in prompt (handle both {COMPANY_NAME} placeholder and old format)
+    let promptWithCompanyName = BUSINESS_ANALYST_PROMPT.replace(/{COMPANY_NAME}/g, companyName);
+    promptWithCompanyName = promptWithCompanyName.replace(/AdPools Group/g, companyName);
 
     // Initialize AI service with selected provider
     console.log(`💬 AI Chat API: Calling ${provider}...`);

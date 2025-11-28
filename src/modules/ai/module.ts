@@ -4,13 +4,13 @@ import { defineModule } from "../define-module";
 
 export default defineModule({
   slug: "ai-analyst",
-  displayName: "AI Business Analyst",
-  description: "Automated insights and predictive analytics.",
-  version: "1.0.0",
+  displayName: "Strategic Business Partner",
+  description: "Your AI strategic advisor for business planning, decision-making, and long-term growth.",
+  version: "2.0.0",
   priority: 110,
   navigation: [
     {
-      name: "AI Business Analyst",
+      name: "Strategic Business Partner",
       href: "/ai-analyst",
       icon: BrainCircuit,
       module: "ai_analyst",

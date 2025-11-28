@@ -89,7 +89,7 @@ export default function AIAnalystPage() {
       {
         id: "welcome",
         role: "assistant",
-        content: `👋 Hi there! I'm Jayne, your AI Business Analyst.\n\nI can help you understand your business data and provide insights. Try asking me:\n\n• "What's my revenue this month?"\n• "Show me top 5 customers"\n• "Which products are low on stock?"\n• "What's my conversion rate?"\n• "How many leads did we get?"\n• "Show me my best selling products"\n• "What's my win rate?"\n• "How many orders are pending?"`,
+        content: `👋 Hi! I'm Jayne, your Strategic Business Partner.\n\nI'm here to help you think strategically, make better decisions, and grow your business. Think of me as your trusted advisor—like having Warren Buffett and a McKinsey consultant in your corner.\n\nI can help you with:\n\n📊 Strategic Analysis:\n• "What's my revenue trend and what does it mean?"\n• "Analyze my customer concentration risk"\n• "What's my competitive position?"\n\n💡 Strategic Planning:\n• "Help me plan for Q2 growth"\n• "Should I expand to new markets?"\n• "What's my pricing strategy?"\n\n🎯 Decision Support:\n• "Should I hire more sales reps?"\n• "Is this a good time to invest in inventory?"\n• "What are the risks of this expansion?"\n\n📈 Performance Insights:\n• "What's driving my profitability?"\n• "Where are my biggest opportunities?"\n• "What should I focus on next quarter?"\n\nLet's strategize together! What's on your mind?`,
         timestamp: new Date(),
       },
     ]);
@@ -109,11 +109,20 @@ export default function AIAnalystPage() {
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: input,
+      content: input.trim(),
       timestamp: new Date(),
     };
 
+    // Save the input value before clearing
+    const messageText = input.trim();
+    
+    // Clear input immediately
     setInput("");
+    
+    // Add user message to UI immediately so it doesn't disappear
+    const messagesWithUser = [...messages, userMessage];
+    setMessages(messagesWithUser);
+    
     setIsLoading(true);
 
     try {
@@ -123,7 +132,7 @@ export default function AIAnalystPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: input,
+          message: messageText,
           conversationHistory: messages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -148,7 +157,8 @@ export default function AIAnalystPage() {
         timestamp: new Date(),
       };
 
-      const updatedMessages = [...messages, userMessage, assistantMessage];
+      // Add assistant message to the existing messages (user message already added)
+      const updatedMessages = [...messagesWithUser, assistantMessage];
       setMessages(updatedMessages);
 
       // Save conversation
@@ -194,13 +204,14 @@ export default function AIAnalystPage() {
       showError("Error", errorMessage);
       
       // Add error message to chat for user visibility
+      // User message is already in messagesWithUser, so just add error message
       const errorChatMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content: `⚠️ ${errorMessage}\n\nPlease check:\n- AI settings are configured correctly\n- API keys are valid\n- Network connection is stable`,
         timestamp: new Date(),
       };
-      setMessages([...messages, userMessage, errorChatMessage]);
+      setMessages([...messagesWithUser, errorChatMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -332,10 +343,10 @@ export default function AIAnalystPage() {
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold text-gray-900">
-                    Jayne (AI Business Analyst)
+                    Jayne (Strategic Business Partner)
                   </h1>
                   <p className="text-gray-600">
-                    Ask Jayne anything about your business data and get intelligent insights
+                    Strategize with Jayne—your AI business partner for strategic planning, decision-making, and long-term growth
                   </p>
                 </div>
               </div>
@@ -356,7 +367,7 @@ export default function AIAnalystPage() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Bot className="h-5 w-5" />
-              <span>Chat with Jayne</span>
+              <span>Strategic Session with Jayne</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -453,7 +464,7 @@ export default function AIAnalystPage() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyPress}
-                  placeholder="Ask me anything about your business... (Shift+Enter for new line)"
+                  placeholder="Let's strategize... Ask me about your business, decisions, or plans (Shift+Enter for new line)"
                   disabled={isLoading}
                   className="flex-1 min-h-[80px] max-h-[200px] resize-y"
                   rows={3}
