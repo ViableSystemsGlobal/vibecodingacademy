@@ -54,9 +54,22 @@ export async function generateMetadata(): Promise<Metadata> {
 
   const ogTitle = seo?.ogTitle?.trim() || title;
   const ogDescription = seo?.ogDescription?.trim() || description;
-  const ogImage = seo?.ogImage?.trim();
+  const ogImageRaw = seo?.ogImage?.trim();
   const canonicalUrl = seo?.canonicalUrl?.trim();
   const twitterHandle = seo?.twitterHandle?.trim();
+
+  // Convert relative OG image URL to absolute URL for social sharing
+  let ogImage: string | undefined;
+  if (ogImageRaw) {
+    if (ogImageRaw.startsWith('http://') || ogImageRaw.startsWith('https://')) {
+      // Already absolute
+      ogImage = ogImageRaw;
+    } else {
+      // Convert relative to absolute
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      ogImage = `${baseUrl}${ogImageRaw.startsWith('/') ? ogImageRaw : `/${ogImageRaw}`}`;
+    }
+  }
 
   return {
     title,

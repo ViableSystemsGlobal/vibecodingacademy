@@ -25,6 +25,7 @@ function parseCSV(content: string): any[] {
       'Quantity': 'quantity', 'quantity': 'quantity', 'stock_quantity': 'quantity',
       'Reorder Point': 'reorder_point', 'reorder_point': 'reorder_point',
       'Import Currency': 'import_currency', 'import_currency': 'import_currency', 'currency': 'import_currency',
+      'Selling Currency': 'selling_currency', 'selling_currency': 'selling_currency', 'price_currency': 'selling_currency', 'base_currency': 'selling_currency',
       'UOM Base': 'uom_base', 'uom_base': 'uom_base', 'unit_base': 'uom_base',
       'UOM Sell': 'uom_sell', 'uom_sell': 'uom_sell', 'unit_sell': 'uom_sell',
       'Active': 'active', 'active': 'active',
@@ -231,6 +232,7 @@ export async function POST(request: NextRequest) {
             originalCost: costPrice,
             originalPriceCurrency: row.import_currency || 'USD',
             originalCostCurrency: row.import_currency || 'USD',
+            baseCurrency: row.selling_currency || 'GHS', // Selling price currency
             categoryId: categoryId,
             active: row.active === 'true' || row.active === '1' || row.active === 'yes' || row.active === '' || row.active === undefined,
             uomBase: row.uom_base || (isService ? 'hours' : 'pcs'),
