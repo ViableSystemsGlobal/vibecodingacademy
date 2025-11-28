@@ -492,6 +492,8 @@ model Quotation {
   qrCodeData              String?
   qrCodeGeneratedAt       DateTime?
   agentId                 String?
+  lastReminderSentAt      DateTime?
+  reminderCount           Int                 @default(0)
   commissions             Commission[]
   invoices                Invoice[]
   proformas               Proforma[]
@@ -1811,6 +1813,8 @@ model Invoice {
   notes                   String?
   ownerId                 String
   agentId                 String?
+  lastReminderSentAt      DateTime?
+  reminderCount           Int                 @default(0)
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
   agentInvoices           AgentInvoice[]
