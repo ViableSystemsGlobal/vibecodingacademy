@@ -161,6 +161,7 @@ function getModuleSlugForNavigationModule(navModule: string): string {
     'system-settings': 'settings',
     'modules': 'settings',
     'audit-trail': 'settings',
+    'cron-settings': 'settings',
     
     // AI Analyst module
     'ai_analyst': 'ai-analyst',
