@@ -211,6 +211,7 @@ export const ABILITIES = {
   'lead-sources.delete': 'Delete lead sources',
   
   'audit-trail.view': 'View audit trail',
+  'cron-settings.view': 'View cron jobs and reminders settings',
   
   'ai-settings.view': 'View AI settings',
   'ai-settings.manage': 'Manage AI settings',
@@ -313,6 +314,7 @@ export const MODULE_ACCESS = {
   'ecommerce-analytics': ['ecommerce-analytics.view'],
   'projects': ['projects.view'],
   'audit-trail': ['audit-trail.view'],
+  'cron-settings': ['cron-settings.view'],
   'modules': ['settings.view', 'system-settings.view'],
 } as const;
 
@@ -391,6 +393,7 @@ export const ROLE_ABILITIES = {
     'lead-sources.view', 'lead-sources.create', 'lead-sources.edit', 'lead-sources.delete',
     'ai-settings.view', 'ai-settings.manage',
     'audit-trail.view',
+    'cron-settings.view',
     
     // Ecommerce
     'ecommerce.view', 'ecommerce-orders.view', 'ecommerce-orders.create', 'ecommerce-orders.edit', 'ecommerce-orders.delete',
@@ -476,6 +479,7 @@ export const ROLE_ABILITIES = {
     'lead-sources.view', 'lead-sources.create', 'lead-sources.edit', 'lead-sources.delete',
     'ai-settings.view', 'ai-settings.manage',
     'audit-trail.view',
+    'cron-settings.view',
 
     // Ecommerce
     'ecommerce.view', 'ecommerce-orders.view', 'ecommerce-orders.create', 'ecommerce-orders.edit', 'ecommerce-orders.delete',

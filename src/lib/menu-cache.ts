@@ -331,6 +331,10 @@ function filterNavigationItems(
           if (child.module === "audit-trail") {
             return userRole === "SUPER_ADMIN" || userRole === "ADMIN";
           }
+          // Special handling for cron-settings
+          if (child.module === "cron-settings") {
+            return userRole === "SUPER_ADMIN" || userRole === "ADMIN";
+          }
           // Special handling for modules (only SUPER_ADMIN and ADMIN)
           if (child.module === "modules") {
             return userRole === "SUPER_ADMIN" || userRole === "ADMIN";
