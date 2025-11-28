@@ -343,7 +343,7 @@ export default function AIAnalystPage() {
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold text-gray-900">
-                    Jayne (Strategic Business Partner)
+                    Jayne (AI Business Partner)
                   </h1>
                   <p className="text-gray-600">
                     Strategize with Jayne—your AI business partner for strategic planning, decision-making, and long-term growth
@@ -367,7 +367,7 @@ export default function AIAnalystPage() {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <Bot className="h-5 w-5" />
-              <span>Strategic Session with Jayne</span>
+              <span>Chat with Jayne</span>
             </CardTitle>
           </CardHeader>
           <CardContent>

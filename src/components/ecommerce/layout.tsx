@@ -10,6 +10,7 @@ import { EcommerceKwameChat } from "./kwame-chat";
 import { NewsletterPopup } from "./newsletter-popup";
 import { StorefrontSectionsProvider } from "@/contexts/storefront-sections-context";
 import { SeoScripts } from "./seo-scripts";
+import { MobileBottomNav } from "./mobile-bottom-nav";
 
 type SeoResponse = {
   meta: {
@@ -68,8 +69,9 @@ export function EcommerceLayout({ children }: { children: React.ReactNode }) {
       <StorefrontSectionsProvider>
         <div className="flex min-h-screen flex-col bg-white">
       <EcommerceNavigation />
-        <main className="flex-1">{children}</main>
+        <main className="flex-1 pb-16 md:pb-0">{children}</main>
       <EcommerceFooter />
+        <MobileBottomNav />
         <FloatingCartButton />
         <CartFlyout />
           <EcommerceKwameChat />
