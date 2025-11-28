@@ -162,6 +162,10 @@ function getModuleSlugForNavigationModule(navModule: string): string {
     'modules': 'settings',
     'audit-trail': 'settings',
     
+    // AI Analyst module
+    'ai_analyst': 'ai-analyst',
+    'ai-analyst': 'ai-analyst',
+    
     // If no mapping found, assume the navModule is the same as the slug
   };
   return moduleMapping[navModule] || navModule;
