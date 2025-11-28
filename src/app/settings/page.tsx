@@ -25,6 +25,7 @@ import {
   ClipboardList,
   Activity,
   ShieldCheck,
+  Clock,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -125,6 +126,13 @@ export default function SettingsPage() {
       description: "Review detailed activity history and system changes.",
       icon: Activity,
       href: "/settings/system/audit-trail",
+    },
+    {
+      id: "cron",
+      title: "Cron Jobs & Reminders",
+      description: "Configure automated reminders, scheduled tasks, and cron job settings.",
+      icon: Clock,
+      href: "/settings/system/cron"
     },
     {
       id: "branding",
