@@ -77,7 +77,30 @@ This document describes all available cron jobs and how to set them up.
 0 10 * * * curl -X POST https://your-domain.com/api/cron/invoice-reminders -H "Authorization: Bearer YOUR_CRON_SECRET"
 ```
 
-### 5. Abandoned Cart Reminders
+### 5. Daily Task Reminders
+**Endpoint:** `POST /api/cron/daily-task-reminders`  
+**Frequency:** Daily (recommended: morning, e.g., 8 AM)  
+**Purpose:** Sends daily reminders to users about their incomplete tasks
+
+**Settings (in System Settings):**
+- `daily_task_reminders_enabled`: Enable/disable reminders (true/false)
+
+**What it does:**
+- Finds all tasks with status: PENDING or IN_PROGRESS
+- Groups tasks by assigned user (supports both single and multiple assignees)
+- Sends personalized email and SMS to each user with:
+  - Overdue tasks (with days overdue)
+  - Tasks due today
+  - Upcoming tasks
+- Categorizes tasks by priority and due date
+
+**Setup:**
+```bash
+# Daily at 8 AM
+0 8 * * * curl -X POST https://your-domain.com/api/cron/daily-task-reminders -H "Authorization: Bearer YOUR_CRON_SECRET"
+```
+
+### 6. Abandoned Cart Reminders
 **Endpoint:** `POST /api/ecommerce/abandoned-carts/remind`  
 **Frequency:** Every 6-12 hours (recommended)  
 **Purpose:** Sends reminders for abandoned shopping carts
@@ -114,6 +137,9 @@ All cron endpoints require authentication via `CRON_SECRET` environment variable
 # Invoice reminders - daily at 10 AM
 0 10 * * * curl -X POST https://your-domain.com/api/cron/invoice-reminders -H "Authorization: Bearer YOUR_CRON_SECRET"
 
+# Daily task reminders - daily at 8 AM
+0 8 * * * curl -X POST https://your-domain.com/api/cron/daily-task-reminders -H "Authorization: Bearer YOUR_CRON_SECRET"
+
 # Abandoned cart reminders - every 6 hours
 0 */6 * * * curl -X POST https://your-domain.com/api/ecommerce/abandoned-carts/remind -H "Authorization: Bearer YOUR_CRON_SECRET"
 ```
@@ -143,6 +169,10 @@ curl -X POST http://localhost:3001/api/cron/invoice-reminders \
 # Test business reports
 curl -X POST http://localhost:3001/api/cron/business-report \
   -H "Authorization: Bearer YOUR_CRON_SECRET"
+
+# Test daily task reminders
+curl -X POST http://localhost:3001/api/cron/daily-task-reminders \
+  -H "Authorization: Bearer YOUR_CRON_SECRET"
 ```
 
 ## Health Checks
@@ -152,6 +182,7 @@ All cron endpoints have GET endpoints for health checks:
 ```bash
 curl https://your-domain.com/api/cron/quotation-reminders
 curl https://your-domain.com/api/cron/invoice-reminders
+curl https://your-domain.com/api/cron/daily-task-reminders
 curl https://your-domain.com/api/cron/business-report
 ```
 
