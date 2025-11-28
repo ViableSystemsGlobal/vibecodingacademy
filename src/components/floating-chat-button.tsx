@@ -196,7 +196,7 @@ export function FloatingChatButton({ customBackground }: FloatingChatButtonProps
     <>
       {/* Preview Message */}
       {showPreview && !isOpen && !hasDismissedPreview && (
-        <div className={`fixed bottom-24 right-6 z-50 transition-all duration-300 ${
+        <div className={`fixed bottom-32 right-4 md:bottom-24 md:right-6 z-50 transition-all duration-300 ${
           isDismissing 
             ? 'animate-out slide-out-to-bottom-2 fade-out' 
             : 'animate-in slide-in-from-bottom-2 fade-in'
@@ -236,7 +236,7 @@ export function FloatingChatButton({ customBackground }: FloatingChatButtonProps
           setIsOpen(!isOpen);
           setShowPreview(false); // Hide preview when opening chat
         }}
-        className={`fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center z-50 ${
+        className={`fixed bottom-20 right-4 md:bottom-6 md:right-6 w-14 h-14 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center z-50 ${
           isOpen ? 'scale-0' : 'scale-100'
         }`}
         style={{
@@ -252,7 +252,7 @@ export function FloatingChatButton({ customBackground }: FloatingChatButtonProps
       {isOpen && (
         <div 
           ref={chatModalRef}
-          className="fixed bottom-6 right-6 w-96 h-[500px] bg-white rounded-2xl shadow-2xl z-50 flex flex-col border border-gray-200"
+          className="fixed bottom-20 right-4 md:bottom-6 md:right-6 w-96 h-[500px] bg-white rounded-2xl shadow-2xl z-50 flex flex-col border border-gray-200"
         >
           {/* Header */}
           <div 

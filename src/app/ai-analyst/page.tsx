@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useTheme } from "@/contexts/theme-context";
 import { useToast } from "@/contexts/toast-context";
 import { Send, Bot, User, Sparkles, MessageSquare, Clock, Plus } from "lucide-react";
+import { AIChart } from "@/components/ai-chart";
 
 interface Message {
   id: string;
@@ -414,11 +415,7 @@ export default function AIAnalystPage() {
                         </p>
                         {message.chart && (
                           <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                            <h4 className="text-sm font-medium mb-2">Chart: {message.chart.type}</h4>
-                            <div className="text-xs text-gray-600">
-                              <p>Labels: {message.chart.data.labels.join(', ')}</p>
-                              <p>Values: {message.chart.data.values.join(', ')}</p>
-                            </div>
+                            <AIChart type={message.chart.type} data={message.chart.data} />
                           </div>
                         )}
                         <p className="text-xs text-gray-500 mt-2">
