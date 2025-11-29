@@ -43,7 +43,8 @@ import {
   BarChart3,
   QrCode,
   Copy as CopyIcon,
-  Image
+  Image,
+  Image as ImageIcon
 } from "lucide-react";
 
 // TypeScript interfaces for API data
