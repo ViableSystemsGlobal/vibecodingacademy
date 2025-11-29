@@ -1165,6 +1165,14 @@ export default function ProductsPage() {
         }}
       />
 
+      <BulkImageUploadModal
+        isOpen={isBulkImageUploadOpen}
+        onClose={() => setIsBulkImageUploadOpen(false)}
+        onSuccess={() => {
+          fetchProducts(); // Refresh the products list
+        }}
+      />
+
       {/* Add Category Modal */}
       <AddCategoryModal
         isOpen={isAddCategoryModalOpen}
