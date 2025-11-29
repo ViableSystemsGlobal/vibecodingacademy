@@ -10,6 +10,7 @@ import { CurrencyToggle, useCurrency, formatCurrency as formatCurrencyWithSymbol
 import { AddProductModal } from "@/components/modals/add-product-modal";
 import { useSearchParams } from "next/navigation";
 import { BulkImportModal } from "@/components/modals/bulk-import-modal";
+import { BulkImageUploadModal } from "@/components/modals/bulk-image-upload-modal";
 import { AddCategoryModal } from "@/components/modals/add-category-modal";
 import { EditProductModal } from "@/components/modals/edit-product-modal";
 import { ConfirmDeleteModal } from "@/components/modals/confirm-delete-modal";
@@ -144,6 +145,7 @@ export default function ProductsPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [isBulkImageUploadOpen, setIsBulkImageUploadOpen] = useState(false);
   const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);

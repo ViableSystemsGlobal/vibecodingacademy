@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-
+      
       let databaseRestored = false;
       let filesRestored = 0;
 
@@ -258,12 +258,12 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        await writeFile(dbPath, buffer);
+    await writeFile(dbPath, buffer);
 
-        return NextResponse.json({
-          success: true,
-          message: 'Database restored successfully (legacy format - files not included)'
-        });
+    return NextResponse.json({
+      success: true,
+        message: 'Database restored successfully (legacy format - files not included)'
+    });
       }
     }
 
