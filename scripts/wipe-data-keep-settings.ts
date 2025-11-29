@@ -136,7 +136,7 @@ async function main() {
     await safeDelete(() => prisma.leadComment.deleteMany({}), 'LeadComment');
     await safeDelete(() => prisma.opportunity.deleteMany({}), 'Opportunity');
     await safeDelete(() => prisma.contact.deleteMany({}), 'Contact');
-    await safeDelete(() => prisma.accountAddress.deleteMany({}), 'AccountAddress');
+    await safeDelete(() => prisma.address.deleteMany({}), 'Address');
     await safeDelete(() => prisma.account.deleteMany({}), 'Account');
     await safeDelete(() => prisma.lead.deleteMany({}), 'Lead');
     await safeDelete(() => prisma.leadSource.deleteMany({}), 'LeadSource');
