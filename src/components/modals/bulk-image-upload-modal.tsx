@@ -7,7 +7,7 @@ import { useToast } from "@/contexts/toast-context";
 import { useTheme } from "@/contexts/theme-context";
 import { 
   Upload, 
-  FileZip,
+  Archive,
   Loader2,
   AlertCircle,
   CheckCircle,
@@ -172,7 +172,7 @@ export function BulkImageUploadModal({ isOpen, onClose, onSuccess }: BulkImageUp
           {/* File Upload */}
           <div className="space-y-4">
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
-              <FileZip className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <Archive className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <p className="text-sm text-gray-600 mb-2">
                 {selectedFile ? selectedFile.name : 'No file selected'}
               </p>
@@ -204,7 +204,7 @@ export function BulkImageUploadModal({ isOpen, onClose, onSuccess }: BulkImageUp
             {selectedFile && (
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-2">
-                  <FileZip className="h-5 w-5 text-gray-600" />
+                  <Archive className="h-5 w-5 text-gray-600" />
                   <div>
                     <p className="text-sm font-medium">{selectedFile.name}</p>
                     <p className="text-xs text-gray-500">
