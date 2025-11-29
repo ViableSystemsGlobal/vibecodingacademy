@@ -139,7 +139,7 @@ async function main() {
     await safeDelete(() => prisma.address.deleteMany({}), 'Address');
     await safeDelete(() => prisma.account.deleteMany({}), 'Account');
     await safeDelete(() => prisma.lead.deleteMany({}), 'Lead');
-    await safeDelete(() => prisma.leadSource.deleteMany({}), 'LeadSource');
+    // Note: LeadSource is not a separate model - it's a field on Lead
     console.log('✅ Deleted CRM records');
 
     // Delete inventory records
