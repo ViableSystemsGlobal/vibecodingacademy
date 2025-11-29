@@ -746,6 +746,13 @@ export default function ProductsPage() {
             Bulk Import
           </Button>
           <Button 
+            variant="outline"
+            onClick={() => setIsBulkImageUploadOpen(true)}
+          >
+            <ImageIcon className="mr-2 h-4 w-4" />
+            Bulk Upload Images
+          </Button>
+          <Button 
             className="text-white hover:opacity-90 transition-opacity"
             style={{ backgroundColor: getThemeColor() }}
             onClick={() => setIsAddModalOpen(true)}
