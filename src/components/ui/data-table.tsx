@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Download, Search } from 'lucide-react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Download, Search, ChevronDown } from 'lucide-react';
 import { Button } from './button';
 import { Input } from './input';
 import { useTheme } from '@/contexts/theme-context';
@@ -24,6 +24,8 @@ interface DataTableProps<T = Record<string, unknown>> {
   enableSelection?: boolean;
   selectedItems?: string[];
   onSelectionChange?: (selectedIds: string[]) => void;
+  onSelectAll?: () => void; // Callback for selecting all items across all pages
+  isAllSelected?: boolean; // Whether all items across all pages are selected
   bulkActions?: React.ReactNode;
   getRowClassName?: (item: T) => string;
   onRowClick?: (item: T) => void;
@@ -57,6 +59,8 @@ export function DataTable<T extends { id?: string }>({
   enableSelection = false,
   selectedItems = [],
   onSelectionChange,
+  onSelectAll,
+  isAllSelected: isAllSelectedProp,
   bulkActions,
   getRowClassName,
   onRowClick,
@@ -88,6 +92,8 @@ export function DataTable<T extends { id?: string }>({
   const isServerSidePagination = serverCurrentPage !== undefined && serverTotalPages !== undefined;
   
   const [clientCurrentPage, setClientCurrentPage] = useState(1);
+  const [showSelectDropdown, setShowSelectDropdown] = useState(false);
+  const selectDropdownRef = useRef<HTMLDivElement>(null);
   
   const currentPage = isServerSidePagination ? serverCurrentPage : clientCurrentPage;
   const totalPages = isServerSidePagination ? serverTotalPages : Math.ceil(data.length / itemsPerPage);
@@ -144,18 +150,54 @@ export function DataTable<T extends { id?: string }>({
   };
 
   // Selection handlers
-  const handleSelectAll = () => {
+  const handleSelectAll = (selectAllPages: boolean = false) => {
     if (!onSelectionChange) return;
     
-    const allIds = data.map(item => item.id).filter(Boolean) as string[];
-    const isAllSelected = allIds.every(id => selectedItems.includes(id));
-    
-    if (isAllSelected) {
-      onSelectionChange([]);
-    } else {
-      onSelectionChange(allIds);
+    // If selectAllPages is true and onSelectAll is provided, select all across pages
+    if (selectAllPages && onSelectAll) {
+      onSelectAll();
+      setShowSelectDropdown(false);
+      return;
     }
+    
+    // Otherwise, select only current page
+    const allIds = paginatedData.map(item => item.id).filter(Boolean) as string[];
+    const isAllSelectedOnPage = allIds.length > 0 && allIds.every(id => selectedItems.includes(id));
+    
+    if (isAllSelectedOnPage) {
+      // Deselect all items on current page
+      onSelectionChange(selectedItems.filter(id => !allIds.includes(id)));
+    } else {
+      // Select all items on current page (merge with existing selections)
+      const newSelections = [...new Set([...selectedItems, ...allIds])];
+      onSelectionChange(newSelections);
+    }
+    setShowSelectDropdown(false);
   };
+
+  // Handle select all on current page only
+  const handleSelectAllOnPage = () => {
+    handleSelectAll(false);
+  };
+
+  // Handle select all across all pages
+  const handleSelectAllInTable = () => {
+    handleSelectAll(true);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (selectDropdownRef.current && !selectDropdownRef.current.contains(event.target as Node)) {
+        setShowSelectDropdown(false);
+      }
+    };
+
+    if (showSelectDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showSelectDropdown]);
 
   const handleSelectItem = (itemId: string) => {
     if (!onSelectionChange) return;
@@ -168,8 +210,16 @@ export function DataTable<T extends { id?: string }>({
     }
   };
 
-  const isAllSelected = data.length > 0 && data.every(item => item.id && selectedItems.includes(item.id));
-  const isIndeterminate = selectedItems.length > 0 && !isAllSelected;
+  // Use prop if provided (for server-side), otherwise calculate from current page
+  const isAllSelected = isAllSelectedProp !== undefined 
+    ? isAllSelectedProp 
+    : (paginatedData.length > 0 && paginatedData.every(item => item.id && selectedItems.includes(item.id)));
+  
+  // For server-side, indeterminate means some but not all are selected
+  // For client-side, indeterminate means some items on current page are selected but not all
+  const isIndeterminate = isServerSidePagination
+    ? (selectedItems.length > 0 && !isAllSelected)
+    : (selectedItems.length > 0 && !isAllSelected && paginatedData.some(item => item.id && selectedItems.includes(item.id)));
 
   // Handle column sorting
   const handleSort = (columnKey: string) => {
@@ -290,21 +340,67 @@ export function DataTable<T extends { id?: string }>({
       )}
 
       {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
+      <div className="overflow-x-auto -mx-6 sm:mx-0 px-6 sm:px-0">
+        <table className="w-full min-w-[640px] sm:min-w-0">
           <thead className="border-b border-gray-200">
             <tr className="bg-gray-50">
               {enableSelection && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
-                  <input
-                    type="checkbox"
-                    checked={isAllSelected}
-                    ref={(input) => {
-                      if (input) input.indeterminate = isIndeterminate;
-                    }}
-                    onChange={handleSelectAll}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                  <div className="relative inline-block" ref={selectDropdownRef}>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={isAllSelected || (paginatedData.length > 0 && paginatedData.every(item => item.id && selectedItems.includes(item.id)))}
+                        ref={(input) => {
+                          if (input) {
+                            const allOnPageSelected = paginatedData.length > 0 && paginatedData.every(item => item.id && selectedItems.includes(item.id));
+                            const someOnPageSelected = paginatedData.some(item => item.id && selectedItems.includes(item.id));
+                            input.indeterminate = !isAllSelected && !allOnPageSelected && someOnPageSelected;
+                          }
+                        }}
+                        onChange={() => handleSelectAll(false)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      {isServerSidePagination && onSelectAll && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowSelectDropdown(!showSelectDropdown);
+                          }}
+                          className="p-0.5 hover:bg-gray-200 rounded transition-colors"
+                          title="Select all options"
+                        >
+                          <ChevronDown className="h-3 w-3 text-gray-500" />
+                        </button>
+                      )}
+                    </div>
+                    {showSelectDropdown && isServerSidePagination && onSelectAll && (
+                      <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 min-w-[180px]">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectAllOnPage();
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 first:rounded-t-md"
+                        >
+                          Select all on this page ({paginatedData.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectAllInTable();
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 last:rounded-b-md border-t border-gray-200"
+                        >
+                          Select all in table ({totalItems})
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </th>
               )}
               {columns.map((column) => {
@@ -315,7 +411,7 @@ export function DataTable<T extends { id?: string }>({
                 return (
                   <th 
                     key={column.key}
-                    className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
+                    className={`px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
                       canSort ? 'cursor-pointer hover:bg-gray-100 select-none' : ''
                     }`}
                     onClick={canSort ? () => handleSort(column.key) : undefined}
@@ -354,7 +450,7 @@ export function DataTable<T extends { id?: string }>({
                   onClick={onRowClick ? (e) => { if (!shouldIgnoreRowClick(e)) { onRowClick(item); } } : undefined}
                 >
                 {enableSelection && (
-                  <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-3 sm:px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={item.id ? selectedItems.includes(item.id) : false}
@@ -364,7 +460,7 @@ export function DataTable<T extends { id?: string }>({
                   </td>
                 )}
                 {columns.map((column) => (
-                  <td key={column.key} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td key={column.key} className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {column.render ? column.render(item) : (item as any)[column.key]}
                   </td>
                 ))}
@@ -377,9 +473,9 @@ export function DataTable<T extends { id?: string }>({
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-6 py-3 bg-white border-t border-gray-200">
-          <div className="flex items-center text-sm text-gray-700">
-            <span>
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 sm:px-6 py-3 bg-white border-t border-gray-200">
+          <div className="flex items-center text-xs sm:text-sm text-gray-700">
+            <span className="text-center sm:text-left">
               Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems} results
             </span>
           </div>

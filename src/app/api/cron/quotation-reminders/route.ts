@@ -150,7 +150,8 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const currencySymbol = quotation.currency === 'GHS' ? 'GH₵' : (quotation.currency === 'USD' ? '$' : quotation.currency);
+        const currencySymbol = quotation.currency === 'GHS' ? 'GHS' : (quotation.currency === 'USD' ? '$' : quotation.currency);
+        const currencySymbolEmail = quotation.currency === 'GHS' ? 'GH₵' : (quotation.currency === 'USD' ? '$' : quotation.currency);
         const validUntilDate = quotation.validUntil 
           ? new Date(quotation.validUntil).toLocaleDateString('en-GB', { 
               day: '2-digit', 
@@ -170,7 +171,7 @@ We wanted to follow up on your quotation inquiry for ${quotation.subject || 'you
 Quotation Details:
 - Quotation Number: ${quotation.number}
 - Subject: ${quotation.subject || 'N/A'}
-- Total Amount: ${currencySymbol}${quotation.total.toFixed(2)}
+- Total Amount: ${currencySymbolEmail}${quotation.total.toFixed(2)}
 ${validUntilDate ? `- Valid Until: ${validUntilDate}` : ''}
 
 We're reaching out to see if you'd like to proceed with this quotation. We're here to answer any questions you may have and help you move forward.
@@ -180,9 +181,9 @@ If you're ready to proceed, please let us know and we'll be happy to assist you 
 We look forward to hearing from you and the opportunity to serve you.
 
 Best regards,
-${companyName || 'AdPools Group'}`;
+${companyName || 'Team'}`;
 
-        const smsMessage = `Dear ${customerName}, We're following up on your quotation ${quotation.number} (${currencySymbol}${quotation.total.toFixed(2)}). Would you like to proceed? ${companyName || 'AdPools Group'}`;
+        const smsMessage = `Dear ${customerName}, We're following up on your quotation ${quotation.number} (${currencySymbol} ${quotation.total.toFixed(2)}). Would you like to proceed? ${companyName || ''}`;
 
         // Send notifications
         const results = await Promise.allSettled([

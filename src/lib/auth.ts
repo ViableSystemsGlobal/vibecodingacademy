@@ -49,11 +49,16 @@ export const authOptions: NextAuthOptions = {
               data: { lastLoginAt: new Date() }
             })
 
+            // Note: Login notifications and history are handled by the custom login API
+            // This NextAuth authorize function doesn't have access to request headers
+            // So we rely on the custom login API to handle notifications
+
             return {
               id: user.id,
               email: user.email,
               name: user.name || "User",
               role: user.role,
+              image: user.image || null,
             }
           }
 
@@ -74,11 +79,12 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id
         token.role = user.role
+        token.image = (user as any).image || null
         return token
       }
 
-      // On subsequent requests, refresh role from database
-      // This ensures role changes are reflected without requiring re-login
+      // On subsequent requests, refresh role and image from database
+      // This ensures role and image changes are reflected without requiring re-login
       if (token?.id) {
         try {
           // First, check UserRoleAssignment to get the primary role
@@ -117,9 +123,13 @@ export const authOptions: NextAuthOptions = {
             console.log(`🔍 JWT: No role assignments found, falling back to User.role`)
             const dbUser = await prisma.user.findUnique({
               where: { id: token.id as string },
-              select: { role: true }
+              select: { role: true, image: true }
             })
             currentRole = dbUser?.role || null
+            // Update image from database
+            if (dbUser) {
+              token.image = dbUser.image || null
+            }
             console.log(`🔍 JWT: User.role fallback: ${currentRole}`)
           }
           
@@ -135,6 +145,17 @@ export const authOptions: NextAuthOptions = {
           } else {
             console.warn(`⚠️ JWT: No role found for user ${token.id}, keeping existing role: ${token.role}`)
           }
+
+          // Refresh image from database if not already set
+          if (!token.image) {
+            const dbUser = await prisma.user.findUnique({
+              where: { id: token.id as string },
+              select: { image: true }
+            })
+            if (dbUser) {
+              token.image = dbUser.image || null
+            }
+          }
         } catch (error) {
           console.error("❌ JWT: Error refreshing user role:", error)
           // Continue with existing token role on error
@@ -147,6 +168,7 @@ export const authOptions: NextAuthOptions = {
       if (token && session.user) {
         session.user.id = token.id as string
         session.user.role = token.role as string
+        ;(session.user as any).image = token.image as string | null
       }
       return session
     }

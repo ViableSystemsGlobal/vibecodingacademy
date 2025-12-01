@@ -376,8 +376,8 @@ export default function ViewQuotationPage() {
     <>
       <div className="p-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             <Button
               variant="ghost"
               size="sm"
@@ -387,11 +387,11 @@ export default function ViewQuotationPage() {
               Back to Quotations
             </Button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Quotation Details</h1>
-              <p className="text-gray-600">{quotation.number}</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Quotation Details</h1>
+              <p className="text-sm sm:text-base text-gray-600">{quotation.number}</p>
             </div>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2 sm:space-x-3 w-full sm:w-auto">
             <Button
               variant="outline"
               onClick={() => router.push(`/quotations/${quotation.id}/edit`)}
@@ -462,7 +462,7 @@ export default function ViewQuotationPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Quotation Preview */}
@@ -490,7 +490,7 @@ export default function ViewQuotationPage() {
                 </div>
 
                 {/* Document Info */}
-                <div className="grid grid-cols-3 gap-6 mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-8">
                   <div>
                     <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">QUOTATION</div>
                     <div className="font-semibold">{quotation.number}</div>
@@ -518,38 +518,38 @@ export default function ViewQuotationPage() {
                 </div>
 
                 {/* Line Items */}
-                <div className="mb-8">
-                  <table className="w-full">
+                <div className="mb-8 overflow-x-auto -mx-6 sm:mx-0 px-6 sm:px-0">
+                  <table className="w-full min-w-[600px] sm:min-w-0">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-2 font-medium text-gray-900">Description</th>
-                        <th className="text-center py-2 font-medium text-gray-900">Qty</th>
-                        <th className="text-right py-2 font-medium text-gray-900">Unit Price</th>
-                        <th className="text-right py-2 font-medium text-gray-900">Discount</th>
-                        <th className="text-right py-2 font-medium text-gray-900">Total</th>
+                        <th className="text-left py-2 px-2 sm:px-4 font-medium text-gray-900">Description</th>
+                        <th className="text-center py-2 px-2 sm:px-4 font-medium text-gray-900">Qty</th>
+                        <th className="text-right py-2 px-2 sm:px-4 font-medium text-gray-900 hidden md:table-cell">Unit Price</th>
+                        <th className="text-right py-2 px-2 sm:px-4 font-medium text-gray-900 hidden lg:table-cell">Discount</th>
+                        <th className="text-right py-2 px-2 sm:px-4 font-medium text-gray-900">Total</th>
                       </tr>
                     </thead>
                     <tbody>
                       {quotation.lines.map((line, index) => (
                         <tr key={line.id} className="border-b">
-                          <td className="py-3">
-                            <div className="flex items-center space-x-3">
+                          <td className="py-3 px-2 sm:px-4">
+                            <div className="flex items-center space-x-2 sm:space-x-3">
                               <ProductImage images={line.images} name={line.productName || `Item ${index + 1}`} size="sm" />
-                              <div>
-                                <div className="font-medium">{line.productName || `Item ${index + 1}`}</div>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-medium break-words">{line.productName || `Item ${index + 1}`}</div>
                                 {line.sku && (
                                   <div className="text-sm text-gray-500">SKU: {line.sku}</div>
                                 )}
                                 {line.description && (
-                                  <div className="text-sm text-gray-600">{line.description}</div>
+                                  <div className="text-sm text-gray-600 break-words">{line.description}</div>
                                 )}
                               </div>
                             </div>
                           </td>
-                          <td className="text-center py-3">{line.quantity}</td>
-                          <td className="text-right py-3">{getCurrencySymbol(quotation.currency)}{line.unitPrice.toFixed(2)}</td>
-                          <td className="text-right py-3">{line.discount}%</td>
-                          <td className="text-right py-3 font-medium">{getCurrencySymbol(quotation.currency)}{(() => {
+                          <td className="text-center py-3 px-2 sm:px-4">{line.quantity}</td>
+                          <td className="text-right py-3 px-2 sm:px-4 hidden md:table-cell">{getCurrencySymbol(quotation.currency)}{line.unitPrice.toFixed(2)}</td>
+                          <td className="text-right py-3 px-2 sm:px-4 hidden lg:table-cell">{line.discount}%</td>
+                          <td className="text-right py-3 px-2 sm:px-4 font-medium">{getCurrencySymbol(quotation.currency)}{(() => {
                             // AMOUNT column should always show base amount (quantity × unit price × (1 - discount))
                             // Taxes are shown separately in the totals section below
                             const baseAmount = line.quantity * line.unitPrice * (1 - line.discount / 100);

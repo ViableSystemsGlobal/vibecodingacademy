@@ -54,9 +54,14 @@ export function GRNGenerationModal({ isOpen, onClose, products }: GRNGenerationM
       fetch('/api/suppliers').then(async (res) => {
         if (res.ok) {
           const data = await res.json();
-          setSuppliers(data || []);
+          // Ensure data is always an array
+          setSuppliers(Array.isArray(data) ? data : []);
+        } else {
+          setSuppliers([]);
         }
-      }).catch(() => {});
+      }).catch(() => {
+        setSuppliers([]);
+      });
     }
   }, [isOpen]);
 
@@ -295,13 +300,13 @@ export function GRNGenerationModal({ isOpen, onClose, products }: GRNGenerationM
                 value={formData.supplierId}
                 onChange={(e) => {
                   const id = e.target.value;
-                  const name = suppliers.find(s => s.id === id)?.name || '';
+                  const name = (Array.isArray(suppliers) ? suppliers.find(s => s.id === id)?.name : '') || '';
                   setFormData(prev => ({ ...prev, supplierId: id, supplierName: name }));
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select supplier</option>
-                {suppliers.map(s => (
+                {Array.isArray(suppliers) && suppliers.map(s => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>

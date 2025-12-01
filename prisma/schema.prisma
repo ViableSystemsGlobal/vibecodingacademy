@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -22,6 +22,16 @@ model User {
   createdAt                  DateTime                   @default(now())
   updatedAt                  DateTime                   @updatedAt
   password                   String?
+  // 2FA Settings
+  otpEnabled                 Boolean                    @default(false)
+  otpMethod                  OtpMethod?                // Deprecated: Use otpMethods instead
+  otpMethods                 Json?                     @default("[]") // Array of OtpMethod: ["EMAIL", "SMS"]
+  // Login Notification Settings
+  loginNotificationsEmail    Boolean                    @default(true)
+  loginNotificationsSMS      Boolean                    @default(true)
+  newDeviceAlerts            Boolean                    @default(true)
+  loginHistory               LoginHistory[]             @relation("UserLoginHistory")
+  otpCodes                   OtpCode[]                  @relation("UserOtpCodes")
   userRoles                  UserRoleAssignment[]
   accounts                   Account[]
   agent                      Agent?
@@ -180,6 +190,17 @@ model Category {
   @@map("categories")
 }
 
+model Brand {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+
+  @@map("brands")
+}
+
 model EcommerceCategoryConfig {
   id                 String   @id @default(cuid())
   categoryId         String   @unique
@@ -205,6 +226,7 @@ model Product {
   sku                     String?                  @unique
   name                    String
   description             String?
+  brandId                 String?
   images                  String?
   attributes              Json?
   uomBase                 String                   @default("pcs")
@@ -243,6 +265,7 @@ model Product {
   documents               ProductDocument[]
   suppliers               ProductSupplier[]
   category                Category                 @relation(fields: [categoryId], references: [id])
+  brand                   Brand?                   @relation(fields: [brandId], references: [id])
   proformaLines           ProformaLine[]
   quotationLines          QuotationLine[]
   resourceRequestItems    ResourceRequestItem[]
@@ -1621,6 +1644,8 @@ model Order {
   notes            String?
   deliveryAddress  String?
   deliveryDate     DateTime?
+  waybillNumber    String?
+  waybillImage    String?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   createdBy        String
@@ -1743,6 +1768,8 @@ model SalesOrder {
   deliveryDate    DateTime?
   deliveryNotes   String?
   deliveredAt     DateTime?
+  waybillNumber   String?
+  waybillImage    String?
   notes           String?
   ownerId         String
   createdAt       DateTime         @default(now())
@@ -2940,4 +2967,41 @@ enum EcommercePaymentStatus {
   FAILED
   REFUNDED
   PARTIALLY_REFUNDED
+}
+
+enum OtpMethod {
+  EMAIL
+  SMS
+}
+
+model LoginHistory {
+  id            String   @id @default(cuid())
+  userId        String
+  ipAddress     String?
+  userAgent     String?
+  device        String?
+  location      String?
+  isSuccessful  Boolean  @default(true)
+  failureReason String?
+  createdAt     DateTime @default(now())
+  user          User     @relation("UserLoginHistory", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("login_history")
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  userId    String
+  code      String
+  method    OtpMethod
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation("UserOtpCodes", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, code, used])
+  @@index([expiresAt])
+  @@map("otp_codes")
 }

@@ -345,13 +345,17 @@ export default function CreateInvoicePage() {
 
   const loadAddresses = async (accountId: string) => {
     try {
+      console.log('📍 Loading addresses for account:', accountId);
       setIsLoadingAddresses(true);
       const response = await fetch(`/api/addresses?accountId=${accountId}`, {
         credentials: 'include',
       });
       
+      console.log('📍 Address API response status:', response.status);
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('📍 Addresses loaded:', data.addresses);
         setAddresses(data.addresses || []);
         
         // Auto-select default addresses
@@ -362,16 +366,22 @@ export default function CreateInvoicePage() {
           (addr.type === 'SHIPPING' || addr.type === 'BOTH') && addr.isDefault
         );
         
-        if (defaultBilling) setSelectedBillingAddressId(defaultBilling.id);
-        if (defaultShipping) setSelectedShippingAddressId(defaultShipping.id);
+        if (defaultBilling) {
+          console.log('📍 Auto-selected default billing address:', defaultBilling.id);
+          setSelectedBillingAddressId(defaultBilling.id);
+        }
+        if (defaultShipping) {
+          console.log('📍 Auto-selected default shipping address:', defaultShipping.id);
+          setSelectedShippingAddressId(defaultShipping.id);
+        }
         
         console.log('✅ Loaded addresses:', data.addresses?.length || 0);
       } else {
-        console.error('Failed to load addresses');
+        console.error('❌ Failed to load addresses, status:', response.status);
         setAddresses([]);
       }
     } catch (error) {
-      console.error('Error loading addresses:', error);
+      console.error('❌ Error loading addresses:', error);
       setAddresses([]);
     } finally {
       setIsLoadingAddresses(false);
@@ -722,20 +732,20 @@ export default function CreateInvoicePage() {
     <>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-2 sm:space-x-4 w-full sm:w-auto">
             <Link href="/invoices">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+                <span className="hidden sm:inline">Back</span>
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Create Invoice</h1>
-              <p className="text-gray-600">Create a new invoice for your customer</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Create Invoice</h1>
+              <p className="text-sm sm:text-base text-gray-600">Create a new invoice for your customer</p>
             </div>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2 sm:space-x-3 w-full sm:w-auto">
             <Button
               variant="outline"
               onClick={() => handleSave(false)}
@@ -759,7 +769,7 @@ export default function CreateInvoicePage() {
         </div>
 
         {/* STRIPE-STYLE SPLIT VIEW */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           
           {/* LEFT PANEL - FORM */}
           <div className="space-y-6">
@@ -776,8 +786,32 @@ export default function CreateInvoicePage() {
                 <CustomerSearch
                   value={customerId}
                   onChange={(id, customer) => {
+                    console.log('👤 Customer selected in invoice:', { id, customer });
+                    if (customer) {
                     setCustomerId(id);
                     setSelectedCustomer(customer);
+                      setCustomerType(customer.type);
+                      
+                      // Load addresses if customer is an account
+                      if (customer.type === 'account') {
+                        console.log('📍 Loading addresses for account:', customer.id);
+                        loadAddresses(customer.id);
+                      } else {
+                        // Clear addresses for non-account customers
+                        console.log('🔄 Clearing addresses for non-account customer');
+                        setAddresses([]);
+                        setSelectedBillingAddressId("");
+                        setSelectedShippingAddressId("");
+                      }
+                    } else {
+                      // Customer cleared
+                      console.log('❌ Customer cleared in invoice');
+                      setCustomerId("");
+                      setSelectedCustomer(null);
+                      setAddresses([]);
+                      setSelectedBillingAddressId("");
+                      setSelectedShippingAddressId("");
+                    }
                   }}
                   placeholder="Search customers, distributors, or leads..."
                   label="Customer"

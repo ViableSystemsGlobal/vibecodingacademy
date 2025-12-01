@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
  */
 export async function getCompanyName(): Promise<string> {
   try {
-    const setting = await (prisma as any).setting.findUnique({
+    const setting = await prisma.systemSettings.findUnique({
       where: { key: 'company_name' }
     });
     

@@ -518,35 +518,35 @@ export default function WarehouseDetailsPage() {
       <div className="p-6">
         <div className="space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               <Button 
                 onClick={() => router.push('/warehouses')} 
                 variant="outline" 
                 size="sm"
               >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+                <ArrowLeft className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Back</span>
               </Button>
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2 sm:space-x-4">
                 {warehouse.image ? (
                   <img 
                     src={`/${warehouse.image}`} 
                     alt={warehouse.name}
-                    className="w-16 h-16 rounded-lg object-cover border border-gray-200"
+                    className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg object-cover border border-gray-200"
                   />
                 ) : (
-                  <div className="w-16 h-16 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
-                    <Building className="h-8 w-8 text-gray-400" />
+                  <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                    <Building className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400" />
                   </div>
                 )}
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">{warehouse.name}</h1>
-                  <p className="text-gray-600">Warehouse Details & Inventory</p>
+                  <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{warehouse.name}</h1>
+                  <p className="text-sm sm:text-base text-gray-600">Warehouse Details & Inventory</p>
                 </div>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2 sm:space-x-2 w-full sm:w-auto">
               <CurrencySelector 
                 selectedCurrency={selectedCurrency}
                 onCurrencyChange={handleCurrencyChange}
@@ -564,7 +564,7 @@ export default function WarehouseDetailsPage() {
           </div>
 
           {/* AI Recommendation and Metrics Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
             {/* AI Recommendation Card - Left Side */}
             <div className="lg:col-span-2">
               <AIRecommendationCard
@@ -576,7 +576,7 @@ export default function WarehouseDetailsPage() {
             </div>
 
             {/* Metrics Cards - Right Side */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 gap-3 sm:gap-4">
               <Card className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -642,7 +642,7 @@ export default function WarehouseDetailsPage() {
               <Building className="h-4 w-4 text-blue-600" />
               <h3 className="text-sm font-semibold text-gray-900">Warehouse Details</h3>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
               {warehouse.address && (
                 <div>
                   <label className="text-xs font-medium text-gray-600">Address</label>
@@ -695,45 +695,48 @@ export default function WarehouseDetailsPage() {
           {/* Tabbed Content */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-0">
+                <div className="flex overflow-x-auto space-x-1 bg-gray-100 p-1 rounded-lg scrollbar-hide">
                   <button
                     onClick={() => setActiveTab('products')}
-                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                       activeTab === 'products'
                         ? 'bg-white text-gray-900 shadow-sm'
                         : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    <Package className="h-4 w-4 inline mr-2" />
-                    Products in Warehouse
+                    <Package className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+                    <span className="hidden sm:inline">Products in Warehouse</span>
+                    <span className="sm:hidden">Products</span>
                   </button>
                   <button
                     onClick={() => setActiveTab('movements')}
-                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                       activeTab === 'movements'
                         ? 'bg-white text-gray-900 shadow-sm'
                         : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    <TrendingUp className="h-4 w-4 inline mr-2" />
-                    Stock Movements
+                    <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+                    <span className="hidden sm:inline">Stock Movements</span>
+                    <span className="sm:hidden">Movements</span>
                   </button>
                 </div>
-                <div className="flex items-center space-x-4">
-                  <div className="relative">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:space-x-4">
+                  <div className="relative flex-1 sm:flex-initial">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
                       placeholder={activeTab === 'products' ? "Search products..." : "Search movements..."}
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 w-64"
+                      className="pl-10 w-full sm:w-64"
                     />
                   </div>
                   <Button 
                     variant="outline" 
                     size="sm"
                     onClick={() => setIsFiltersOpen(true)}
+                    className="w-full sm:w-auto"
                   >
                     <Filter className="h-4 w-4 mr-2" />
                     Filters
@@ -758,46 +761,48 @@ export default function WarehouseDetailsPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
+                  <div className="overflow-x-auto -mx-6 sm:mx-0 px-6 sm:px-0">
+                    <table className="w-full min-w-[800px] sm:min-w-0">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-left py-3 px-4 font-medium text-gray-900">Product</th>
-                          <th className="text-left py-3 px-4 font-medium text-gray-900">SKU</th>
-                          <th className="text-left py-3 px-4 font-medium text-gray-900">Category</th>
-                          <th className="text-left py-3 px-4 font-medium text-gray-900">Quantity</th>
-                          <th className="text-left py-3 px-4 font-medium text-gray-900">Cost Price</th>
-                          <th className="text-left py-3 px-4 font-medium text-gray-900">Total Value</th>
-                          <th className="text-left py-3 px-4 font-medium text-gray-900">Actions</th>
+                          <th className="text-left py-3 px-2 sm:px-4 font-medium text-gray-900">Product</th>
+                          <th className="text-left py-3 px-2 sm:px-4 font-medium text-gray-900 hidden md:table-cell">SKU</th>
+                          <th className="text-left py-3 px-2 sm:px-4 font-medium text-gray-900 hidden lg:table-cell">Category</th>
+                          <th className="text-left py-3 px-2 sm:px-4 font-medium text-gray-900">Quantity</th>
+                          <th className="text-left py-3 px-2 sm:px-4 font-medium text-gray-900 hidden md:table-cell">Cost Price</th>
+                          <th className="text-left py-3 px-2 sm:px-4 font-medium text-gray-900">Total Value</th>
+                          <th className="text-left py-3 px-2 sm:px-4 font-medium text-gray-900">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {paginatedProducts.map((product) => (
                           <tr key={product.id} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-4">
+                            <td className="py-3 px-2 sm:px-4">
                               <div className="flex items-center">
-                                <div className="mr-3">
+                                <div className="mr-2 sm:mr-3">
                                   <ProductImage product={product} size="sm" />
                                 </div>
-                                <div>
-                                  <div className="font-medium text-gray-900">{product.name}</div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-medium text-gray-900 break-words">{product.name}</div>
+                                  <div className="md:hidden text-xs text-gray-500 mt-1">SKU: {product.sku}</div>
+                                  <div className="lg:hidden text-xs text-gray-500 mt-1">{product.category.name}</div>
                                 </div>
                               </div>
                             </td>
-                            <td className="py-3 px-4">
+                            <td className="py-3 px-2 sm:px-4 hidden md:table-cell">
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
                                 {product.sku}
                               </span>
                             </td>
-                            <td className="py-3 px-4">
+                            <td className="py-3 px-2 sm:px-4 hidden lg:table-cell">
                               <span className="text-sm text-gray-600">{product.category.name}</span>
                             </td>
-                            <td className="py-3 px-4">
+                            <td className="py-3 px-2 sm:px-4">
                               <span className="text-sm font-medium text-gray-900">
                                 {product.stockItems?.[0]?.quantity || 0}
                               </span>
                             </td>
-                            <td className="py-3 px-4">
+                            <td className="py-3 px-2 sm:px-4 hidden md:table-cell">
                               <div className="text-sm text-gray-900">
                                 {isConverting ? (
                                   <div className="flex items-center">
@@ -812,7 +817,7 @@ export default function WarehouseDetailsPage() {
                                 )}
                               </div>
                             </td>
-                            <td className="py-3 px-4">
+                            <td className="py-3 px-2 sm:px-4">
                               <div className="text-sm font-medium text-gray-900">
                                 {isConverting ? (
                                   <div className="flex items-center">
@@ -827,7 +832,7 @@ export default function WarehouseDetailsPage() {
                                 )}
                               </div>
                             </td>
-                            <td className="py-3 px-4">
+                            <td className="py-3 px-2 sm:px-4">
                               <DropdownMenu
                                 trigger={
                                   <Button variant="ghost" className="h-8 w-8 p-0">
@@ -859,8 +864,8 @@ export default function WarehouseDetailsPage() {
                     
                     {/* Pagination Controls for Products */}
                     {totalProductPages > 1 && (
-                      <div className="flex items-center justify-between px-4 py-3 border-t">
-                        <div className="flex items-center text-sm text-gray-700">
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t">
+                        <div className="flex items-center text-xs sm:text-sm text-gray-700">
                           Showing {startIndex + 1} to {Math.min(endIndex, filteredProducts.length)} of {filteredProducts.length} products
                         </div>
                         <div className="flex items-center space-x-2">

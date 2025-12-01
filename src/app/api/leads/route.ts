@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { NotificationService, SystemNotificationTriggers } from '@/lib/notification-service';
 import { parseTableQuery, buildTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
 import { logAuditEvent } from '@/lib/audit-log';
+import { getCompanyNameFromSystemSettings } from '@/lib/company-settings';
 
 export async function GET(request: NextRequest) {
   try {
@@ -217,43 +218,7 @@ export async function POST(request: NextRequest) {
 
     console.log('Lead created successfully:', lead);
 
-    // Log activity
-    try {
-      await prisma.activity.create({
-        data: {
-          entityType: 'Lead',
-          entityId: lead.id,
-          action: 'created',
-          details: { lead: { firstName, lastName, email, company } },
-          userId: userId,
-        },
-      });
-      console.log('Activity logged successfully');
-    } catch (activityError) {
-      console.error('Error logging activity:', activityError);
-      // Don't fail the request if activity logging fails
-    }
-
-    // Log audit trail
-    await logAuditEvent({
-      userId,
-      action: 'lead.created',
-      resource: 'Lead',
-      resourceId: lead.id,
-      newData: {
-        firstName,
-        lastName,
-        email,
-        phone,
-        company,
-        source,
-        status,
-      },
-      ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
-      userAgent: request.headers.get('user-agent') || null,
-    });
-
-    // Parse JSON fields
+    // Parse JSON fields for immediate response
     const parsedLead = {
       ...lead,
       assignedTo: (lead as any).assignedTo ? (() => {
@@ -274,56 +239,105 @@ export async function POST(request: NextRequest) {
       })() : null,
     };
 
-    // Create a task automatically if follow-up date is provided
-    if (followUpDate) {
+    // Return response immediately - don't wait for background operations
+    // This makes the API much faster for the user
+    const response = NextResponse.json(parsedLead, { status: 201 });
+
+    // Run background operations asynchronously (fire and forget)
+    // These don't block the response, making the API much faster
+    (async () => {
       try {
-        const followUpDateObj = new Date(followUpDate);
-        const taskTitle = `Follow-up with ${firstName} ${lastName}`;
-        const taskDescription = `Follow-up task for ${company || 'lead'}. ${notes ? `Notes: ${notes}` : ''}`;
-        
-        // Determine assignee - use first assigned user or the lead owner
-        let taskAssignee = userId; // Default to lead owner
-        if (parsedLead.assignedTo && Array.isArray(parsedLead.assignedTo) && parsedLead.assignedTo.length > 0) {
-          const firstAssignedUser = parsedLead.assignedTo[0];
-          taskAssignee = typeof firstAssignedUser === 'string' ? firstAssignedUser : firstAssignedUser.id;
+        // Log activity (non-blocking)
+        try {
+          await prisma.activity.create({
+            data: {
+              entityType: 'Lead',
+              entityId: lead.id,
+              action: 'created',
+              details: { lead: { firstName, lastName, email, company } },
+              userId: userId,
+            },
+          });
+          console.log('Activity logged successfully');
+        } catch (activityError) {
+          console.error('Error logging activity:', activityError);
         }
 
-        // Create the task
-        await (prisma as any).task.create({
-          data: {
-            title: taskTitle,
-            description: taskDescription,
-            priority: 'MEDIUM',
-            dueDate: followUpDateObj,
-            assignedTo: taskAssignee,
-            createdBy: userId,
-            leadId: lead.id,
-            status: 'PENDING',
-            assignmentType: 'INDIVIDUAL',
-            assignees: {
-              create: [{
-                userId: taskAssignee,
-                status: 'PENDING',
-              }],
+        // Log audit trail (non-blocking)
+        try {
+          await logAuditEvent({
+            userId,
+            action: 'lead.created',
+            resource: 'Lead',
+            resourceId: lead.id,
+            newData: {
+              firstName,
+              lastName,
+              email,
+              phone,
+              company,
+              source,
+              status,
             },
-          },
-        });
-        console.log('✅ Follow-up task created automatically for lead:', lead.id);
-      } catch (taskError) {
-        console.error('Error creating follow-up task:', taskError);
-        // Don't fail the lead creation if task creation fails
+            ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+            userAgent: request.headers.get('user-agent') || null,
+          });
+        } catch (auditError) {
+          console.error('Error logging audit:', auditError);
+        }
+
+        // Create a task automatically if follow-up date is provided (non-blocking)
+        if (followUpDate) {
+          try {
+            const followUpDateObj = new Date(followUpDate);
+            const taskTitle = `Follow-up with ${firstName} ${lastName}`;
+            const taskDescription = `Follow-up task for ${company || 'lead'}. ${notes ? `Notes: ${notes}` : ''}`;
+            
+            // Determine assignee - use first assigned user or the lead owner
+            let taskAssignee = userId; // Default to lead owner
+            if (parsedLead.assignedTo && Array.isArray(parsedLead.assignedTo) && parsedLead.assignedTo.length > 0) {
+              const firstAssignedUser = parsedLead.assignedTo[0];
+              taskAssignee = typeof firstAssignedUser === 'string' ? firstAssignedUser : firstAssignedUser.id;
+            }
+
+            // Create the task
+            await (prisma as any).task.create({
+              data: {
+                title: taskTitle,
+                description: taskDescription,
+                priority: 'MEDIUM',
+                dueDate: followUpDateObj,
+                assignedTo: taskAssignee,
+                createdBy: userId,
+                leadId: lead.id,
+                status: 'PENDING',
+                assignmentType: 'INDIVIDUAL',
+                assignees: {
+                  create: [{
+                    userId: taskAssignee,
+                    status: 'PENDING',
+                  }],
+                },
+              },
+            });
+            console.log('✅ Follow-up task created automatically for lead:', lead.id);
+          } catch (taskError) {
+            console.error('Error creating follow-up task:', taskError);
+          }
+        }
+
+        // Send notifications for lead creation (non-blocking)
+        try {
+          await sendLeadNotifications(lead, parsedLead, userId);
+        } catch (notificationError) {
+          console.error('Error sending lead notifications:', notificationError);
+        }
+      } catch (error) {
+        console.error('Error in background operations:', error);
       }
-    }
+    })();
 
-    // Send notifications for lead creation
-    try {
-      await sendLeadNotifications(lead, parsedLead, userId);
-    } catch (notificationError) {
-      console.error('Error sending lead notifications:', notificationError);
-      // Don't fail the request if notifications fail
-    }
-
-    return NextResponse.json(parsedLead, { status: 201 });
+    return response;
   } catch (error) {
     console.error('Error creating lead:', error);
     console.error('Error details:', {
@@ -436,7 +450,7 @@ async function sendLeadNotifications(lead: any, parsedLead: any, creatorId: stri
             })
           : null;
 
-        const companyName = 'AD Pools Group'; // This could be made configurable
+        const companyName = await getCompanyNameFromSystemSettings();
         const trigger = SystemNotificationTriggers.leadWelcome(
           leadName,
           companyName,

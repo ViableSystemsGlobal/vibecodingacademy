@@ -31,6 +31,8 @@ import { DataTable } from "@/components/ui/data-table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useTheme } from "@/contexts/theme-context";
 import { useToast } from "@/contexts/toast-context";
+import { useAbilities } from "@/hooks/use-abilities-new";
+import { useSession } from "next-auth/react";
 
 interface Product {
   id: string;
@@ -93,6 +95,13 @@ function StockPageContent() {
   const { getThemeClasses, getThemeColor } = useTheme();
   const theme = getThemeClasses();
   const { success } = useToast();
+  const { data: session } = useSession();
+  const { hasAbility } = useAbilities();
+  
+  // Check if user can view cost prices
+  const canViewCost = session?.user?.role === 'SUPER_ADMIN' || 
+                      session?.user?.role === 'ADMIN' || 
+                      hasAbility('stock', 'view_cost');
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
@@ -714,18 +723,49 @@ function StockPageContent() {
                   ),
                   exportFormat: (product) => (product.price || 0).toString()
                 },
-                {
-                  key: 'costPrice',
-                  label: 'Cost Price',
-                  sortable: true,
-                  exportable: true,
-                  render: (product) => (
-                    <div className="text-sm text-gray-600">
-                      {formatCurrencyWithSymbol(product.cost || 0, currency, product.originalCostCurrency || product.importCurrency || 'USD')}
-                    </div>
-                  ),
-                  exportFormat: (product) => (product.cost || 0).toString()
-                },
+                ...(canViewCost ? [
+                  {
+                    key: 'costPrice',
+                    label: 'Cost Price',
+                    sortable: true,
+                    exportable: true,
+                    render: (product) => (
+                      <div className="text-sm text-gray-600">
+                        {formatCurrencyWithSymbol(product.cost || 0, currency, product.originalCostCurrency || product.importCurrency || 'USD')}
+                      </div>
+                    ),
+                    exportFormat: (product) => (product.cost || 0).toString()
+                  },
+                  {
+                    key: 'costValue',
+                    label: 'Cost Value',
+                    sortable: true,
+                    exportable: true,
+                    render: (product) => {
+                      // Use totalValue from API if available, otherwise calculate
+                      const stockValue = product.totalValue ?? product.stockItems?.filter((item: any) => item.warehouseId !== null).reduce((sum: number, item: any) => {
+                        const costInUSD = item.averageCost || 0;
+                        const quantity = item.quantity || 0;
+                        const usdToGhsRate = exchangeRate || 11.0;
+                        const valueInGHS = (costInUSD * quantity) * usdToGhsRate;
+                        return sum + valueInGHS;
+                      }, 0) || 0;
+                      return (
+                        <div className="text-sm text-gray-600">
+                          {formatCurrency(stockValue, 'GHS')}
+                        </div>
+                      );
+                    },
+                    exportFormat: (product) => {
+                      const stockValue = product.totalValue ?? product.stockItems?.filter((item: any) => item.warehouseId !== null).reduce((sum: number, item: any) => {
+                        const costInUSD = item.averageCost || 0;
+                        const quantity = item.quantity || 0;
+                        return sum + (costInUSD * quantity);
+                      }, 0) || 0;
+                      return stockValue.toString();
+                    }
+                  }
+                ] : []),
                 {
                   key: 'warehouse',
                   label: 'Warehouse',
@@ -749,35 +789,6 @@ function StockPageContent() {
                   exportFormat: (product) => {
                     const warehouseNames = product.stockItems?.map(item => item.warehouse?.name).filter(Boolean) || [];
                     return warehouseNames.join(', ') || 'No Warehouse';
-                  }
-                },
-                {
-                  key: 'costValue',
-                  label: 'Cost Value',
-                  sortable: true,
-                  exportable: true,
-                  render: (product) => {
-                    // Use totalValue from API if available, otherwise calculate
-                    const stockValue = product.totalValue ?? product.stockItems?.filter(item => item.warehouseId !== null).reduce((sum, item) => {
-                      const costInUSD = item.averageCost || 0;
-                      const quantity = item.quantity || 0;
-                      const usdToGhsRate = exchangeRate || 11.0;
-                      const valueInGHS = (costInUSD * quantity) * usdToGhsRate;
-                      return sum + valueInGHS;
-                    }, 0) || 0;
-                    return (
-                      <div className="text-sm text-gray-600">
-                        {formatCurrency(stockValue, 'GHS')}
-                      </div>
-                    );
-                  },
-                  exportFormat: (product) => {
-                    const stockValue = product.totalValue ?? product.stockItems?.filter(item => item.warehouseId !== null).reduce((sum, item) => {
-                      const costInUSD = item.averageCost || 0;
-                      const quantity = item.quantity || 0;
-                      return sum + (costInUSD * quantity);
-                    }, 0) || 0;
-                    return stockValue.toString();
                   }
                 },
                 {

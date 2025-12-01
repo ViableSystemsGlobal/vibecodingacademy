@@ -17,14 +17,30 @@ export function InitialLoader() {
   useEffect(() => {
     const fetchCompanySettings = async () => {
       try {
-        const response = await fetch('/api/settings/company');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.favicon) {
-            setCompanyLogo(data.favicon);
+        // Try to get logo from branding API first (public endpoint)
+        const brandingResponse = await fetch('/api/public/branding');
+        if (brandingResponse.ok) {
+          const brandingData = await brandingResponse.json();
+          // Use companyLogo if available, otherwise fall back to favicon
+          if (brandingData.companyLogo) {
+            setCompanyLogo(brandingData.companyLogo);
+          } else if (brandingData.favicon) {
+            setCompanyLogo(brandingData.favicon);
           }
-          if (data.companyName) {
-            setCompanyName(data.companyName);
+          if (brandingData.companyName) {
+            setCompanyName(brandingData.companyName);
+          }
+        } else {
+          // Fallback to company settings API
+          const response = await fetch('/api/settings/company');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.favicon) {
+              setCompanyLogo(data.favicon);
+            }
+            if (data.companyName) {
+              setCompanyName(data.companyName);
+            }
           }
         }
       } catch (error) {
@@ -63,8 +79,8 @@ export function InitialLoader() {
       style={{ pointerEvents: isLoading ? 'auto' : 'none' }}
     >
       {/* Logo */}
-      <div className="mb-12 flex items-center justify-center">
-        {companyLogo ? (
+      {companyLogo && (
+        <div className="mb-12 flex items-center justify-center">
           <div className="relative w-80 h-40">
             <Image
               src={companyLogo}
@@ -79,12 +95,8 @@ export function InitialLoader() {
               style={{ opacity: 0, transition: 'opacity 0.3s ease-in-out' }}
             />
           </div>
-        ) : (
-          <div className="text-4xl font-bold text-gray-800">
-            {companyName}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Progress Bar */}
       <div className="w-80 h-1 bg-gray-200 rounded-full overflow-hidden">

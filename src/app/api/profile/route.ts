@@ -7,35 +7,113 @@ import bcrypt from "bcryptjs";
 // GET /api/profile - Get current user's profile
 export async function GET(request: NextRequest) {
   try {
+    console.log('🔍 Profile API: Starting request');
     const session = await getServerSession(authOptions);
+    console.log('🔍 Profile API: Session exists:', !!session);
+    console.log('🔍 Profile API: Session user exists:', !!session?.user);
+    
     if (!session?.user) {
+      console.error('❌ Profile API: No session or user');
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const userId = (session.user as any).id;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        lastLoginAt: true,
-      }
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    console.log('🔍 Profile API: User ID:', userId);
+    
+    if (!userId) {
+      console.error('❌ Profile API: No user ID in session');
+      console.log('🔍 Profile API: Session user object:', JSON.stringify(session.user, null, 2));
+      return NextResponse.json({ error: "User ID not found in session" }, { status: 401 });
     }
 
-    return NextResponse.json({ user });
-  } catch (error) {
-    console.error('Error fetching profile:', error);
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          image: true,
+          role: true,
+          isActive: true,
+          createdAt: true,
+          lastLoginAt: true,
+          otpEnabled: true,
+          otpMethod: true,
+          otpMethods: true,
+          loginNotificationsEmail: true,
+          loginNotificationsSMS: true,
+          newDeviceAlerts: true,
+        }
+      });
+
+      if (!user) {
+        return NextResponse.json({ error: "User not found" }, { status: 404 });
+      }
+
+      // Ensure all new fields have default values if they're null/undefined
+      // Handle otpMethods: if it exists and is an array, use it; otherwise migrate from otpMethod
+      let otpMethodsArray: string[] = [];
+      if (user.otpMethods && Array.isArray(user.otpMethods)) {
+        otpMethodsArray = user.otpMethods;
+      } else if (user.otpMethod) {
+        // Migrate from old single method
+        otpMethodsArray = [user.otpMethod];
+      }
+
+      const userWithDefaults = {
+        ...user,
+        otpEnabled: user.otpEnabled ?? false,
+        otpMethod: user.otpMethod || null,
+        otpMethods: otpMethodsArray,
+        loginNotificationsEmail: user.loginNotificationsEmail ?? true,
+        loginNotificationsSMS: user.loginNotificationsSMS ?? true,
+        newDeviceAlerts: user.newDeviceAlerts ?? true,
+      };
+
+      return NextResponse.json({ user: userWithDefaults });
+    } catch (dbError: any) {
+      console.error('Database error fetching profile:', dbError);
+      // If it's a field error, try fetching without the new fields
+      if (dbError.message?.includes('Unknown arg') || dbError.message?.includes('does not exist')) {
+        console.warn('New fields not found, fetching basic profile');
+        const basicUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            image: true,
+            role: true,
+            isActive: true,
+            createdAt: true,
+            lastLoginAt: true,
+          }
+        });
+        
+        if (basicUser) {
+          return NextResponse.json({
+            user: {
+              ...basicUser,
+              otpEnabled: false,
+              otpMethod: null,
+              loginNotificationsEmail: true,
+              loginNotificationsSMS: true,
+              newDeviceAlerts: true,
+            }
+          });
+        }
+      }
+      throw dbError;
+    }
+  } catch (error: any) {
+    console.error('❌ Profile API: Error fetching profile:', error);
+    console.error('❌ Profile API: Error message:', error?.message);
+    console.error('❌ Profile API: Error stack:', error?.stack);
     return NextResponse.json(
-      { error: "Failed to fetch profile" },
+      { error: error?.message || "Failed to fetch profile" },
       { status: 500 }
     );
   }
@@ -51,7 +129,7 @@ export async function PUT(request: NextRequest) {
 
     const userId = (session.user as any).id;
     const body = await request.json();
-    const { name, email, phone } = body;
+    const { name, email, phone, image, otpEnabled, otpMethod, otpMethods, loginNotificationsEmail, loginNotificationsSMS, newDeviceAlerts } = body;
 
     // Get current user data
     const currentUser = await prisma.user.findUnique({
@@ -76,21 +154,35 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // Update user (users can only update name, email, and phone - not role or isActive)
+    // Update user (users can update name, email, phone, image, and security settings - not role or isActive)
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
         ...(name !== undefined && { name }),
         ...(email !== undefined && { email }),
         ...(phone !== undefined && { phone }),
+        ...(image !== undefined && { image }),
+        ...(otpEnabled !== undefined && { otpEnabled }),
+        ...(otpMethod !== undefined && { otpMethod: otpMethod || null }), // Keep for backward compatibility
+        ...(otpMethods !== undefined && { otpMethods: Array.isArray(otpMethods) ? otpMethods : [] }),
+        ...(loginNotificationsEmail !== undefined && { loginNotificationsEmail }),
+        ...(loginNotificationsSMS !== undefined && { loginNotificationsSMS }),
+        ...(newDeviceAlerts !== undefined && { newDeviceAlerts }),
       },
       select: {
         id: true,
         email: true,
         name: true,
         phone: true,
+        image: true,
         role: true,
         isActive: true,
+        otpEnabled: true,
+        otpMethod: true,
+        otpMethods: true,
+        loginNotificationsEmail: true,
+        loginNotificationsSMS: true,
+        newDeviceAlerts: true,
       }
     });
 

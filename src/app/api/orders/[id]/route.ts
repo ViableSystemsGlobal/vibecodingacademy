@@ -264,7 +264,9 @@ export async function PUT(
       paymentMethod, 
       notes, 
       deliveryAddress, 
-      deliveryDate 
+      deliveryDate,
+      waybillNumber,
+      waybillImage
     } = body;
 
     // Validate required fields
@@ -284,6 +286,13 @@ export async function PUT(
     });
 
     if (existingOrder) {
+      // Prevent status change if order is already delivered
+      if (existingOrder.status === 'DELIVERED' && status !== 'DELIVERED') {
+        return NextResponse.json({ 
+          error: 'Cannot change status of a delivered order' 
+        }, { status: 400 });
+      }
+
       // Get old status for notifications
       const oldStatus = existingOrder.status;
 
@@ -306,6 +315,8 @@ export async function PUT(
           notes: notes !== undefined ? notes : undefined,
           deliveryAddress: deliveryAddress !== undefined ? deliveryAddress : undefined,
           deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
+          ...(waybillNumber !== undefined && { waybillNumber }),
+          ...(waybillImage !== undefined && { waybillImage }),
           updatedAt: new Date()
         },
         include: {
@@ -395,25 +406,11 @@ export async function PUT(
         try {
           const customer = updatedOrder.account || updatedOrder.distributor || updatedOrder.contact;
           if (customer) {
-            // Check if this order is related to an ecommerce order (via invoice if available)
+            // Check if this order is related to an ecommerce order
+            // Note: Order model doesn't have invoiceId, only SalesOrder does
             let isEcommerce = false;
-            if (updatedOrder.invoiceId) {
-              try {
-                const invoice = await prisma.invoice.findUnique({
-                  where: { id: updatedOrder.invoiceId },
-                  select: { number: true }
-                });
-                if (invoice) {
-                  const ecommerceOrder = await prisma.ecommerceOrder.findFirst({
-                    where: { orderNumber: invoice.number },
-                    select: { id: true }
-                  });
-                  isEcommerce = !!ecommerceOrder;
-                }
-              } catch (e) {
-                // Ignore errors checking for ecommerce order
-              }
-            }
+            // For Order model, we can't check for ecommerce orders directly
+            // This would need to be done via a different relationship if needed
 
             await sendOrderStatusChangeNotifications(
               updatedOrder,
@@ -447,6 +444,13 @@ export async function PUT(
         }, { status: 404 });
       }
 
+      // Prevent status change if order is already delivered
+      if (existingSalesOrder.status === 'DELIVERED' && status !== 'DELIVERED') {
+        return NextResponse.json({ 
+          error: 'Cannot change status of a delivered order' 
+        }, { status: 400 });
+      }
+
       // Get old status for notifications
       const oldStatus = existingSalesOrder.status;
       const invoiceId = existingSalesOrder.invoiceId;
@@ -470,6 +474,8 @@ export async function PUT(
           notes: notes !== undefined ? notes : undefined,
           deliveryAddress: deliveryAddress !== undefined ? deliveryAddress : undefined,
           deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
+          ...(waybillNumber !== undefined && { waybillNumber }),
+          ...(waybillImage !== undefined && { waybillImage }),
           updatedAt: new Date()
         },
         include: {
@@ -716,10 +722,10 @@ export async function DELETE(
       console.log('💳 Reversing credit usage...');
       
       const distributor = await prisma.distributor.findUnique({
-        where: { id: orderToDelete.distributorId }
+        where: { id: orderToDelete.distributorId || undefined }
       });
 
-      if (distributor) {
+      if (distributor && orderToDelete.distributorId) {
         const currentUsed = Number(distributor.currentCreditUsed || 0);
         const orderAmount = Number(orderToDelete.totalAmount);
         const newCreditUsed = Math.max(0, currentUsed - orderAmount);

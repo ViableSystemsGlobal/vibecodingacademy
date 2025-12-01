@@ -14,6 +14,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const accountId = searchParams.get('accountId');
 
+    console.log('📍 GET /api/addresses called with accountId:', accountId);
+
     if (!accountId) {
       return NextResponse.json(
         { error: 'Account ID is required' },
@@ -29,9 +31,11 @@ export async function GET(request: NextRequest) {
       ]
     });
 
+    console.log(`📍 Found ${addresses.length} addresses for account ${accountId}`);
+
     return NextResponse.json({ addresses });
   } catch (error) {
-    console.error('Error fetching addresses:', error);
+    console.error('❌ Error fetching addresses:', error);
     return NextResponse.json(
       { error: 'Failed to fetch addresses' },
       { status: 500 }

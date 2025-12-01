@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useToast } from "@/contexts/toast-context";
 import { useTheme } from "@/contexts/theme-context";
+import { useCompany } from "@/contexts/company-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -249,6 +250,7 @@ export default function CreateQuotationPage() {
   const { data: session } = useSession();
   const { success, error: showError } = useToast();
   const { getThemeClasses, getThemeColor, customLogo } = useTheme();
+  const { companyName } = useCompany();
   const theme = getThemeClasses();
   const themeColor = getThemeColor();
   
@@ -605,13 +607,17 @@ export default function CreateQuotationPage() {
 
   const loadAddresses = async (accountId: string) => {
     try {
+      console.log('📍 Loading addresses for account:', accountId);
       setIsLoadingAddresses(true);
       const response = await fetch(`/api/addresses?accountId=${accountId}`, {
         credentials: 'include',
       });
       
+      console.log('📍 Address API response status:', response.status);
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('📍 Addresses loaded:', data.addresses);
         setAddresses(data.addresses || []);
         
         // Auto-select default addresses
@@ -622,14 +628,20 @@ export default function CreateQuotationPage() {
           (addr.type === 'SHIPPING' || addr.type === 'BOTH') && addr.isDefault
         );
         
-        if (defaultBilling) setSelectedBillingAddressId(defaultBilling.id);
-        if (defaultShipping) setSelectedShippingAddressId(defaultShipping.id);
+        if (defaultBilling) {
+          console.log('📍 Auto-selected default billing address:', defaultBilling.id);
+          setSelectedBillingAddressId(defaultBilling.id);
+        }
+        if (defaultShipping) {
+          console.log('📍 Auto-selected default shipping address:', defaultShipping.id);
+          setSelectedShippingAddressId(defaultShipping.id);
+        }
       } else {
-        console.error('Failed to load addresses');
+        console.error('❌ Failed to load addresses, status:', response.status);
         setAddresses([]);
       }
     } catch (error) {
-      console.error('Error loading addresses:', error);
+      console.error('❌ Error loading addresses:', error);
       setAddresses([]);
     } finally {
       setIsLoadingAddresses(false);
@@ -1125,7 +1137,7 @@ Please find your quotation (No: ${quotation.number}, Subject: ${quotation.subjec
 View your quote here: ${pdfUrl}
 
 Best regards,
-AdPools Team`;
+${companyName || 'Team'}`;
 
         await fetch('/api/communication/email/send', {
           method: 'POST',
@@ -1148,7 +1160,7 @@ AdPools Team`;
 
       // Send SMS if customer has phone
       if (customerPhone) {
-        const smsMessage = `Dear ${customerName}, your quotation ${quotation.number} is ready. Total: GH₵${quotation.total.toFixed(2)}. View PDF: ${pdfUrl}`;
+        const smsMessage = `Dear ${customerName}, your quotation ${quotation.number} is ready. Total: GHS ${quotation.total.toFixed(2)}. View PDF: ${pdfUrl}`;
 
         await fetch('/api/communication/sms/send', {
           method: 'POST',
@@ -1246,34 +1258,38 @@ AdPools System`,
         billingAddressSnapshot = leadBillingAddress;
       }
 
+      const payload = {
+        subject,
+        accountId: selectedCustomer?.type === 'account' ? customerId : null,
+        distributorId: selectedCustomer?.type === 'distributor' ? customerId : null,
+        leadId: selectedCustomer?.type === 'lead' ? customerId : null,
+        customerType: selectedCustomer?.customerType || 'STANDARD',
+        billingAddressId: selectedBillingAddressId || null,
+        billingAddressSnapshot: billingAddressSnapshot,
+        shippingAddressId: selectedShippingAddressId || null,
+        validUntil,
+        notes,
+        currency: quoteCurrency,
+        taxInclusive,
+        lines: lines.map(line => ({
+          productId: line.productId,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          discount: line.discount,
+          taxes: line.taxes.map(tax => ({
+            name: tax.name,
+            rate: tax.rate,
+            amount: tax.amount,
+          })),
+        })),
+      };
+      
+      console.log('📤 Sending quotation payload:', JSON.stringify(payload, null, 2));
+      
       const response = await fetch('/api/quotations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subject,
-          accountId: selectedCustomer?.type === 'account' ? customerId : null,
-          distributorId: selectedCustomer?.type === 'distributor' ? customerId : null,
-          leadId: selectedCustomer?.type === 'lead' ? customerId : null,
-          customerType: selectedCustomer?.customerType || 'STANDARD',
-          billingAddressId: selectedBillingAddressId || null,
-          billingAddressSnapshot: billingAddressSnapshot,
-          shippingAddressId: selectedShippingAddressId || null,
-          validUntil,
-          notes,
-          currency: quoteCurrency,
-          taxInclusive,
-          lines: lines.map(line => ({
-            productId: line.productId,
-            quantity: line.quantity,
-            unitPrice: line.unitPrice,
-            discount: line.discount,
-            taxes: line.taxes.map(tax => ({
-              name: tax.name,
-              rate: tax.rate,
-              amount: tax.amount,
-            })),
-          })),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -1531,11 +1547,15 @@ AdPools System`,
         
         router.push('/quotations');
       } else {
-        const error = await response.json();
-        showError("Error", error.error || "Failed to create quotation");
+        const errorData = await response.json();
+        console.error('❌ Server error response:', errorData);
+        console.error('❌ Error details:', errorData.details);
+        console.error('❌ Original error:', errorData.originalError);
+        console.error('❌ Prisma code:', errorData.prismaCode);
+        showError("Error", errorData.error || "Failed to create quotation");
       }
     } catch (error) {
-      console.error('Error creating quotation:', error);
+      console.error('❌ Error creating quotation:', error);
       showError("Error", "Failed to create quotation");
     } finally {
       setIsSaving(false);
@@ -1557,20 +1577,20 @@ AdPools System`,
     <>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-2 sm:space-x-4 w-full sm:w-auto">
             <Link href="/quotations">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
+                <span className="hidden sm:inline">Back</span>
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Create Quotation</h1>
-              <p className="text-gray-600">Create a new quotation for your customer</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Create Quotation</h1>
+              <p className="text-sm sm:text-base text-gray-600">Create a new quotation for your customer</p>
             </div>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2 sm:space-x-3 w-full sm:w-auto">
             <Button
               variant="outline"
               onClick={() => handleSave(false)}
@@ -1600,7 +1620,7 @@ AdPools System`,
         </div>
 
         {/* STRIPE-STYLE SPLIT VIEW */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           
           {/* LEFT PANEL - FORM */}
           <div className="space-y-6">
@@ -1655,7 +1675,51 @@ AdPools System`,
                 <CustomerSearch
                   value={customerId}
                   onChange={(id, customer) => {
-                    handleCustomerChange(id);
+                    console.log('👤 Customer selected:', { id, customer });
+                    if (customer) {
+                      // Use the customer object directly from CustomerSearch
+                      setCustomerId(id);
+                      setSelectedCustomer(customer);
+                      setCustomerType(customer.type);
+                      
+                      // Load addresses if customer is an account
+                      if (customer.type === 'account') {
+                        console.log('📍 Customer is an account, loading addresses for:', customer.id);
+                        loadAddresses(customer.id);
+                        setLeadBillingAddress(null);
+                      } else if (customer.type === 'lead') {
+                        console.log('📋 Customer is a lead, fetching lead details');
+                        // Fetch lead details to get billing address
+                        fetch(`/api/leads/${id}`, {
+                          credentials: 'include',
+                        })
+                          .then(res => res.ok ? res.json() : null)
+                          .then(data => {
+                            if (data) setLeadBillingAddress(data.billingAddress || null);
+                          })
+                          .catch(() => setLeadBillingAddress(null));
+                        // Clear addresses for leads
+                        setAddresses([]);
+                        setSelectedBillingAddressId("");
+                        setSelectedShippingAddressId("");
+                      } else {
+                        console.log('🏢 Customer is a distributor, clearing addresses');
+                        // Clear addresses for distributors
+                        setAddresses([]);
+                        setSelectedBillingAddressId("");
+                        setSelectedShippingAddressId("");
+                        setLeadBillingAddress(null);
+                      }
+                    } else {
+                      // Customer cleared
+                      console.log('❌ Customer cleared');
+                      setCustomerId("");
+                      setSelectedCustomer(null);
+                      setAddresses([]);
+                      setSelectedBillingAddressId("");
+                      setSelectedShippingAddressId("");
+                      setLeadBillingAddress(null);
+                    }
                   }}
                   placeholder="Search customers, distributors, or leads..."
                   label="Customer"

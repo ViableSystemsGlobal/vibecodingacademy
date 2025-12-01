@@ -21,8 +21,12 @@ interface CompanySettings {
 export default function SignIn() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [otpCode, setOtpCode] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [requiresOtp, setRequiresOtp] = useState(false)
+  const [otpMethod, setOtpMethod] = useState<'EMAIL' | 'SMS' | null>(null)
+  const [otpSent, setOtpSent] = useState(false)
   const { getThemeColor } = useTheme()
   const { error: showError } = useToast()
   const router = useRouter()
@@ -66,65 +70,135 @@ export default function SignIn() {
     setError(null)
 
     try {
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
-      })
+      // If OTP is required, verify it first
+      if (requiresOtp) {
+        if (!otpCode) {
+          setError("Please enter the OTP code")
+          setIsLoading(false)
+          return
+        }
 
-      if (result?.ok) {
-        // Wait for session to be ready, then check dashboard permissions
-        const session = await getSession()
-        if (session?.user) {
-          try {
-            // Fetch user abilities to check dashboard access
-            const abilitiesResponse = await fetch('/api/user/abilities', {
-              credentials: 'include'
-            })
-            
-            if (abilitiesResponse.ok) {
-              const abilitiesData = await abilitiesResponse.json()
-              const userAbilities = abilitiesData.abilities || []
-              
-              // Check if user has dashboard access
-              const dashboardAbilities = MODULE_ACCESS.dashboard || []
-              const hasDashboardAccess = 
-                session.user.role === 'SUPER_ADMIN' || 
-                session.user.role === 'ADMIN' ||
-                dashboardAbilities.some(ability => userAbilities.includes(ability))
-              
-              if (hasDashboardAccess) {
-                window.location.href = "/dashboard"
-              } else {
-                // Redirect to /tasks/my if no dashboard access
-                window.location.href = "/tasks/my"
-              }
-            } else {
-              // If abilities fetch fails, default to dashboard (will be checked there)
-              window.location.href = "/dashboard"
-            }
-          } catch (error) {
-            console.error('Error checking dashboard permissions:', error)
-            // Default to dashboard if check fails
-            window.location.href = "/dashboard"
-          }
+        // Verify OTP and complete login
+        const loginResponse = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, otpCode })
+        })
+
+        const loginData = await loginResponse.json()
+
+        if (!loginResponse.ok) {
+          setError(loginData.error || 'Invalid OTP code')
+          setOtpCode("")
+          setIsLoading(false)
+          return
+        }
+
+        // OTP verified, now sign in with NextAuth
+        const result = await signIn("credentials", {
+          email,
+          password,
+          redirect: false,
+        })
+
+        if (result?.ok) {
+          await handleSuccessfulLogin()
         } else {
-          // If session not ready, default to dashboard
-          window.location.href = "/dashboard"
+          setError("Login failed. Please try again.")
+          setPassword("")
+          setOtpCode("")
+          setRequiresOtp(false)
         }
       } else {
-        // Clear password field for security
-        setPassword("")
-        setError("Invalid email or password. Please try again.")
-        showError("Login Failed", "The email or password you entered is incorrect. Please check your credentials and try again.")
+        // First step: verify password and check for 2FA
+        const loginResponse = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        })
+
+        const loginData = await loginResponse.json()
+
+        if (!loginResponse.ok) {
+          setError(loginData.error || 'Invalid email or password')
+          setPassword("")
+          setIsLoading(false)
+          return
+        }
+
+        // Check if OTP is required
+        if (loginData.requiresOtp) {
+          setRequiresOtp(true)
+          setOtpMethod(loginData.method)
+          setOtpSent(true)
+          setIsLoading(false)
+          return
+        }
+
+        // No 2FA, proceed with NextAuth signIn
+        const result = await signIn("credentials", {
+          email,
+          password,
+          redirect: false,
+        })
+
+        if (result?.ok) {
+          await handleSuccessfulLogin()
+        } else {
+          setError("Login failed. Please try again.")
+          setPassword("")
+        }
       }
     } catch (error) {
       console.error("Login error:", error)
       setPassword("")
+      setOtpCode("")
       setError("An unexpected error occurred. Please try again.")
       showError("Login Error", "An error occurred while signing in. Please try again later.")
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleSuccessfulLogin = async () => {
+    // Wait for session to be ready, then check dashboard permissions
+    const session = await getSession()
+    if (session?.user) {
+      try {
+        // Fetch user abilities to check dashboard access
+        const abilitiesResponse = await fetch('/api/user/abilities', {
+          credentials: 'include'
+        })
+        
+        if (abilitiesResponse.ok) {
+          const abilitiesData = await abilitiesResponse.json()
+          const userAbilities = abilitiesData.abilities || []
+          
+          // Check if user has dashboard access
+          const dashboardAbilities = MODULE_ACCESS.dashboard || []
+          const hasDashboardAccess = 
+            session.user.role === 'SUPER_ADMIN' || 
+            session.user.role === 'ADMIN' ||
+            dashboardAbilities.some(ability => userAbilities.includes(ability))
+          
+          if (hasDashboardAccess) {
+            window.location.href = "/dashboard"
+          } else {
+            // Redirect to /tasks/my if no dashboard access
+            window.location.href = "/tasks/my"
+          }
+        } else {
+          // If abilities fetch fails, default to dashboard (will be checked there)
+          window.location.href = "/dashboard"
+        }
+      } catch (error) {
+        console.error('Error checking dashboard permissions:', error)
+        // Default to dashboard if check fails
+        window.location.href = "/dashboard"
+      }
+    } else {
+      // If session not ready, default to dashboard
+      window.location.href = "/dashboard"
     }
   }
 
@@ -205,8 +279,58 @@ export default function SignIn() {
                     error ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : ''
                   }`}
                   required
+                  disabled={requiresOtp}
                 />
               </div>
+
+              {/* OTP Input (shown when 2FA is required) */}
+              {requiresOtp && (
+                <div className="space-y-2">
+                  <label htmlFor="otp" className="text-sm font-medium text-gray-700">
+                    Verification Code
+                  </label>
+                  {otpSent && (
+                    <p className="text-xs text-gray-600">
+                      A {otpMethod === 'EMAIL' ? '6-digit code has been sent to your email' : '6-digit code has been sent to your phone'}. 
+                      Please enter it below.
+                    </p>
+                  )}
+                  <Input
+                    id="otp"
+                    type="text"
+                    value={otpCode}
+                    onChange={(e) => {
+                      setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+                      setError(null)
+                    }}
+                    placeholder="Enter 6-digit code"
+                    className={`h-11 border-gray-200 focus:border-orange-300 focus:ring-orange-200 text-center text-2xl tracking-widest ${
+                      error ? 'border-red-300 focus:border-red-500 focus:ring-red-200' : ''
+                    }`}
+                    required
+                    maxLength={6}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      // Resend OTP
+                      const response = await fetch('/api/auth/otp/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email })
+                      })
+                      if (response.ok) {
+                        setOtpSent(true)
+                        setOtpCode("")
+                      }
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Resend code
+                  </button>
+                </div>
+              )}
 
               {/* Error Message */}
               {error && (

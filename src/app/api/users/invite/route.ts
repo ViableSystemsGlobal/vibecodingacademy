@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getCompanyNameFromSystemSettings } from "@/lib/company-settings";
 
 // POST /api/users/invite - Invite a new user
 export async function POST(request: NextRequest) {
@@ -54,11 +55,12 @@ export async function POST(request: NextRequest) {
     });
 
     // Create notification for user invitation
+    const companyName = await getCompanyNameFromSystemSettings();
     await prisma.notification.create({
       data: {
         type: 'USER_INVITED',
-        title: 'Welcome to AD Pools SM',
-        message: `You have been invited to join AD Pools Sales Management System. Please check your email for setup instructions.`,
+        title: `Welcome to ${companyName}`,
+        message: `You have been invited to join ${companyName}. Please check your email for setup instructions.`,
         channels: JSON.stringify(['EMAIL']),
         status: 'PENDING',
         userId: user.id,

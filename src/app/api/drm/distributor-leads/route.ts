@@ -480,12 +480,14 @@ export async function PUT(request: NextRequest) {
           console.error('Error creating distributor record:', error);
         }
         
+        const companyName = await getCompanyName();
+        
         // SMS Message
-        const smsMessage = `Congratulations ${contactName}! Your distributor application for ${businessName} has been approved. Welcome to the AdPools Group family! You will receive further instructions via email.`
+        const smsMessage = `Congratulations ${contactName}! Your distributor application for ${businessName} has been approved. Welcome to the ${companyName || 'Team'} family! You will receive further instructions via email.`
         
         // Email Message
         const emailSubject = `Distributor Application Approved - ${businessName}`;
-        const emailMessage = `Dear ${contactName},\n\nCongratulations! We are pleased to inform you that your distributor application for ${businessName} has been approved.\n\nWelcome to the AdPools Group family! As an approved distributor, you will have access to our comprehensive product range and support services.\n\nNext Steps:\n1. You will receive a welcome package with detailed information about our products and services\n2. Our team will contact you within 2 business days to discuss your territory and sales targets\n3. You will receive login credentials for our distributor portal\n4. Training materials and product catalogs will be provided\n\nIf you have any questions, please don't hesitate to contact us.\n\nBest regards,\nAdPools Group Team`;
+        const emailMessage = `Dear ${contactName},\n\nCongratulations! We are pleased to inform you that your distributor application for ${businessName} has been approved.\n\nWelcome to the ${companyName || 'Team'} family! As an approved distributor, you will have access to our comprehensive product range and support services.\n\nNext Steps:\n1. You will receive a welcome package with detailed information about our products and services\n2. Our team will contact you within 2 business days to discuss your territory and sales targets\n3. You will receive login credentials for our distributor portal\n4. Training materials and product catalogs will be provided\n\nIf you have any questions, please don't hesitate to contact us.\n\nBest regards,\n${companyName || 'Team'}`;
 
         // Send notifications asynchronously (don't wait for them to complete)
         console.log('🔔 Starting approval notifications...');

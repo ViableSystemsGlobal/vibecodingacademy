@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useTheme } from "@/contexts/theme-context"
-import { Search, HelpCircle, User, LogOut, Settings, FileText, Package, ShoppingCart, Building, UserCircle } from "lucide-react"
+import { useMobileMenu } from "@/contexts/mobile-menu-context"
+import { Search, HelpCircle, User, LogOut, Settings, FileText, Package, ShoppingCart, Building, UserCircle, Menu } from "lucide-react"
 import { NotificationDropdown } from "@/components/notifications/notification-dropdown"
 import {
   DropdownMenu,
@@ -31,11 +32,16 @@ export function Header() {
   const router = useRouter()
   const { getThemeClasses } = useTheme()
   const theme = getThemeClasses()
+  const { isMobileMenuOpen, setIsMobileMenuOpen } = useMobileMenu()
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [showSearchResults, setShowSearchResults] = useState(false)
+  const [imageError, setImageError] = useState(false)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const searchRef = useRef<HTMLDivElement>(null)
+  
+  const userImage = (session?.user as any)?.image
+  const shouldShowImage = userImage && !imageError
 
   const handleSignOut = async () => {
     // Sign out without redirect, then manually redirect to keep same origin
@@ -44,6 +50,11 @@ export function Header() {
     // Manually redirect to login page on current origin (same port)
     router.push('/auth/signin');
   }
+
+  // Reset image error when user image changes
+  useEffect(() => {
+    setImageError(false)
+  }, [userImage])
 
   // Handle search
   useEffect(() => {
@@ -128,12 +139,23 @@ export function Header() {
   const userId = (session?.user as any)?.id;
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-6">
-      <div className="flex items-center space-x-4">
-        <div className="relative" ref={searchRef}>
+    <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-3 sm:px-6">
+      <div className="flex items-center space-x-2 sm:space-x-4 flex-1">
+        {/* Mobile menu button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="lg:hidden h-9 w-9"
+          aria-label="Toggle menu"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+        
+        <div className="relative flex-1 max-w-xs sm:max-w-md lg:max-w-none" ref={searchRef}>
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
-            placeholder="Search anything..."
+            placeholder="Search..."
             value={searchQuery}
             onChange={(e) => {
               const value = e.target.value;
@@ -149,7 +171,7 @@ export function Header() {
                 handleResultClick(searchResults[0].url);
               }
             }}
-            className="w-80 pl-10 h-9 border-gray-200"
+            className="w-full lg:w-80 pl-10 h-9 border-gray-200 text-sm"
           />
           {showSearchResults && searchQuery.length >= 2 && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
@@ -182,27 +204,36 @@ export function Header() {
         </div>
       </div>
 
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-1 sm:space-x-3">
         <NotificationDropdown />
         
         <Button 
           variant="ghost" 
           size="icon" 
           onClick={() => window.open('https://docs.adpoolsgroup.com', '_blank')}
-          className={`h-9 w-9 text-gray-500 hover:text-${theme.primary} hover:bg-${theme.primaryBg}`}
+          className={`h-9 w-9 text-gray-500 hover:text-${theme.primary} hover:bg-${theme.primaryBg} hidden sm:flex`}
           title="Help & Documentation"
         >
           <HelpCircle className="h-4 w-4" />
         </Button>
 
-        <div className="flex items-center space-x-3 pl-3 border-l border-gray-200">
+        <div className="flex items-center space-x-1 sm:space-x-3 pl-1 sm:pl-3 border-l border-gray-200">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center space-x-3 hover:opacity-80 transition-opacity cursor-pointer">
-                <div className={`w-8 h-8 bg-gradient-to-br from-${theme.primaryLight} to-${theme.primary} rounded-full flex items-center justify-center`}>
-                  <User className="h-4 w-4 text-white" />
-                </div>
-                <div className="text-right">
+              <button className="flex items-center space-x-1 sm:space-x-3 hover:opacity-80 transition-opacity cursor-pointer">
+                {shouldShowImage ? (
+                  <img
+                    src={userImage}
+                    alt={session?.user?.name || "User"}
+                    className="w-8 h-8 rounded-full object-cover border-2 border-gray-300"
+                    onError={() => setImageError(true)}
+                  />
+                ) : (
+                  <div className={`w-8 h-8 bg-gradient-to-br from-${theme.primaryLight} to-${theme.primary} rounded-full flex items-center justify-center`}>
+                    <User className="h-4 w-4 text-white" />
+                  </div>
+                )}
+                <div className="text-right hidden sm:block">
                   <p className="text-sm font-medium text-gray-900">
                     {session?.user?.name || "User"}
                   </p>

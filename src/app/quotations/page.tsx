@@ -619,14 +619,14 @@ export default function QuotationsPage() {
     <>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Quotations</h1>
-            <p className="text-gray-600">Create and manage sales quotations</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Quotations</h1>
+            <p className="text-sm sm:text-base text-gray-600">Create and manage sales quotations</p>
           </div>
-          <Link href="/quotations/create">
+          <Link href="/quotations/create" className="w-full sm:w-auto">
             <Button 
-              className="text-white hover:opacity-90 transition-opacity"
+              className="text-white hover:opacity-90 transition-opacity w-full sm:w-auto"
               style={{ backgroundColor: getThemeColor() }}
             >
               <Plus className="h-4 w-4 mr-2" />
@@ -636,7 +636,7 @@ export default function QuotationsPage() {
         </div>
 
         {/* AI Recommendation and Metrics Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
           {/* AI Recommendation Card - Left Side (2/5) */}
           <div className="lg:col-span-2">
             <AIRecommendationCard
@@ -651,7 +651,7 @@ export default function QuotationsPage() {
           </div>
 
           {/* Metrics Cards - Right Side (3/5, 2x2 Grid) */}
-          <div className="lg:col-span-3 grid grid-cols-2 gap-4">
+          <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
             {isLoading ? (
               <>
                 <SkeletonMetricCard />
@@ -898,7 +898,7 @@ export default function QuotationsPage() {
                   key: 'actions',
                   label: 'Actions',
                   render: (quotation) => (
-                    <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         variant="ghost"

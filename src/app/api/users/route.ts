@@ -7,6 +7,7 @@ import { logAuditEvent } from "@/lib/audit-log";
 import bcrypt from "bcryptjs";
 import { parseTableQuery, buildWhereClause, buildOrderBy } from '@/lib/query-builder';
 import { mapRoleNameToUserRole, syncUserRoleAssignments } from "@/lib/user-role-service";
+import { getCompanyNameFromSystemSettings } from "@/lib/company-settings";
 
 // GET /api/users - Get all users with pagination
 export async function GET(request: NextRequest) {
@@ -197,9 +198,11 @@ export async function POST(request: NextRequest) {
 
     // Send notification to the new user
     if (sendInvitation && user.name) {
+      const companyName = await getCompanyNameFromSystemSettings();
       const trigger = SystemNotificationTriggers.userInvited(
         user.name,
-        session.user.name || session.user.email || 'System Administrator'
+        session.user.name || session.user.email || 'System Administrator',
+        companyName
       );
       await NotificationService.sendToUser(user.id, trigger);
     }

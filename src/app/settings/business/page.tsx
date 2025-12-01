@@ -72,50 +72,52 @@ export default function BusinessSettingsPage() {
     <>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             <button className="p-2 hover:bg-gray-100 rounded-lg">
               <ArrowLeft className="h-4 w-4" />
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Business Settings</h1>
-              <p className="text-gray-600">Manage your company information, team, and business preferences</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Business Settings</h1>
+              <p className="text-sm sm:text-base text-gray-600">Manage your company information, team, and business preferences</p>
             </div>
           </div>
-          <div className="flex items-center space-x-3">
-            <div className="relative">
+          <div className="flex flex-wrap items-center gap-2 sm:space-x-3 w-full sm:w-auto">
+            <div className="relative flex-1 sm:flex-initial">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <input
                 type="text"
                 placeholder="Search settings..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent w-full sm:w-auto"
               />
             </div>
-            <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
-              <Grid3X3 className="h-5 w-5" />
-            </button>
-            <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
-              <HelpCircle className="h-5 w-5" />
-            </button>
-            <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
-              <Bell className="h-5 w-5" />
-            </button>
-            <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
-              <Settings className="h-5 w-5" />
-            </button>
-            <button 
-              className="p-2 text-white rounded-lg hover:opacity-90 transition-opacity"
-              style={{ backgroundColor: getThemeColor() }}
-            >
-              <Plus className="h-5 w-5" />
-            </button>
+            <div className="flex items-center gap-1 sm:gap-0">
+              <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
+                <Grid3X3 className="h-4 w-4 sm:h-5 sm:w-5" />
+              </button>
+              <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
+                <HelpCircle className="h-4 w-4 sm:h-5 sm:w-5" />
+              </button>
+              <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
+                <Bell className="h-4 w-4 sm:h-5 sm:w-5" />
+              </button>
+              <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
+                <Settings className="h-4 w-4 sm:h-5 sm:w-5" />
+              </button>
+              <button 
+                className="p-2 text-white rounded-lg hover:opacity-90 transition-opacity"
+                style={{ backgroundColor: getThemeColor() }}
+              >
+                <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <Card className="border border-gray-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Team Members</CardTitle>
@@ -175,7 +177,7 @@ export default function BusinessSettingsPage() {
             <Building className={`h-5 w-5 text-${theme.primary}`} />
             <h2 className="text-lg font-semibold text-gray-900">Business Configuration</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             {filteredSettings.map((setting) => (
               <Link key={setting.id} href={setting.href}>
                 <Card className="border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer group">
@@ -221,7 +223,7 @@ export default function BusinessSettingsPage() {
             <Settings className={`h-5 w-5 text-${theme.primary}`} />
             <h2 className="text-lg font-semibold text-gray-900">Quick Actions</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
             <Card className="border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer group">
               <CardContent className="p-6">
                 <div className="flex items-center space-x-4">

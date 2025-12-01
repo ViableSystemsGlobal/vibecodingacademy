@@ -154,7 +154,8 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const currencySymbol = invoice.currency === 'GHS' ? 'GH₵' : (invoice.currency === 'USD' ? '$' : invoice.currency);
+        const currencySymbol = invoice.currency === 'GHS' ? 'GHS' : (invoice.currency === 'USD' ? '$' : invoice.currency);
+        const currencySymbolEmail = invoice.currency === 'GHS' ? 'GH₵' : (invoice.currency === 'USD' ? '$' : invoice.currency);
         const dueDate = new Date(invoice.dueDate).toLocaleDateString('en-GB', { 
           day: '2-digit', 
           month: 'long', 
@@ -177,9 +178,9 @@ This is a friendly reminder regarding your outstanding invoice.
 Invoice Details:
 - Invoice Number: ${invoice.number}
 - Subject: ${invoice.subject || 'N/A'}
-- Total Amount: ${currencySymbol}${invoice.total.toFixed(2)}
-${isPartiallyPaid ? `- Amount Paid: ${currencySymbol}${invoice.amountPaid.toFixed(2)}` : ''}
-- Amount Due: ${currencySymbol}${amountDue.toFixed(2)}
+- Total Amount: ${currencySymbolEmail}${invoice.total.toFixed(2)}
+${isPartiallyPaid ? `- Amount Paid: ${currencySymbolEmail}${invoice.amountPaid.toFixed(2)}` : ''}
+- Amount Due: ${currencySymbolEmail}${amountDue.toFixed(2)}
 - Due Date: ${dueDate}
 ${daysOverdue > 0 ? `- Days Overdue: ${daysOverdue}` : ''}
 
@@ -192,9 +193,9 @@ If you have already made payment, please ignore this reminder. If you have any q
 Thank you for your prompt attention to this matter.
 
 Best regards,
-${companyName || 'AdPools Group'}`;
+${companyName || 'Team'}`;
 
-        const smsMessage = `Dear ${customerName}, Payment reminder for Invoice ${invoice.number}: ${currencySymbol}${amountDue.toFixed(2)} due${daysOverdue > 0 ? ` (${daysOverdue} days overdue)` : ''}. ${companyName || 'AdPools Group'}`;
+        const smsMessage = `Dear ${customerName}, Payment reminder for Invoice ${invoice.number}: ${currencySymbol} ${amountDue.toFixed(2)} due${daysOverdue > 0 ? ` (${daysOverdue} days overdue)` : ''}. ${companyName || ''}`;
 
         // Send notifications
         const results = await Promise.allSettled([

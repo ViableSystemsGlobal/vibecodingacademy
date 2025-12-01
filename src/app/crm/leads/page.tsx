@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { DropdownMenu } from '@/components/ui/dropdown-menu-custom';
 import { useTheme } from '@/contexts/theme-context';
 import { useToast } from '@/contexts/toast-context';
+import { useLoading } from '@/contexts/loading-context';
 import { AddLeadModal } from '@/components/modals/add-lead-modal';
 import { EditLeadModal } from '@/components/modals/edit-lead-modal';
 import { ViewLeadModal } from '@/components/modals/view-lead-modal';
@@ -95,6 +96,7 @@ export default function LeadsPage() {
   const { getThemeClasses, getThemeColor } = useTheme();
   const theme = getThemeClasses();
   const { success, error } = useToast();
+  const { startLoading, stopLoading } = useLoading();
   
   const handleRowClick = (lead: Lead) => {
     router.push(`/crm/leads/${lead.id}`);
@@ -267,6 +269,7 @@ export default function LeadsPage() {
       return;
     }
     
+    startLoading();
     try {
       const response = await fetch('/api/leads', {
         method: 'POST',
@@ -294,6 +297,8 @@ export default function LeadsPage() {
     } catch (error) {
       console.error('Error adding lead:', error);
       alert(`Failed to create lead: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      stopLoading();
     }
   };
 
@@ -314,6 +319,7 @@ export default function LeadsPage() {
   }) => {
     if (!selectedLead) return;
 
+    startLoading();
     try {
       const response = await fetch(`/api/leads/${selectedLead.id}`, {
         method: 'PUT',
@@ -334,6 +340,8 @@ export default function LeadsPage() {
     } catch (err) {
       console.error('Error updating lead:', err);
       error('Failed to update lead');
+    } finally {
+      stopLoading();
     }
   };
 

@@ -17,6 +17,7 @@ import {
   HelpCircle,
   Package,
   LayoutDashboard,
+  X,
 } from "lucide-react";
 import { getCachedMenu, clearAllMenuCache } from "@/lib/menu-cache";
 import type { ModuleNavigationItem } from "@/modules/types";
@@ -27,7 +28,11 @@ const shortcuts = [
   { name: "Low/No Stock", href: "/inventory/stock?stockStatus=low-stock", icon: Package, badge: "0" },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+export default function Sidebar({ onClose }: SidebarProps = {}) {
   const pathname = usePathname();
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
   const [collapsed, setCollapsed] = useState(false);
@@ -370,7 +375,17 @@ export default function Sidebar() {
       collapsed ? "w-16" : "w-64"
     )}>
       {/* Header */}
-      <div className="flex h-20 items-center justify-center border-b border-gray-200 px-2">
+      <div className="flex h-20 items-center justify-between border-b border-gray-200 px-2 lg:justify-center">
+        {/* Mobile close button */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5 text-gray-600" />
+          </button>
+        )}
         {customLogo ? (
           <img 
             src={customLogo} 
@@ -382,6 +397,8 @@ export default function Sidebar() {
             <Building className="h-9 w-9 text-white" />
           </div>
         )}
+        {/* Spacer for mobile close button alignment */}
+        {onClose && <div className="lg:hidden w-9" />}
       </div>
 
 
@@ -470,6 +487,12 @@ export default function Sidebar() {
               ) : (
                 <Link
                   href={item.href || '#'}
+                  onClick={() => {
+                    // Close mobile menu when link is clicked
+                    if (onClose) {
+                      onClose();
+                    }
+                  }}
                   className={cn(
                     "group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full text-left",
                     isActiveItem && !isCustomColor
@@ -532,6 +555,12 @@ export default function Sidebar() {
                     <Link
                       key={child.name}
                       href={child.href}
+                      onClick={() => {
+                        // Close mobile menu when link is clicked
+                        if (onClose) {
+                          onClose();
+                        }
+                      }}
                       className={cn(
                         "group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full text-left",
                         isActive(child.href) && !isCustomColor

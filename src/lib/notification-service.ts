@@ -596,12 +596,12 @@ export const SystemNotificationTriggers = {
   }),
 
   // User notifications
-  userInvited: (userName: string, invitedBy: string) => ({
+  userInvited: (userName: string, invitedBy: string, companyName?: string) => ({
     type: 'USER_INVITED',
-    title: 'Welcome to AD Pools SM',
-    message: `You have been invited to join AD Pools Sales Management System by ${invitedBy}`,
+    title: `Welcome to ${companyName || 'Our System'}`,
+    message: `You have been invited to join ${companyName || 'our system'} by ${invitedBy}`,
     channels: ['EMAIL'],
-    data: { userName, invitedBy }
+    data: { userName, invitedBy, companyName: companyName || 'Our System' }
   }),
 
   passwordReset: (userName: string) => ({

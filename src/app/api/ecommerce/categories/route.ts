@@ -30,9 +30,10 @@ export async function GET(request: NextRequest) {
     const where: Record<string, unknown> = {};
 
     if (search?.trim()) {
+      // SQLite doesn't support mode: "insensitive", using case-sensitive search
       where.OR = [
-        { name: { contains: search.trim(), mode: "insensitive" } },
-        { description: { contains: search.trim(), mode: "insensitive" } },
+        { name: { contains: search.trim() } },
+        { description: { contains: search.trim() } },
       ];
     }
 

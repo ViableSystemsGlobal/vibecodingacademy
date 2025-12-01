@@ -166,6 +166,7 @@ export default function ProductsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isStockAdjustmentOpen, setIsStockAdjustmentOpen] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [isAllSelected, setIsAllSelected] = useState(false);
   const [isGRNModalOpen, setIsGRNModalOpen] = useState(false);
   const [isFiltersModalOpen, setIsFiltersModalOpen] = useState(false);
   
@@ -264,6 +265,8 @@ export default function ProductsPage() {
   // Immediate effect for category filter and sorting
   React.useEffect(() => {
     setCurrentPage(1);
+    setIsAllSelected(false); // Reset selection when filters change
+    setSelectedProducts([]); // Clear selections when filters change
     fetchProducts(1);
   }, [selectedCategory, sortBy, sortOrder]);
 
@@ -271,6 +274,8 @@ export default function ProductsPage() {
   React.useEffect(() => {
     const timeoutId = setTimeout(() => {
       setCurrentPage(1);
+      setIsAllSelected(false); // Reset selection when search changes
+      setSelectedProducts([]); // Clear selections when search changes
       fetchProducts(1);
     }, 500); // 500ms debounce
 
@@ -360,6 +365,63 @@ export default function ProductsPage() {
       setCategories([]);
     }
   };
+
+  // Fetch all product IDs that match current filters (for "Select All")
+  const fetchAllProductIds = async (): Promise<string[]> => {
+    try {
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '10000', // Large limit to get all products
+        ...(searchTerm && { search: searchTerm }),
+        ...(selectedCategory && selectedCategory !== 'all' && { category: selectedCategory }),
+        ...(sortBy && { sortBy }),
+        ...(sortOrder && { sortOrder }),
+      });
+      
+      const response = await fetch(`/api/products?${params}`);
+      if (response.ok) {
+        const data = await response.json();
+        const allProducts = data.products || [];
+        return allProducts.map((p: Product) => p.id).filter(Boolean);
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching all product IDs:', error);
+      return [];
+    }
+  };
+
+  // Handle "Select All" across all pages
+  const handleSelectAll = async () => {
+    const allIds = await fetchAllProductIds();
+    const currentlyAllSelected = allIds.length > 0 && allIds.every(id => selectedProducts.includes(id));
+    
+    if (currentlyAllSelected) {
+      setSelectedProducts([]);
+      setIsAllSelected(false);
+    } else {
+      setSelectedProducts(allIds);
+      setIsAllSelected(true);
+    }
+  };
+
+  // Update isAllSelected when selection or filters change
+  React.useEffect(() => {
+    const checkAllSelected = async () => {
+      const allIds = await fetchAllProductIds();
+      const allSelected = allIds.length > 0 && 
+                         allIds.length === selectedProducts.length &&
+                         allIds.every(id => selectedProducts.includes(id));
+      setIsAllSelected(allSelected);
+    };
+    
+    // Only check if we have selections
+    if (selectedProducts.length > 0 || isAllSelected) {
+      checkAllSelected();
+    } else {
+      setIsAllSelected(false);
+    }
+  }, [selectedProducts.length, searchTerm, selectedCategory, sortBy, sortOrder]);
 
   // Client-side filtering removed - now using server-side filtering
 
@@ -730,7 +792,7 @@ export default function ProductsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Products</h1>
           <p className="text-gray-600">Manage your product catalog and inventory</p>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2 sm:space-x-3">
           <CurrencyToggle value={currency} onChange={changeCurrency} />
           <Button 
             variant="outline"
@@ -765,7 +827,7 @@ export default function ProductsPage() {
       </div>
 
       {/* AI Recommendation and Metrics Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* AI Recommendation Card - Left Side */}
         <div className="lg:col-span-2">
           <AIRecommendationCard
@@ -778,7 +840,7 @@ export default function ProductsPage() {
         </div>
 
         {/* Metrics Cards - Right Side */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Card className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -839,6 +901,8 @@ export default function ProductsPage() {
             enableSelection={true}
             selectedItems={selectedProducts}
             onSelectionChange={setSelectedProducts}
+            onSelectAll={handleSelectAll}
+            isAllSelected={isAllSelected}
             onRowClick={handleViewProduct}
             itemsPerPage={itemsPerPage}
             currentPage={currentPage}
@@ -855,7 +919,7 @@ export default function ProductsPage() {
             exportFilename="products"
             isLoading={isLoading}
             bulkActions={
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   onClick={handleBulkActivate}

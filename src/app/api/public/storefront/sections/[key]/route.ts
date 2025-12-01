@@ -14,7 +14,7 @@ export async function GET(
 
     const dynamicPrisma = prisma as unknown as {
       storefrontSection?: DynamicFindUnique<any>;
-    };
+      };
     const model = dynamicPrisma.storefrontSection;
 
     if (!model) {

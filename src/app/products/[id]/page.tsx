@@ -12,6 +12,8 @@ import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { BarcodeDisplay } from "@/components/barcode-display";
 import { useTheme } from "@/contexts/theme-context";
 import { useToast } from "@/contexts/toast-context";
+import { useAbilities } from "@/hooks/use-abilities-new";
+import { useSession } from "next-auth/react";
 import { 
   ArrowLeft, 
   ArrowRight,
@@ -113,6 +115,13 @@ export default function ProductDetailsPage() {
   const theme = getThemeClasses();
   const { currency, changeCurrency } = useCurrency();
   const { rates: exchangeRates } = useExchangeRates();
+  const { data: session } = useSession();
+  const { hasAbility } = useAbilities();
+  
+  // Check if user can view cost prices
+  const canViewCost = session?.user?.role === 'SUPER_ADMIN' || 
+                      session?.user?.role === 'ADMIN' || 
+                      hasAbility('products', 'view_cost');
   
   // Helper function to format currency using exchange rates from API
   const formatCurrencyWithRate = (amount: number, toCurrency: string, fromCurrency: string): string => {
@@ -132,8 +141,27 @@ export default function ProductDetailsPage() {
       if (rate) {
         convertedAmount = amount * rate;
       } else {
-        // Fallback if rate not found
-        convertedAmount = amount;
+        // Try reverse rate
+        const reverseKey = `${toCurrency}_${fromCurrency}`;
+        const reverseRate = exchangeRates[reverseKey];
+        if (reverseRate) {
+          convertedAmount = amount / reverseRate;
+        } else {
+          // Fallback to default rates if API rates not available
+          const defaultRates: { [key: string]: { [key: string]: number } } = {
+            'USD': { 'GHS': 15, 'EUR': 0.85 },
+            'GHS': { 'USD': 1/15, 'EUR': 1/17.65 },
+            'EUR': { 'USD': 1.18, 'GHS': 17.65 }
+          };
+          const defaultRate = defaultRates[fromCurrency]?.[toCurrency];
+          if (defaultRate) {
+            convertedAmount = amount * defaultRate;
+          } else {
+            // Last resort: show original amount with warning
+            console.warn(`Exchange rate not found for ${fromCurrency} to ${toCurrency}`);
+            convertedAmount = amount;
+          }
+        }
       }
     }
     
@@ -734,21 +762,16 @@ export default function ProductDetailsPage() {
   }
 
   // Calculate profit margin using converted prices in the same currency
+  // Uses the same exchange rates as formatCurrencyWithRate for consistency
   const calculateProfitMargin = () => {
     if (!product.price || !product.cost) return 0;
-    
-    // Simple conversion rates - same as in currency-toggle.tsx
-    const conversionRates: { [key: string]: { [key: string]: number } } = {
-      'USD': { 'GHS': 12.5, 'EUR': 0.85 },
-      'GHS': { 'USD': 0.08, 'EUR': 0.068 },
-      'EUR': { 'USD': 1.18, 'GHS': 14.7 }
-    };
     
     // Convert selling price to selected currency
     const sellingCurrency = product.originalPriceCurrency || product.baseCurrency || 'GHS';
     let sellingPriceInSelectedCurrency = product.price;
     if (sellingCurrency !== currency) {
-      const rate = conversionRates[sellingCurrency]?.[currency];
+      const rateKey = `${sellingCurrency}_${currency}`;
+      const rate = exchangeRates[rateKey];
       if (rate) {
         sellingPriceInSelectedCurrency = product.price * rate;
       }
@@ -758,7 +781,8 @@ export default function ProductDetailsPage() {
     const costCurrency = product.originalCostCurrency || product.importCurrency || 'USD';
     let costPriceInSelectedCurrency = product.cost;
     if (costCurrency !== currency) {
-      const rate = conversionRates[costCurrency]?.[currency];
+      const rateKey = `${costCurrency}_${currency}`;
+      const rate = exchangeRates[rateKey];
       if (rate) {
         costPriceInSelectedCurrency = product.cost * rate;
       }
@@ -783,24 +807,24 @@ export default function ProductDetailsPage() {
     <>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             <Button 
               variant="ghost" 
               size="sm" 
               onClick={() => router.push('/products')}
               className="flex items-center"
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Products
+              <ArrowLeft className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Back to Products</span>
             </Button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
-              <p className="text-gray-600">SKU: {product.sku}</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{product.name}</h1>
+              <p className="text-sm sm:text-base text-gray-600">SKU: {product.sku}</p>
             </div>
           </div>
           
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2 sm:space-x-3 w-full sm:w-auto">
             <CurrencyToggle value={currency} onChange={changeCurrency} />
             <Button 
               variant="outline" 
@@ -857,70 +881,70 @@ export default function ProductDetailsPage() {
 
         {/* Tabbed Interface */}
         <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
+          <nav className="-mb-px flex overflow-x-auto space-x-4 sm:space-x-8 scrollbar-hide">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                 activeTab === 'overview'
                   ? `border-${theme.primary} text-${theme.primaryText}`
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <Package className="h-4 w-4 inline mr-2" />
-              Overview
+              <Package className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+              <span className="hidden sm:inline">Overview</span>
             </button>
             <button
               onClick={() => setActiveTab('documents')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                 activeTab === 'documents'
                   ? `border-${theme.primary} text-${theme.primaryText}`
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <FileText className="h-4 w-4 inline mr-2" />
-              Documents
+              <FileText className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+              <span className="hidden sm:inline">Documents</span>
             </button>
             <button
               onClick={() => setActiveTab('pricing')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                 activeTab === 'pricing'
                   ? `border-${theme.primary} text-${theme.primaryText}`
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <DollarSign className="h-4 w-4 inline mr-2" />
-              Pricing
+              <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+              <span className="hidden sm:inline">Pricing</span>
             </button>
             <button
               onClick={() => setActiveTab('warehouses')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                 activeTab === 'warehouses'
                   ? `border-${theme.primary} text-${theme.primaryText}`
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <Package className="h-4 w-4 inline mr-2" />
-              Warehouses
+              <Package className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+              <span className="hidden sm:inline">Warehouses</span>
             </button>
             <button
               onClick={() => setActiveTab('barcodes')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                 activeTab === 'barcodes'
                   ? `border-${theme.primary} text-${theme.primaryText}`
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <Hash className="h-4 w-4 inline mr-2" />
-              Barcodes
+              <Hash className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+              <span className="hidden sm:inline">Barcodes</span>
             </button>
           </nav>
         </div>
 
         {/* Tab Content */}
         {activeTab === 'overview' && (
-          <div className="flex gap-6 h-screen overflow-hidden">
+          <div className="flex flex-col lg:flex-row gap-6 lg:h-screen lg:overflow-hidden">
             {/* LEFT SIDE - Fixed Product Identity */}
-            <div className="w-96 flex-shrink-0 space-y-6 overflow-y-auto pr-2">
+            <div className="w-full lg:w-96 flex-shrink-0 space-y-6 lg:overflow-y-auto lg:pr-2">
               {/* Product Image */}
               <Card>
                 <CardHeader>
@@ -1114,7 +1138,7 @@ export default function ProductDetailsPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className={`grid gap-6 ${canViewCost ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-1'}`}>
                     <div className="text-center p-6 bg-gray-50 rounded-lg">
                       <div className="text-3xl font-bold text-gray-900">
                         {formatCurrencyWithRate(product.price || 0, currency, product.originalPriceCurrency || product.baseCurrency || 'GHS')}
@@ -1127,27 +1151,31 @@ export default function ProductDetailsPage() {
                       )}
                     </div>
                     
-                    <div className="text-center p-6 bg-gray-50 rounded-lg">
-                      <div className="text-3xl font-bold text-gray-900">
-                        {formatCurrencyWithRate(product.cost || 0, currency, product.originalCostCurrency || product.importCurrency || 'USD')}
-                      </div>
-                      <div className="text-sm text-gray-600 mt-2">Cost Price</div>
-                      {product.originalCostCurrency && product.originalCostCurrency !== currency && (
-                        <div className="text-xs text-gray-500 mt-2">
-                          Original: {formatCurrencyWithRate(product.cost || 0, product.originalCostCurrency || 'USD', product.originalCostCurrency || 'USD')}
+                    {canViewCost && (
+                      <>
+                        <div className="text-center p-6 bg-gray-50 rounded-lg">
+                          <div className="text-3xl font-bold text-gray-900">
+                            {formatCurrencyWithRate(product.cost || 0, currency, product.originalCostCurrency || product.importCurrency || 'USD')}
+                          </div>
+                          <div className="text-sm text-gray-600 mt-2">Cost Price</div>
+                          {product.originalCostCurrency && product.originalCostCurrency !== currency && (
+                            <div className="text-xs text-gray-500 mt-2">
+                              Original: {formatCurrencyWithRate(product.cost || 0, product.originalCostCurrency || 'USD', product.originalCostCurrency || 'USD')}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    
-                    <div className="text-center p-6 bg-gray-50 rounded-lg">
-                      <div className={`text-3xl font-bold flex items-center justify-center ${
-                        profitMargin > 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {profitMargin > 0 ? <TrendingUp className="h-6 w-6 mr-2" /> : <TrendingDown className="h-6 w-6 mr-2" />}
-                        {profitMargin.toFixed(1)}%
-                      </div>
-                      <div className="text-sm text-gray-600 mt-2">Profit Margin</div>
-                    </div>
+                        
+                        <div className="text-center p-6 bg-gray-50 rounded-lg">
+                          <div className={`text-3xl font-bold flex items-center justify-center ${
+                            profitMargin > 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {profitMargin > 0 ? <TrendingUp className="h-6 w-6 mr-2" /> : <TrendingDown className="h-6 w-6 mr-2" />}
+                            {profitMargin.toFixed(1)}%
+                          </div>
+                          <div className="text-sm text-gray-600 mt-2">Profit Margin</div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1615,8 +1643,12 @@ export default function ProductDetailsPage() {
                           <th className="text-right py-3 px-4 font-medium text-gray-900">Available</th>
                           <th className="text-right py-3 px-4 font-medium text-gray-900">Reserved</th>
                           <th className="text-right py-3 px-4 font-medium text-gray-900">Reorder Point</th>
-                          <th className="text-right py-3 px-4 font-medium text-gray-900">Average Cost</th>
-                          <th className="text-right py-3 px-4 font-medium text-gray-900">Total Value</th>
+                          {canViewCost && (
+                            <>
+                              <th className="text-right py-3 px-4 font-medium text-gray-900">Average Cost</th>
+                              <th className="text-right py-3 px-4 font-medium text-gray-900">Total Value</th>
+                            </>
+                          )}
                           <th className="text-center py-3 px-4 font-medium text-gray-900">Status</th>
                         </tr>
                       </thead>
@@ -1678,16 +1710,20 @@ export default function ProductDetailsPage() {
                                   {stockItem.reorderPoint.toLocaleString()}
                                 </span>
                               </td>
-                               <td className="py-3 px-4 text-right">
-                                 <span className="text-gray-600">
-                                   {formatCurrencyWithSymbol(product?.costPrice || 0, currency)}
-                                 </span>
-                               </td>
-                               <td className="py-3 px-4 text-right">
-                                 <span className="font-medium text-gray-900">
-                                   {formatCurrencyWithSymbol((stockItem.quantity * (product?.costPrice || 0)), currency)}
-                                 </span>
-                               </td>
+                              {canViewCost && (
+                                <>
+                                  <td className="py-3 px-4 text-right">
+                                    <span className="text-gray-600">
+                                      {formatCurrencyWithSymbol(product?.costPrice || 0, currency)}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4 text-right">
+                                    <span className="font-medium text-gray-900">
+                                      {formatCurrencyWithSymbol((stockItem.quantity * (product?.costPrice || 0)), currency)}
+                                    </span>
+                                  </td>
+                                </>
+                              )}
                               <td className="py-3 px-4 text-center">
                                 {isOutOfStock ? (
                                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">

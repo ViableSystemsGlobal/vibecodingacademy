@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useTheme } from "@/contexts/theme-context";
 import { useToast } from "@/contexts/toast-context";
 import { BarcodeScanner } from "@/components/barcode-scanner";
+import { parseNumberInput, getNumberInputValue } from "@/lib/number-input-utils";
 import { 
   X, 
   Package, 
@@ -63,7 +64,6 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
     productId: "",
     type: "RECEIPT",
     quantity: 0,
-    unitCost: 0,
     reference: "",
     reason: "",
     notes: "",
@@ -258,7 +258,7 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
   // Helper function to get stock for a specific warehouse
   const getWarehouseStock = (product: Product | null, warehouseId: string) => {
     if (!product || !warehouseId) return { available: 0, quantity: 0 };
-    const stockItem = product.stockItems?.find(item => item.warehouse.id === warehouseId);
+    const stockItem = product.stockItems?.find(item => item.warehouse?.id === warehouseId);
     return {
       available: stockItem?.available || 0,
       quantity: stockItem?.quantity || 0
@@ -353,14 +353,6 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
       }
     }
 
-    // Validate unit cost for stock-in movements
-    const isStockInMovement = ["RECEIPT", "RETURN"].includes(formData.type) || 
-                             (formData.type === "TRANSFER" && formData.transferDirection === "IN");
-    if (isStockInMovement && formData.unitCost <= 0) {
-      showError("Validation Error", "Unit cost is required for stock-in movements");
-      setIsSubmitting(false);
-      return;
-    }
 
     try {
       const formDataToSend = new FormData();
@@ -372,9 +364,6 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
       formDataToSend.append('quantity', String(isStockOutMovement 
         ? -formData.quantity 
         : formData.quantity));
-      if (formData.unitCost > 0) {
-        formDataToSend.append('unitCost', String(formData.unitCost));
-      }
       formDataToSend.append('reference', formData.reference);
       formDataToSend.append('reason', formData.reason);
       formDataToSend.append('notes', formData.notes);
@@ -415,7 +404,6 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
           productId: "",
           type: "RECEIPT",
           quantity: 0,
-          unitCost: 0,
           reference: "",
           reason: "",
           notes: "",
@@ -542,71 +530,57 @@ export function AddStockMovementModal({ isOpen, onClose, onSuccess }: AddStockMo
             </select>
           </div>
 
-          {/* Quantity and Unit Cost */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {["SALE", "DAMAGE", "THEFT", "EXPIRY"].includes(formData.type) || 
-                 (formData.type === "TRANSFER" && formData.transferDirection === "OUT") ? 
-                 "Quantity to Remove *" : "Quantity *"}
-              </label>
-              <Input
-                type="number"
-                value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
-                placeholder="Enter quantity"
-                required
-                className="flex-1"
-                min={["SALE", "DAMAGE", "THEFT", "EXPIRY"].includes(formData.type) || 
-                     (formData.type === "TRANSFER" && formData.transferDirection === "OUT") ? 1 : 
-                     (formData.type === "ADJUSTMENT" ? undefined : 1)}
-                 max={["SALE", "DAMAGE", "THEFT", "EXPIRY"].includes(formData.type) || 
-                      (formData.type === "TRANSFER" && formData.transferDirection === "OUT") ? 
-                      (selectedProduct && formData.warehouseId ? getWarehouseStock(selectedProduct, formData.warehouseId).available : (selectedProduct ? getTotalAvailableStock(selectedProduct) : 0)) : undefined}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                {["SALE", "DAMAGE", "THEFT", "EXPIRY"].includes(formData.type) || 
-                 (formData.type === "TRANSFER" && formData.transferDirection === "OUT") ? (
-                  formData.warehouseId && selectedProduct ? (
-                    <span className={getWarehouseStock(selectedProduct, formData.warehouseId).available === 0 ? 'text-red-600 font-medium' : ''}>
-                      Available in selected warehouse: {getWarehouseStock(selectedProduct, formData.warehouseId).available} {selectedProduct.uomBase}
-                      {getTotalAvailableStock(selectedProduct) !== getWarehouseStock(selectedProduct, formData.warehouseId).available && (
-                        <span className="text-gray-400"> (Total across all warehouses: {getTotalAvailableStock(selectedProduct)})</span>
-                      )}
-                    </span>
-                  ) : (
-                    `Total available stock: ${selectedProduct ? getTotalAvailableStock(selectedProduct) : 0} ${selectedProduct?.uomBase || 'units'}`
-                  )
+          {/* Quantity */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {["SALE", "DAMAGE", "THEFT", "EXPIRY"].includes(formData.type) || 
+               (formData.type === "TRANSFER" && formData.transferDirection === "OUT") ? 
+               "Quantity to Remove *" : "Quantity *"}
+            </label>
+            <Input
+              type="number"
+              value={formData.quantity === 0 ? "" : formData.quantity}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === "" || value === null || value === undefined) {
+                  setFormData({ ...formData, quantity: 0 });
+                } else {
+                  const parsed = parseFloat(value);
+                  setFormData({ ...formData, quantity: isNaN(parsed) ? 0 : parsed });
+                }
+              }}
+              onBlur={(e) => {
+                if (e.target.value === "" || e.target.value === null) {
+                  setFormData({ ...formData, quantity: 0 });
+                }
+              }}
+              placeholder="Enter quantity"
+              required
+              className="flex-1"
+              min={["SALE", "DAMAGE", "THEFT", "EXPIRY"].includes(formData.type) || 
+                   (formData.type === "TRANSFER" && formData.transferDirection === "OUT") ? 1 : 
+                   (formData.type === "ADJUSTMENT" ? undefined : 1)}
+               max={["SALE", "DAMAGE", "THEFT", "EXPIRY"].includes(formData.type) || 
+                    (formData.type === "TRANSFER" && formData.transferDirection === "OUT") ? 
+                    (selectedProduct && formData.warehouseId ? getWarehouseStock(selectedProduct, formData.warehouseId).available : (selectedProduct ? getTotalAvailableStock(selectedProduct) : 0)) : undefined}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              {["SALE", "DAMAGE", "THEFT", "EXPIRY"].includes(formData.type) || 
+               (formData.type === "TRANSFER" && formData.transferDirection === "OUT") ? (
+                formData.warehouseId && selectedProduct ? (
+                  <span className={getWarehouseStock(selectedProduct, formData.warehouseId).available === 0 ? 'text-red-600 font-medium' : ''}>
+                    Available in selected warehouse: {getWarehouseStock(selectedProduct, formData.warehouseId).available} {selectedProduct.uomBase}
+                    {getTotalAvailableStock(selectedProduct) !== getWarehouseStock(selectedProduct, formData.warehouseId).available && (
+                      <span className="text-gray-400"> (Total across all warehouses: {getTotalAvailableStock(selectedProduct)})</span>
+                    )}
+                  </span>
                 ) : (
-                  formData.quantity > 0 ? "Positive for stock in" : "Negative for stock out"
-                )}
-              </p>
-            </div>
-
-            {/* Only show Unit Cost for stock-in movements */}
-            {["RECEIPT", "RETURN"].includes(formData.type) || 
-             (formData.type === "TRANSFER" && formData.transferDirection === "IN") || 
-             (formData.type === "ADJUSTMENT" && formData.quantity > 0) ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Unit Cost {["RECEIPT", "RETURN"].includes(formData.type) ? "*" : ""}
-                </label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.unitCost}
-                  onChange={(e) => setFormData({ ...formData, unitCost: Number(e.target.value) })}
-                  placeholder="Enter unit cost"
-                  min="0"
-                  required={["RECEIPT", "RETURN"].includes(formData.type)}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  {["RECEIPT", "RETURN"].includes(formData.type) ? 
-                   "Required for stock in movements" : 
-                   "Optional for adjustments"}
-                </p>
-              </div>
-            ) : null}
+                  `Total available stock: ${selectedProduct ? getTotalAvailableStock(selectedProduct) : 0} ${selectedProduct?.uomBase || 'units'}`
+                )
+              ) : (
+                formData.quantity > 0 ? "Positive for stock in" : "Negative for stock out"
+              )}
+            </p>
           </div>
 
           {/* Warehouse Selection */}

@@ -2884,111 +2884,119 @@ export default function NotificationSettingsPage() {
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Notification Settings</h1>
-            <p className="text-gray-600 mt-1">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Notification Settings</h1>
+            <p className="text-sm sm:text-base text-gray-600 mt-1">
               Configure system notifications, email and SMS settings
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 w-full sm:w-auto">
             <Button
               onClick={handleSave}
               disabled={isSaving}
               style={{ backgroundColor: getThemeColor(), color: 'white' }}
-              className="hover:opacity-90 flex items-center gap-2"
+              className="hover:opacity-90 flex items-center gap-2 w-full sm:w-auto"
             >
               {isSaving ? (
                 <RefreshCw className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              Save All Settings
+              <span className="hidden sm:inline">Save All Settings</span>
+              <span className="sm:hidden">Save</span>
             </Button>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
+          <nav className="-mb-px flex overflow-x-auto space-x-4 sm:space-x-8 scrollbar-hide">
             <button
               onClick={() => setActiveTab('email')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                 activeTab === 'email'
                   ? `border-${themeClasses.primary} text-${themeClasses.primary}`
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <Mail className="h-4 w-4 inline mr-2" />
-              Email Configuration
+              <Mail className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+              <span className="hidden sm:inline">Email Configuration</span>
+              <span className="sm:hidden">Email</span>
             </button>
             <button
               onClick={() => setActiveTab('queue')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                 activeTab === 'queue'
                   ? `border-${themeClasses.primary} text-${themeClasses.primary}`
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <Server className="h-4 w-4 inline mr-2" />
-              Queue & Bulk Sending
+              <Server className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+              <span className="hidden sm:inline">Queue & Bulk Sending</span>
+              <span className="sm:hidden">Queue</span>
             </button>
             <button
               onClick={() => setActiveTab('sms')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                 activeTab === 'sms'
                   ? `border-${themeClasses.primary} text-${themeClasses.primary}`
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <MessageSquare className="h-4 w-4 inline mr-2" />
-              SMS Configuration
+              <MessageSquare className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+              <span className="hidden sm:inline">SMS Configuration</span>
+              <span className="sm:hidden">SMS</span>
             </button>
             <button
               onClick={() => setActiveTab('routing')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                 activeTab === 'routing'
                   ? `border-${themeClasses.primary} text-${themeClasses.primary}`
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <Bell className="h-4 w-4 inline mr-2" />
-              Notification Routing
+              <Bell className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+              <span className="hidden sm:inline">Notification Routing</span>
+              <span className="sm:hidden">Routing</span>
             </button>
             <button
               onClick={() => setActiveTab('email-templates')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                 activeTab === 'email-templates'
                   ? `border-${themeClasses.primary} text-${themeClasses.primary}`
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <FileText className="h-4 w-4 inline mr-2" />
-              Email Templates
+              <FileText className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+              <span className="hidden sm:inline">Email Templates</span>
+              <span className="sm:hidden">E-Templates</span>
             </button>
             <button
               onClick={() => setActiveTab('sms-templates')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                 activeTab === 'sms-templates'
                   ? `border-${themeClasses.primary} text-${themeClasses.primary}`
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <MessageCircle className="h-4 w-4 inline mr-2" />
-              SMS Templates
+              <MessageCircle className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+              <span className="hidden sm:inline">SMS Templates</span>
+              <span className="sm:hidden">SMS Templates</span>
             </button>
             <button
               onClick={() => setActiveTab('task-notifications')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap ${
                 activeTab === 'task-notifications'
                   ? `border-${themeClasses.primary} text-${themeClasses.primary}`
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <AlertTriangle className="h-4 w-4 inline mr-2" />
-              Task Notifications
+              <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4 inline sm:mr-2" />
+              <span className="hidden sm:inline">Task Notifications</span>
+              <span className="sm:hidden">Tasks</span>
             </button>
           </nav>
         </div>
@@ -2996,20 +3004,20 @@ export default function NotificationSettingsPage() {
 
         {/* Content */}
         {activeTab === 'email' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
             {/* Email Enable/Disable */}
-            <Card className="p-6">
-              <div className="flex items-center justify-between">
+            <Card className="p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-medium">Email Notifications</h3>
-                  <p className="text-sm text-gray-500">Enable or disable email notifications</p>
+                  <h3 className="text-base sm:text-lg font-medium">Email Notifications</h3>
+                  <p className="text-xs sm:text-sm text-gray-500">Enable or disable email notifications</p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
                   <Button
                     onClick={() => handleTestClick('email')}
                     disabled={isTesting === 'email' || !settings.email.enabled}
                     variant="outline"
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-2 w-full sm:w-auto"
                   >
                     {isTesting === 'email' ? (
                       <RefreshCw className="h-4 w-4 animate-spin" />
@@ -3030,9 +3038,9 @@ export default function NotificationSettingsPage() {
             </Card>
 
             {/* SMTP Configuration */}
-            <Card className="p-6">
-              <h3 className="text-lg font-medium mb-4">SMTP Configuration</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card className="p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-medium mb-4">SMTP Configuration</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <div>
                   <Label htmlFor="smtpHost">SMTP Host</Label>
                   <Input
@@ -3122,8 +3130,8 @@ export default function NotificationSettingsPage() {
             </Card>
 
             {/* Email Notifications */}
-            <Card className="p-6">
-              <h3 className="text-lg font-medium mb-4">Email Notification Types</h3>
+            <Card className="p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-medium mb-4">Email Notification Types</h3>
               <p className="text-sm text-gray-500 mb-4">Select which notifications should be sent via email</p>
               <div className="space-y-4">
                 {Object.entries(
@@ -3173,20 +3181,20 @@ export default function NotificationSettingsPage() {
         )}
 
         {activeTab === 'sms' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* SMS Enable/Disable */}
-            <Card className="p-6">
-              <div className="flex items-center justify-between">
+            <Card className="p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-medium">SMS Notifications</h3>
-                  <p className="text-sm text-gray-500">Enable or disable SMS notifications</p>
+                  <h3 className="text-base sm:text-lg font-medium">SMS Notifications</h3>
+                  <p className="text-xs sm:text-sm text-gray-500">Enable or disable SMS notifications</p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
                   <Button
                     onClick={() => handleTestClick('sms')}
                     disabled={isTesting === 'sms' || !settings.sms.enabled}
                     variant="outline"
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-2 w-full sm:w-auto"
                   >
                     {isTesting === 'sms' ? (
                       <RefreshCw className="h-4 w-4 animate-spin" />
@@ -3207,8 +3215,8 @@ export default function NotificationSettingsPage() {
             </Card>
 
             {/* SMS Provider Configuration */}
-            <Card className="p-6">
-              <h3 className="text-lg font-medium mb-4">SMS Provider Configuration</h3>
+            <Card className="p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-medium mb-4">SMS Provider Configuration</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="smsProvider">SMS Provider</Label>
@@ -3279,8 +3287,8 @@ export default function NotificationSettingsPage() {
             </Card>
 
             {/* SMS Notifications */}
-            <Card className="p-6">
-              <h3 className="text-lg font-medium mb-4">SMS Notification Types</h3>
+            <Card className="p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-medium mb-4">SMS Notification Types</h3>
               <p className="text-sm text-gray-500 mb-4">Select which notifications should be sent via SMS</p>
               <div className="space-y-4">
                 {Object.entries(
@@ -3330,11 +3338,11 @@ export default function NotificationSettingsPage() {
         )}
 
         {activeTab === 'queue' && (
-          <div className="space-y-6">
-            <Card className="p-6">
+          <div className="space-y-4 sm:space-y-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex flex-col gap-4">
                 <div>
-                  <h3 className="text-lg font-medium">Queue Usage</h3>
+                  <h3 className="text-base sm:text-lg font-medium">Queue Usage</h3>
                   <p className="text-sm text-gray-500">
                     Run large email and SMS batches through the background queue to avoid timeouts.
                   </p>
@@ -3371,11 +3379,11 @@ export default function NotificationSettingsPage() {
               </div>
             </Card>
 
-            <Card className="p-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex items-center gap-3 mb-4">
                 <Server className="h-5 w-5 text-gray-500" />
                 <div>
-                  <h3 className="text-lg font-medium">Redis Connection</h3>
+                  <h3 className="text-base sm:text-lg font-medium">Redis Connection</h3>
                   <p className="text-sm text-gray-500">
                     Provide the Redis connection string used by the queue workers.
                   </p>
@@ -3393,8 +3401,8 @@ export default function NotificationSettingsPage() {
               </p>
             </Card>
 
-            <Card className="p-6">
-              <h3 className="text-lg font-medium">Batch Configuration</h3>
+            <Card className="p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-medium">Batch Configuration</h3>
               <p className="text-sm text-gray-500 mb-4">
                 Adjust batch size and delay between batches. Lower values reduce provider load; higher values finish faster.
               </p>
@@ -3454,10 +3462,10 @@ export default function NotificationSettingsPage() {
               </div>
             </Card>
 
-            <Card className="p-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-medium">Queue Health</h3>
+                  <h3 className="text-base sm:text-lg font-medium">Queue Health</h3>
                   <p className="text-sm text-gray-500">
                     Validate the Redis connection and worker status.
                   </p>
@@ -3520,8 +3528,8 @@ export default function NotificationSettingsPage() {
         )}
 
         {activeTab === 'routing' && (
-          <Card className="p-6">
-            <h3 className="text-lg font-medium mb-4">Notification Routing Overview</h3>
+          <Card className="p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-medium mb-4">Notification Routing Overview</h3>
             <p className="text-sm text-gray-500 mb-6">
               This shows which notification types are enabled for each channel. Configure individual channels in their respective tabs.
             </p>
@@ -3577,12 +3585,12 @@ export default function NotificationSettingsPage() {
 
         {/* Email Templates Tab */}
         {activeTab === 'email-templates' && (
-          <div className="space-y-6">
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-6">
+          <div className="space-y-4 sm:space-y-6">
+            <Card className="p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                 <div>
-                  <h3 className="text-lg font-medium">Email Templates</h3>
-                  <p className="text-sm text-gray-500">Customize email message templates for different notification types</p>
+                  <h3 className="text-base sm:text-lg font-medium">Email Templates</h3>
+                  <p className="text-xs sm:text-sm text-gray-500">Customize email message templates for different notification types</p>
                 </div>
                 <Button
                   onClick={() => {
@@ -3654,14 +3662,15 @@ export default function NotificationSettingsPage() {
 
         {/* SMS Templates Tab */}
         {activeTab === 'sms-templates' && (
-          <div className="space-y-6">
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-6">
+          <div className="space-y-4 sm:space-y-6">
+            <Card className="p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                 <div>
-                  <h3 className="text-lg font-medium">SMS Templates</h3>
-                  <p className="text-sm text-gray-500">Customize SMS message templates for different notification types</p>
+                  <h3 className="text-base sm:text-lg font-medium">SMS Templates</h3>
+                  <p className="text-xs sm:text-sm text-gray-500">Customize SMS message templates for different notification types</p>
                 </div>
                 <Button
+                  className="w-full sm:w-auto"
                   onClick={() => {
                     setIsCreatingNew(true);
                     setEditingTemplate({
@@ -4188,13 +4197,13 @@ export default function NotificationSettingsPage() {
 
         {/* Task Notifications Tab */}
         {activeTab === 'task-notifications' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Automatic Runner Status */}
-            <Card className="p-6">
-              <div className="flex items-center justify-between">
+            <Card className="p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-medium">Automatic Notification Runner</h3>
-                  <p className="text-sm text-gray-500">
+                  <h3 className="text-base sm:text-lg font-medium">Automatic Notification Runner</h3>
+                  <p className="text-xs sm:text-sm text-gray-500">
                     Automatically processes task notifications every minute
                   </p>
                 </div>
@@ -4223,10 +4232,10 @@ export default function NotificationSettingsPage() {
             </Card>
 
             {/* Task Notifications Enable/Disable */}
-            <Card className="p-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-medium">Task Due Date Notifications</h3>
+                  <h3 className="text-base sm:text-lg font-medium">Task Due Date Notifications</h3>
                   <p className="text-sm text-gray-500">
                     Configure automatic notifications for task due dates and overdue tasks
                   </p>
@@ -4252,8 +4261,8 @@ export default function NotificationSettingsPage() {
             </Card>
 
             {/* Task Notification Settings */}
-            <Card className="p-6">
-              <h3 className="text-lg font-medium mb-6">Notification Settings</h3>
+            <Card className="p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-medium mb-6">Notification Settings</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Minutes Before Due */}
                 <div>
@@ -4403,8 +4412,8 @@ export default function NotificationSettingsPage() {
             </Card>
 
             {/* Test Task Notifications */}
-            <Card className="p-6">
-              <h3 className="text-lg font-medium mb-6">Test Task Notifications</h3>
+            <Card className="p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-medium mb-6">Test Task Notifications</h3>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                 <div className="flex items-start">
                   <AlertTriangle className="h-5 w-5 text-blue-600 mt-0.5 mr-3" />
@@ -4421,7 +4430,7 @@ export default function NotificationSettingsPage() {
                 </div>
               </div>
               
-              <div className="flex space-x-4">
+              <div className="flex flex-col sm:flex-row gap-3 sm:space-x-4">
                 <Button
                   onClick={async () => {
                     setIsTesting('task-notifications');
@@ -4445,7 +4454,7 @@ export default function NotificationSettingsPage() {
                   }}
                   disabled={isTesting === 'task-notifications'}
                   style={{ backgroundColor: getThemeColor(), color: 'white' }}
-                  className="hover:opacity-90"
+                  className="hover:opacity-90 w-full sm:w-auto"
                 >
                   {isTesting === 'task-notifications' ? (
                     <>
@@ -4476,6 +4485,7 @@ export default function NotificationSettingsPage() {
                     }
                   }}
                   variant="outline"
+                  className="w-full sm:w-auto"
                 >
                   <Bell className="h-4 w-4 mr-2" />
                   Check Notification Stats
@@ -4498,7 +4508,7 @@ export default function NotificationSettingsPage() {
                     }
                   }}
                   variant="outline"
-                  className="bg-yellow-100 hover:bg-yellow-200"
+                  className="bg-yellow-100 hover:bg-yellow-200 w-full sm:w-auto"
                 >
                   🔍 Debug Tasks
                 </Button>

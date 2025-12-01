@@ -432,7 +432,7 @@ function InvoicesPageContent() {
             <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
             <p className="text-gray-600">Manage your customer invoices and payments</p>
           </div>
-          <div className="flex space-x-3">
+          <div className="flex flex-wrap gap-2 sm:space-x-3">
             <Link href="/invoices/create">
               <Button 
                 className="text-white hover:opacity-90 transition-opacity"
@@ -461,7 +461,7 @@ function InvoicesPageContent() {
           </div>
 
           {/* Metrics Cards - Right Side (3/5, 2x2 Grid) */}
-          <div className="lg:col-span-3 grid grid-cols-2 gap-4">
+          <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Card className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0 pr-2">

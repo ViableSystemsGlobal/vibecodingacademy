@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma';
 import type { Prisma } from '@prisma/client';
 import { getExchangeRate } from '@/lib/currency';
 import crypto from 'crypto';
+import { ROLE_ABILITIES, type Role } from '@/lib/permissions';
 
 // Page-specific prompts for different business contexts
 const PAGE_PROMPTS = {
@@ -35,7 +36,7 @@ Provide 5 recommendations in priority order (highest impact first). Each should 
   
   'inventory': `You are analyzing inventory and stock data. Focus on stock levels, movement patterns, and warehouse optimization. Provide 3 actionable recommendations for improving inventory management.`,
   
-  'tasks': `You are analyzing task and productivity data. Focus on task completion rates, priorities, and workflow optimization. Provide 3 actionable recommendations for improving task management.`,
+  'tasks': `You are analyzing TASK MANAGEMENT data ONLY. Focus EXCLUSIVELY on tasks, task completion rates, task priorities, task deadlines, overdue tasks, and task workflow optimization. Do NOT mention quotations, invoices, leads, opportunities, products, or any other business areas. Provide 3 actionable recommendations SPECIFICALLY for improving task management, addressing overdue tasks, optimizing task priorities, and improving task completion rates.`,
   
   'warehouses': `You are analyzing warehouse operations and inventory data. Focus on warehouse efficiency, stock distribution, and operational optimization. Provide 3 actionable recommendations for improving warehouse management.`,
   
@@ -89,6 +90,9 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = (session.user as any).id;
+
+    // Fetch user abilities for permission checks
+    const userAbilities = await getUserAbilities(userId, session.user.role as Role);
 
     // Get AI settings and currency settings
     const [aiSettings, currencySettings] = await Promise.all([
@@ -199,10 +203,12 @@ export async function POST(request: NextRequest) {
       .digest('hex');
     
     // Include context ID in cache key for context-specific requests
+    // Add version to cache key to invalidate old cached recommendations (especially for tasks page filtering)
+    const cacheVersion = 'v2'; // Increment this when filtering logic changes
     const contextId = context?.leadId || context?.opportunityId || context?.accountId || '';
     const cacheKey = contextId 
-      ? `ai_recommendations_${page}_${contextId}_${dataHash}`
-      : `ai_recommendations_${page}_${dataHash}`;
+      ? `ai_recommendations_${page}_${contextId}_${dataHash}_${cacheVersion}`
+      : `ai_recommendations_${page}_${dataHash}_${cacheVersion}`;
     const cacheSetting = await prisma.systemSettings.findUnique({
       where: { key: cacheKey }
     });
@@ -217,11 +223,31 @@ export async function POST(request: NextRequest) {
         cachedData = JSON.parse(cacheSetting.value);
         const cacheAge = now - (cachedData.timestamp || 0);
         
+        // For tasks page, validate that cached recommendations are task-specific
+        if (page === 'tasks' && cachedData.recommendations) {
+          const hasNonTaskRecs = cachedData.recommendations.some((rec: any) => {
+            const title = (rec.title || '').toLowerCase();
+            const desc = (rec.description || '').toLowerCase();
+            const nonTaskKeywords = ['quotation', 'invoice', 'lead', 'opportunity', 'product', 'order', 'payment', 'collect', 'follow up on', 'gh₵', 'gh¢', 'prospect', 'deal'];
+            return nonTaskKeywords.some(keyword => title.includes(keyword) || desc.includes(keyword));
+          });
+          
+          if (hasNonTaskRecs) {
+            console.log(`⚠️ Invalidating tasks cache - contains non-task recommendations`);
+            // Delete the invalid cache entry
+            await prisma.systemSettings.delete({
+              where: { key: cacheKey }
+            });
+            cachedData = null;
+            shouldUseCache = false;
+          }
+        }
+        
         // Use cache if it's less than 1 hour old and data hasn't changed
-        if (cacheAge < CACHE_DURATION && cachedData.dataHash === dataHash) {
+        if (cachedData && cacheAge < CACHE_DURATION && cachedData.dataHash === dataHash && !shouldUseCache) {
           shouldUseCache = true;
           console.log(`✅ Using cached AI recommendations for ${page} (age: ${Math.round(cacheAge / 1000 / 60)} minutes)`);
-        } else {
+        } else if (cachedData && (cacheAge >= CACHE_DURATION || cachedData.dataHash !== dataHash)) {
           console.log(`⏰ Cache expired or data changed for ${page}, refreshing...`);
         }
       } catch (e) {
@@ -612,19 +638,47 @@ Current Project Metrics:
   - New projects (last 7 days): ${(businessData as any).newProjectsLast7Days || 0}
   - New projects (last 30 days): ${(businessData as any).newProjectsLast30Days || 0}
 
-Use these EXACT numbers in your recommendations. Reference specific counts of overdue projects, overdue tasks, open incidents, projects at risk, and resource needs when making recommendations.` : '';
+Use these EXACT numbers in your recommendations. Reference specific counts of overdue projects, overdue tasks, open incidents, projects at risk, and resource needs when making recommendations.` : page === 'tasks' ? `
+CRITICAL: Use ONLY the actual numbers provided below. Do NOT invent or estimate numbers. If a metric is missing or zero, acknowledge it in your recommendation.
+
+Current Task Metrics:
+- Total Tasks: ${(businessData as any).total || 0}
+- Status Breakdown:
+  - Completed: ${(businessData as any).completed || 0}
+  - Pending: ${(businessData as any).pending || 0}
+  - In Progress: ${(businessData as any).inProgress || 0}
+  - Overdue: ${(businessData as any).overdue || 0}
+  - Cancelled: ${(businessData as any).cancelled || 0}
+- Priority Breakdown:
+  - Urgent: ${(businessData as any).urgentTasks || 0}
+  - High Priority: ${(businessData as any).highPriorityTasks || 0}
+- Tasks with Due Dates: ${(businessData as any).tasksWithDueDates || 0}
+- Tasks without Due Dates: ${(businessData as any).tasksWithoutDueDates || 0}
+- Tasks Due Soon (within 3 days): ${(businessData as any).tasksDueSoon || 0}
+- Overdue High Priority Tasks: ${(businessData as any).overdueHighPriority || 0}
+- Completion Rate: ${(businessData as any).completionRate || 0}%
+- Recent Activity:
+  - Created Last 7 Days: ${(businessData as any).tasksLast7Days || 0}
+  - Created Last 30 Days: ${(businessData as any).tasksLast30Days || 0}
+
+Use these EXACT numbers in your recommendations. Reference specific counts of overdue tasks, pending tasks, completion rates, priority distribution, and tasks due soon when making recommendations.` : '';
 
     // Create a formatted data summary for the prompt
-    const formattedDataForAI = (page === 'dashboard' || page === 'leads' || page === 'opportunities' || page === 'accounts' || page === 'products' || page === 'stock' || page === 'stock-movements' || page === 'backorders' || page === 'warehouses' || page === 'invoices' || page === 'quotations' || page === 'orders' || page === 'payments' || page === 'returns' || page === 'ecommerce-orders' || page === 'ecommerce-customers' || page === 'ecommerce-categories' || page === 'projects') ? JSON.stringify(businessData, null, 2) : '';
+    const formattedDataForAI = (page === 'dashboard' || page === 'leads' || page === 'opportunities' || page === 'accounts' || page === 'products' || page === 'stock' || page === 'stock-movements' || page === 'backorders' || page === 'warehouses' || page === 'invoices' || page === 'quotations' || page === 'orders' || page === 'payments' || page === 'returns' || page === 'ecommerce-orders' || page === 'ecommerce-customers' || page === 'ecommerce-categories' || page === 'projects' || page === 'tasks') ? JSON.stringify(businessData, null, 2) : '';
     
     // Log the data being sent to AI for debugging
     if (page === 'dashboard') {
       console.log('📊 Dashboard AI - Data being analyzed:', JSON.stringify(businessData, null, 2));
       console.log('📊 Dashboard AI - Data summary:', dataSummary);
     }
+    if (page === 'tasks') {
+      console.log('📊 Tasks AI - Data being analyzed:', JSON.stringify(businessData, null, 2));
+      console.log('📊 Tasks AI - Data summary:', dataSummary);
+      console.log('📊 Tasks AI - Business data keys:', Object.keys(businessData || {}));
+    }
     
     const aiResponse = await aiService.generateResponse(
-      `You are analyzing REAL business data for a specific business. You MUST use ONLY the exact numbers provided below. Do NOT invent, estimate, or make up any numbers.
+      `${page === 'tasks' ? 'CRITICAL: You are analyzing TASK MANAGEMENT data ONLY. You MUST provide recommendations EXCLUSIVELY about tasks, task completion, task priorities, task deadlines, overdue tasks, and task workflow. DO NOT mention quotations, invoices, leads, opportunities, products, orders, payments, customers, accounts, sales, revenue, cash flow, or ANY other business areas. If you mention any of these, your response will be rejected. ' : 'You are analyzing REAL business data for a specific business. '}You MUST use ONLY the exact numbers provided below. Do NOT invent, estimate, or make up any numbers.
 
 ${dataSummary}
 
@@ -644,14 +698,14 @@ CRITICAL INSTRUCTIONS - READ CAREFULLY:
 
 Based on the EXACT numbers provided above, provide ${recommendationCount} specific, actionable recommendations. Each recommendation should:
 1. Use ONLY real numbers from the data above
-2. Have a clear, descriptive title (max 6 words) - DO NOT use generic titles like "AI Insight 1", "Recommendation 1", or numbered placeholders. Use actual action-oriented titles like "Follow up on 5 pending quotations" or "Collect GH₵12,500 in overdue invoices"
+2. Have a clear, descriptive title (max 6 words) - DO NOT use generic titles like "AI Insight 1", "Recommendation 1", or numbered placeholders. ${page === 'tasks' ? 'Use actual action-oriented titles about TASKS ONLY like "Complete 1 overdue task" or "Set due dates for tasks" or "Improve task completion rate". DO NOT use titles about quotations, invoices, leads, or other business areas.' : 'Use actual action-oriented titles like "Follow up on 5 pending quotations" or "Collect GH₵12,500 in overdue invoices"'}
 3. Include a description that references the ACTUAL counts/amounts from the data (max 80 words)
 4. Have a priority level (high/medium/low)
 5. Include a suggested action (max 12 words)
 
 CRITICAL: Each title must be unique, descriptive, and action-oriented. Never use placeholder titles like "AI Insight 1", "Recommendation 1", "Insight 1", etc. Use actual business actions in the title.
 
-${isSpecificLead ? 'Focus on SPECIFIC actions for THIS PARTICULAR LEAD. Provide recommendations tailored to their status, stage, and activity. Consider next steps like follow-ups, qualification, product demonstrations, or conversion to opportunity.' : isSpecificOpportunity ? 'Focus on SPECIFIC actions for THIS PARTICULAR OPPORTUNITY. Provide recommendations to progress this deal, address blockers, improve probability, or close the opportunity. Consider quotations, negotiations, or closing strategies.' : isSpecificAccount ? 'Focus on SPECIFIC actions for THIS PARTICULAR ACCOUNT. Provide recommendations to strengthen the relationship, grow revenue, develop opportunities, or optimize account engagement. Consider contact management, opportunity development, or revenue optimization.' : page === 'dashboard' ? 'Focus on HIGH-IMPACT actions that will move the needle based on the REAL data provided. Prioritize actions based on actual numbers - if there are unpaid invoices, mention the exact count. If there are open opportunities, use the actual count.' : ''}
+${isSpecificLead ? 'Focus on SPECIFIC actions for THIS PARTICULAR LEAD. Provide recommendations tailored to their status, stage, and activity. Consider next steps like follow-ups, qualification, product demonstrations, or conversion to opportunity.' : isSpecificOpportunity ? 'Focus on SPECIFIC actions for THIS PARTICULAR OPPORTUNITY. Provide recommendations to progress this deal, address blockers, improve probability, or close the opportunity. Consider quotations, negotiations, or closing strategies.' : isSpecificAccount ? 'Focus on SPECIFIC actions for THIS PARTICULAR ACCOUNT. Provide recommendations to strengthen the relationship, grow revenue, develop opportunities, or optimize account engagement. Consider contact management, opportunity development, or revenue optimization.' : page === 'dashboard' ? 'Focus on HIGH-IMPACT actions that will move the needle based on the REAL data provided. Prioritize actions based on actual numbers - if there are unpaid invoices, mention the exact count. If there are open opportunities, use the actual count.' : page === 'tasks' ? 'CRITICAL: Focus EXCLUSIVELY on TASK MANAGEMENT. Provide recommendations ONLY about tasks, task completion, task priorities, task deadlines, overdue tasks, and task workflow. Do NOT mention quotations, invoices, leads, opportunities, products, or any other business areas. Base all recommendations on the task metrics provided above.' : ''}
 ${!isSpecificLead && !isSpecificOpportunity && !isSpecificAccount && page === 'leads' ? 'Focus on lead conversion optimization, follow-up strategies, and pipeline management based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of stale leads, unassigned leads, overdue follow-ups, etc. Reference specific conversion rates and deal values from the data.' : ''}
 ${!isSpecificLead && !isSpecificOpportunity && !isSpecificAccount && page === 'opportunities' ? 'Focus on opportunity pipeline optimization, deal progression, and win rate improvement based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of stuck opportunities, overdue close dates, high-value deals, etc. Reference specific pipeline values, win rates, and probability distributions from the data.' : ''}
 ${!isSpecificLead && !isSpecificOpportunity && !isSpecificAccount && page === 'accounts' ? 'Focus on account engagement, relationship management, and revenue growth based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of inactive accounts, accounts without contacts, high-value opportunities, etc. Reference specific revenue figures, opportunity values, and engagement metrics from the data.' : ''}
@@ -667,6 +721,9 @@ ${page === 'ecommerce-orders' ? 'Focus on ecommerce fulfillment, rider schedulin
 ${page === 'payments' ? 'Focus on payment collection, cash flow optimization, outstanding invoice management, and payment method analysis based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of overdue invoices, unpaid amounts, payment trends, collection rates, etc. Reference specific payment amounts, methods, and cash flow patterns from the data.' : ''}
 ${page === 'returns' ? 'Focus on return reduction, processing efficiency, reason analysis, and prevention strategies based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of pending returns, return rates, processing times, top return reasons, etc. Reference specific return statuses, reasons, and processing metrics from the data.' : ''}
 ${page === 'projects' ? 'Focus on project delivery, deadline management, task completion, incident resolution, and resource allocation based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of overdue projects, overdue tasks, open incidents, projects at risk, resource needs, etc. Reference specific project statuses, task completion rates, incident severity, and deadline metrics from the data.' : ''}
+${page === 'tasks' ? 'CRITICAL: You are analyzing TASK MANAGEMENT data ONLY. Provide recommendations EXCLUSIVELY about tasks, task completion, task priorities, task deadlines, overdue tasks, and task workflow. Do NOT mention quotations, invoices, leads, opportunities, products, or any other business areas. Base all recommendations on the task metrics provided above. Mention exact numbers of overdue tasks, pending tasks, tasks due soon, high priority tasks, completion rates, etc. Reference specific task statuses, priority distribution, completion metrics, and deadline adherence from the task data.' : ''}
+
+${page === 'tasks' ? 'CRITICAL REMINDER: You are analyzing TASK MANAGEMENT data ONLY. Every recommendation MUST be about tasks. DO NOT create recommendations about quotations, invoices, leads, opportunities, products, or any other business areas. If the data shows task metrics, create recommendations about those tasks. Examples of VALID task recommendations: "Complete 1 overdue task", "Set due dates for tasks", "Prioritize high priority tasks", "Improve task completion rate". Examples of INVALID recommendations (DO NOT CREATE THESE): "Follow up on quotations", "Collect overdue invoices", "Contact leads". ' : ''}
 
 Format your response as a JSON array:
 [
@@ -755,13 +812,36 @@ Format your response as a JSON array:
     // Add IDs and format for the component
     // Also replace any dollar signs with the correct currency symbol
     // Filter out any recommendations with placeholder titles
+    // For tasks page, also filter out recommendations that mention non-task items
     const validRecommendations = recommendations.filter((rec: any) => {
       const title = (rec.title || '').trim();
+      const description = (rec.description || '').trim().toLowerCase();
+      
       // Reject placeholder titles
       if (!title || title.match(/^(ai\s+)?insight\s*\d+$/i) || title.match(/^recommendation\s*\d+$/i) || title.match(/^insight\s*\d+$/i)) {
         console.log(`⚠️ Filtered out recommendation with placeholder title: "${title}"`);
         return false;
       }
+      
+      // For tasks page, reject recommendations that mention non-task items
+      if (page === 'tasks') {
+        const titleLower = title.toLowerCase();
+        const descLower = description.toLowerCase();
+        const nonTaskKeywords = ['quotation', 'invoice', 'lead', 'opportunity', 'product', 'order', 'payment', 'customer', 'account', 'sales', 'revenue', 'cash flow', 'collect', 'follow up on', 'gh₵', 'gh¢', 'cedi', 'prospect', 'deal', 'pipeline', 'pending quotation', 'overdue invoice', 'new lead'];
+        const hasNonTaskKeyword = nonTaskKeywords.some(keyword => 
+          titleLower.includes(keyword) || descLower.includes(keyword)
+        );
+        if (hasNonTaskKeyword) {
+          console.log(`⚠️ Filtered out non-task recommendation for tasks page: "${title}"`);
+          return false;
+        }
+        // Also check for patterns like "Follow up on X" or "Collect X" which are typically non-task
+        if (titleLower.match(/^(follow up on|collect|contact|call|send).*(quotation|invoice|lead|opportunity|product|order|payment|customer|account|prospect|deal)/i)) {
+          console.log(`⚠️ Filtered out non-task pattern for tasks page: "${title}"`);
+          return false;
+        }
+      }
+      
       return true;
     });
     
@@ -769,10 +849,50 @@ Format your response as a JSON array:
     if (validRecommendations.length < recommendationCount) {
       console.log(`⚠️ Only ${validRecommendations.length} valid recommendations, using defaults for remaining`);
       const defaults = createDefaultRecommendations(page, recommendationCount - validRecommendations.length);
-      validRecommendations.push(...defaults);
+      // For tasks page, ensure defaults are also task-specific
+      if (page === 'tasks') {
+        const taskDefaults = defaults.filter((rec: any) => {
+          const titleLower = (rec.title || '').toLowerCase();
+          const descLower = (rec.description || '').toLowerCase();
+          const nonTaskKeywords = ['quotation', 'invoice', 'lead', 'opportunity', 'product', 'order', 'payment'];
+          return !nonTaskKeywords.some(keyword => titleLower.includes(keyword) || descLower.includes(keyword));
+        });
+        validRecommendations.push(...taskDefaults);
+      } else {
+        validRecommendations.push(...defaults);
+      }
     }
     
-    const formattedRecommendations = validRecommendations.slice(0, targetCount).map((rec: any, index: number) => {
+    // Final validation for tasks page - filter again before formatting
+    let finalRecommendations = validRecommendations.slice(0, targetCount);
+    if (page === 'tasks') {
+      finalRecommendations = finalRecommendations.filter((rec: any) => {
+        const title = (rec.title || '').toLowerCase();
+        const description = (rec.description || '').toLowerCase();
+        const nonTaskKeywords = ['quotation', 'invoice', 'lead', 'opportunity', 'product', 'order', 'payment', 'collect', 'follow up on', 'gh₵', 'gh¢', 'prospect', 'deal', 'pending quotation', 'overdue invoice', 'new lead'];
+        const hasNonTaskKeyword = nonTaskKeywords.some(keyword => 
+          title.includes(keyword) || description.includes(keyword)
+        );
+        if (hasNonTaskKeyword) {
+          console.log(`⚠️ Final filter: Removed non-task recommendation: "${rec.title}"`);
+          return false;
+        }
+        // Check for patterns
+        if (title.match(/^(follow up on|collect|contact|call|send).*(quotation|invoice|lead|opportunity|product|order|payment|customer|account|prospect|deal)/i)) {
+          console.log(`⚠️ Final filter: Removed non-task pattern: "${rec.title}"`);
+          return false;
+        }
+        return true;
+      });
+      
+      // If we filtered out too many, add task-specific defaults
+      if (finalRecommendations.length < recommendationCount) {
+        const taskDefaults = createDefaultRecommendations('tasks', recommendationCount - finalRecommendations.length);
+        finalRecommendations.push(...taskDefaults);
+      }
+    }
+    
+    let formattedRecommendations = finalRecommendations.map((rec: any, index: number) => {
       // Replace dollar signs and USD references with the correct currency symbol
       const replaceCurrency = (text: string) => {
         if (!text) return text;
@@ -792,6 +912,42 @@ Format your response as a JSON array:
       completed: false
       };
     });
+    
+    // Final post-formatting filter for tasks page (catch any that slipped through)
+    if (page === 'tasks') {
+      formattedRecommendations = formattedRecommendations.filter((rec: any) => {
+        const title = (rec.title || '').toLowerCase();
+        const description = (rec.description || '').toLowerCase();
+        const nonTaskKeywords = ['quotation', 'invoice', 'lead', 'opportunity', 'product', 'order', 'payment', 'collect', 'follow up on', 'gh₵', 'gh¢', 'prospect', 'deal', 'pending quotation', 'overdue invoice', 'new lead', 'contact', 'call', 'send'];
+        const hasNonTaskKeyword = nonTaskKeywords.some(keyword => 
+          title.includes(keyword) || description.includes(keyword)
+        );
+        if (hasNonTaskKeyword) {
+          console.log(`⚠️ Post-formatting filter: Removed non-task recommendation: "${rec.title}"`);
+          return false;
+        }
+        // Check for patterns
+        if (title.match(/^(follow up on|collect|contact|call|send).*(quotation|invoice|lead|opportunity|product|order|payment|customer|account|prospect|deal)/i)) {
+          console.log(`⚠️ Post-formatting filter: Removed non-task pattern: "${rec.title}"`);
+          return false;
+        }
+        return true;
+      });
+      
+      // If we filtered out too many, add task-specific defaults
+      if (formattedRecommendations.length < recommendationCount) {
+        console.log(`⚠️ Post-formatting: Only ${formattedRecommendations.length} task recommendations, adding task defaults`);
+        const taskDefaults = createDefaultRecommendations('tasks', recommendationCount - formattedRecommendations.length).map((rec: any, index: number) => ({
+          id: `${page}-default-${index + 1}`,
+          title: rec.title,
+          description: rec.description,
+          priority: rec.priority || 'medium',
+          action: rec.action || 'Take action',
+          completed: false
+        }));
+        formattedRecommendations.push(...taskDefaults);
+      }
+    }
 
     // Cache the recommendations
     const cacheData = {
@@ -934,20 +1090,138 @@ function buildEcommerceSalesOrderFilter(): Prisma.SalesOrderWhereInput {
   };
 }
 
-async function getDashboardData(userId: string) {
+// Helper function to fetch user abilities
+async function getUserAbilities(userId: string, userRole: Role): Promise<string[]> {
+  try {
+    // Try to get user's role assignments from database
+    const userRoleAssignments = await prisma.userRoleAssignment.findMany({
+      where: {
+        userId: userId,
+        isActive: true,
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: new Date() } }
+        ]
+      },
+      include: {
+        role: {
+          include: {
+            roleAbilities: {
+              include: {
+                ability: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Extract all abilities from all assigned roles
+    const abilities: string[] = [];
+    userRoleAssignments.forEach(assignment => {
+      assignment.role.roleAbilities.forEach(roleAbility => {
+        if (!abilities.includes(roleAbility.ability.name)) {
+          abilities.push(roleAbility.ability.name);
+        }
+      });
+    });
+
+    // If no abilities found from database, fall back to centralized role-based abilities
+    if (abilities.length === 0 && userRole) {
+      const fallbackAbilities = ROLE_ABILITIES[userRole] || [];
+      return [...fallbackAbilities]; // Convert readonly array to mutable
+    }
+
+    return abilities;
+  } catch (error) {
+    console.error('Error fetching user abilities:', error);
+    // Fallback to role-based abilities if database query fails
+    if (userRole) {
+      const fallbackAbilities = ROLE_ABILITIES[userRole] || [];
+      return [...fallbackAbilities]; // Convert readonly array to mutable
+    }
+    return [];
+  }
+}
+
+// Helper function to check if user has a specific ability
+function hasAbility(abilities: string[], ability: string): boolean {
+  return abilities.includes(ability);
+}
+
+async function getDashboardData(userId: string, abilities: string[] = []) {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
   
-  // Comprehensive dashboard metrics
+  // Check permissions for each module
+  const canViewProducts = hasAbility(abilities, 'products.view');
+  const canViewInventory = hasAbility(abilities, 'inventory.view');
+  const canViewLeads = hasAbility(abilities, 'leads.view');
+  const canViewOpportunities = hasAbility(abilities, 'opportunities.view');
+  const canViewQuotations = hasAbility(abilities, 'quotations.view');
+  const canViewInvoices = hasAbility(abilities, 'invoices.view');
+  const canViewAccounts = hasAbility(abilities, 'accounts.view');
+
+  // Build queries conditionally based on permissions
+  const queries: Promise<any>[] = [];
+  
+  // Products & Inventory
+  queries.push(
+    canViewProducts ? prisma.product.count({ where: { active: true } }) : Promise.resolve(0),
+    canViewInventory ? prisma.stockItem.count({ where: { quantity: { lte: 10, gt: 0 } } }) : Promise.resolve(0),
+    canViewInventory ? prisma.stockItem.count({ where: { quantity: 0 } }) : Promise.resolve(0),
+    canViewInventory ? prisma.stockItem.aggregate({ _sum: { totalValue: true } }) : Promise.resolve({ _sum: { totalValue: 0 } })
+  );
+  
+  // CRM - Leads
+  queries.push(
+    canViewLeads ? prisma.lead.count() : Promise.resolve(0),
+    canViewLeads ? prisma.lead.count({ where: { status: 'NEW', createdAt: { gte: startOfMonth } } }) : Promise.resolve(0),
+    canViewLeads ? prisma.lead.count({ where: { status: 'QUALIFIED' } }) : Promise.resolve(0)
+  );
+  
+  // CRM - Opportunities
+  queries.push(
+    canViewOpportunities ? prisma.opportunity.count({ where: { ownerId: userId } }) : Promise.resolve(0),
+    canViewOpportunities ? prisma.opportunity.count({ where: { ownerId: userId, stage: { notIn: ['WON', 'LOST'] } } }) : Promise.resolve(0),
+    canViewOpportunities ? prisma.opportunity.count({ where: { ownerId: userId, stage: 'WON', updatedAt: { gte: startOfMonth } } }) : Promise.resolve(0),
+    canViewOpportunities ? prisma.opportunity.aggregate({ _sum: { value: true }, where: { ownerId: userId, stage: { notIn: ['WON', 'LOST'] } } }) : Promise.resolve({ _sum: { value: 0 } })
+  );
+  
+  // Sales - Quotations
+  queries.push(
+    canViewQuotations ? prisma.quotation.count() : Promise.resolve(0),
+    canViewQuotations ? prisma.quotation.count({ where: { status: { in: ['DRAFT', 'SENT'] } } }) : Promise.resolve(0),
+    canViewQuotations ? prisma.quotation.count({ where: { status: 'ACCEPTED', updatedAt: { gte: startOfMonth } } }) : Promise.resolve(0)
+  );
+  
+  // Sales - Invoices
+  queries.push(
+    canViewInvoices ? prisma.invoice.count() : Promise.resolve(0),
+    canViewInvoices ? prisma.invoice.count({ where: { paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] } } }) : Promise.resolve(0),
+    canViewInvoices ? prisma.invoice.count({ where: { paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] }, dueDate: { lt: now } } }) : Promise.resolve(0),
+    canViewInvoices ? prisma.invoice.aggregate({ _sum: { total: true }, where: { paymentStatus: 'PAID' } }) : Promise.resolve({ _sum: { total: 0 } }),
+    canViewInvoices ? prisma.invoice.aggregate({ _sum: { total: true }, where: { paymentStatus: 'PAID', updatedAt: { gte: startOfMonth } } }) : Promise.resolve({ _sum: { total: 0 } }),
+    canViewInvoices ? prisma.invoice.aggregate({ _sum: { total: true }, where: { paymentStatus: 'PAID', updatedAt: { gte: startOfLastMonth, lte: endOfLastMonth } } }) : Promise.resolve({ _sum: { total: 0 } })
+  );
+  
+  // Customers
+  queries.push(canViewAccounts ? prisma.account.count() : Promise.resolve(0));
+  
+  // Recent activity
+  queries.push(
+    canViewQuotations ? prisma.quotation.count({ where: { createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } } }) : Promise.resolve(0),
+    canViewInvoices ? prisma.invoice.count({ where: { createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } } }) : Promise.resolve(0),
+    canViewOpportunities ? prisma.opportunity.count({ where: { ownerId: userId, createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } } }) : Promise.resolve(0)
+  );
+
   const [
-    // Products & Inventory
     totalProducts,
     lowStockItems,
     outOfStockItems,
     totalStockValue,
-    // CRM
     totalLeads,
     newLeads,
     qualifiedLeads,
@@ -955,7 +1229,6 @@ async function getDashboardData(userId: string) {
     openOpportunities,
     wonOpportunities,
     pipelineValue,
-    // Sales
     totalQuotations,
     pendingQuotations,
     acceptedQuotations,
@@ -965,164 +1238,63 @@ async function getDashboardData(userId: string) {
     totalRevenue,
     monthlyRevenue,
     lastMonthRevenue,
-    // Customers
     totalAccounts,
-    // Recent activity
     recentQuotations,
     recentInvoices,
     recentOpportunities
-  ] = await Promise.all([
-    // Products & Inventory
-    prisma.product.count({ where: { active: true } }),
-    prisma.stockItem.count({
-      where: {
-        quantity: { lte: 10, gt: 0 }
-      }
-    }),
-    prisma.stockItem.count({ where: { quantity: 0 } }),
-    prisma.stockItem.aggregate({
-      _sum: {
-        totalValue: true
-      }
-    }),
-    // CRM
-    prisma.lead.count(),
-    prisma.lead.count({
-      where: {
-        status: 'NEW',
-        createdAt: { gte: startOfMonth }
-      }
-    }),
-    prisma.lead.count({ where: { status: 'QUALIFIED' } }),
-    prisma.opportunity.count({ where: { ownerId: userId } }),
-    prisma.opportunity.count({
-      where: {
-        ownerId: userId,
-        stage: { notIn: ['WON', 'LOST'] }
-      }
-    }),
-    prisma.opportunity.count({
-      where: {
-        ownerId: userId,
-        stage: 'WON',
-        updatedAt: { gte: startOfMonth }
-      }
-    }),
-    prisma.opportunity.aggregate({
-      _sum: { value: true },
-      where: { ownerId: userId, stage: { notIn: ['WON', 'LOST'] } }
-    }),
-    // Sales
-    prisma.quotation.count(),
-    prisma.quotation.count({
-      where: {
-        status: { in: ['DRAFT', 'SENT'] }
-      }
-    }),
-    prisma.quotation.count({
-      where: {
-        status: 'ACCEPTED',
-        updatedAt: { gte: startOfMonth }
-      }
-    }),
-    prisma.invoice.count(),
-    prisma.invoice.count({
-      where: {
-        paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] }
-      }
-    }),
-    prisma.invoice.count({
-      where: {
-        paymentStatus: { in: ['UNPAID', 'PARTIALLY_PAID'] },
-        dueDate: { lt: now }
-      }
-    }),
-    prisma.invoice.aggregate({
-      _sum: { total: true },
-      where: { paymentStatus: 'PAID' }
-    }),
-    prisma.invoice.aggregate({
-      _sum: { total: true },
-      where: {
-        paymentStatus: 'PAID',
-        updatedAt: { gte: startOfMonth }
-      }
-    }),
-    prisma.invoice.aggregate({
-      _sum: { total: true },
-      where: {
-        paymentStatus: 'PAID',
-        updatedAt: { gte: startOfLastMonth, lte: endOfLastMonth }
-      }
-    }),
-    // Customers
-    prisma.account.count(),
-    // Recent activity (last 7 days)
-    prisma.quotation.count({
-      where: {
-        createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) }
-      }
-    }),
-    prisma.invoice.count({
-      where: {
-        createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) }
-      }
-    }),
-    prisma.opportunity.count({
-      where: {
-        ownerId: userId,
-        createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) }
-      }
-    })
-  ]);
+  ] = await Promise.all(queries);
 
-  // Calculate revenue change
-  const revenueChange = lastMonthRevenue._sum.total && monthlyRevenue._sum.total
+  // Calculate revenue change (only if user has invoice permission)
+  const revenueChange = canViewInvoices && lastMonthRevenue._sum?.total && monthlyRevenue._sum?.total
     ? ((monthlyRevenue._sum.total - lastMonthRevenue._sum.total) / lastMonthRevenue._sum.total) * 100
     : 0;
 
   return {
-    // Products & Inventory
-    totalProducts,
-    lowStockItems,
-    outOfStockItems,
-    totalStockValue: totalStockValue._sum.totalValue || 0,
-    // CRM
-    totalLeads,
-    newLeads,
-    qualifiedLeads,
-    totalOpportunities,
-    openOpportunities,
-    wonOpportunities,
-    pipelineValue: pipelineValue._sum.value || 0,
-    // Sales
-    totalQuotations,
-    pendingQuotations,
-    acceptedQuotations,
-    totalInvoices,
-    unpaidInvoices,
-    overdueInvoices,
-    totalRevenue: totalRevenue._sum.total || 0,
-    monthlyRevenue: monthlyRevenue._sum.total || 0,
-    lastMonthRevenue: lastMonthRevenue._sum.total || 0,
-    revenueChange: Math.round(revenueChange * 10) / 10,
-    // Customers
-    totalAccounts,
-    // Recent activity
-    recentQuotations,
-    recentInvoices,
-    recentOpportunities,
+    // Products & Inventory (only if user has permission)
+    totalProducts: hasAbility(abilities, 'products.view') ? totalProducts : 0,
+    lowStockItems: hasAbility(abilities, 'inventory.view') ? lowStockItems : 0,
+    outOfStockItems: hasAbility(abilities, 'inventory.view') ? outOfStockItems : 0,
+    totalStockValue: hasAbility(abilities, 'inventory.view') ? (totalStockValue._sum?.totalValue || 0) : 0,
+    // CRM (only if user has permission)
+    totalLeads: hasAbility(abilities, 'leads.view') ? totalLeads : 0,
+    newLeads: hasAbility(abilities, 'leads.view') ? newLeads : 0,
+    qualifiedLeads: hasAbility(abilities, 'leads.view') ? qualifiedLeads : 0,
+    totalOpportunities: hasAbility(abilities, 'opportunities.view') ? totalOpportunities : 0,
+    openOpportunities: hasAbility(abilities, 'opportunities.view') ? openOpportunities : 0,
+    wonOpportunities: hasAbility(abilities, 'opportunities.view') ? wonOpportunities : 0,
+    pipelineValue: hasAbility(abilities, 'opportunities.view') ? (pipelineValue._sum?.value || 0) : 0,
+    // Sales (only if user has permission)
+    totalQuotations: hasAbility(abilities, 'quotations.view') ? totalQuotations : 0,
+    pendingQuotations: hasAbility(abilities, 'quotations.view') ? pendingQuotations : 0,
+    acceptedQuotations: hasAbility(abilities, 'quotations.view') ? acceptedQuotations : 0,
+    totalInvoices: canViewInvoices ? totalInvoices : 0,
+    unpaidInvoices: canViewInvoices ? unpaidInvoices : 0,
+    overdueInvoices: canViewInvoices ? overdueInvoices : 0,
+    totalRevenue: canViewInvoices ? (totalRevenue._sum?.total || 0) : 0,
+    monthlyRevenue: canViewInvoices ? (monthlyRevenue._sum?.total || 0) : 0,
+    lastMonthRevenue: canViewInvoices ? (lastMonthRevenue._sum?.total || 0) : 0,
+    revenueChange: canViewInvoices ? Math.round(revenueChange * 10) / 10 : 0,
+    // Customers (only if user has permission)
+    totalAccounts: hasAbility(abilities, 'accounts.view') ? totalAccounts : 0,
+    // Recent activity (only if user has permission)
+    recentQuotations: hasAbility(abilities, 'quotations.view') ? recentQuotations : 0,
+    recentInvoices: canViewInvoices ? recentInvoices : 0,
+    recentOpportunities: hasAbility(abilities, 'opportunities.view') ? recentOpportunities : 0,
     // Time context
     currentMonth: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
     lastMonth: endOfLastMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   };
 }
 
-async function getCRMDashboardData(userId: string) {
+async function getCRMDashboardData(userId: string, abilities: string[] = []) {
+  const canViewLeads = hasAbility(abilities, 'leads.view');
+  const canViewOpportunities = hasAbility(abilities, 'opportunities.view');
+  const canViewAccounts = hasAbility(abilities, 'accounts.view');
+
   const [leads, opportunities, accounts] = await Promise.all([
-    prisma.lead.count(),
-    prisma.opportunity.count({ where: { ownerId: userId } }),
-    prisma.account.count()
+    canViewLeads ? prisma.lead.count() : Promise.resolve(0),
+    canViewOpportunities ? prisma.opportunity.count({ where: { ownerId: userId } }) : Promise.resolve(0),
+    canViewAccounts ? prisma.account.count() : Promise.resolve(0)
   ]);
 
   return { leads, opportunities, accounts };
@@ -1360,7 +1532,34 @@ async function getOpportunitiesData(userId: string) {
   };
 }
 
-async function getLeadsData() {
+async function getLeadsData(abilities: string[] = []) {
+  // Check if user has permission to view leads
+  if (!hasAbility(abilities, 'leads.view')) {
+    return {
+      total: 0,
+      newLeads: 0,
+      contacted: 0,
+      qualified: 0,
+      converted: 0,
+      lost: 0,
+      newLeadsLast7Days: 0,
+      newLeadsThisMonth: 0,
+      newLeadsOver3Days: 0,
+      contactedOver3Days: 0,
+      leadsWithFollowUp: 0,
+      overdueFollowUps: 0,
+      assignedLeads: 0,
+      unassignedLeads: 0,
+      leadsBySource: {},
+      leadsWithProducts: 0,
+      leadsWithOpportunities: 0,
+      totalDealValue: 0,
+      qualifiedDealValue: 0,
+      recentLeads: 0,
+      recentStatusChanges: 0
+    };
+  }
+
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -1574,7 +1773,28 @@ async function getLeadsData() {
   };
 }
 
-async function getProductsData() {
+async function getProductsData(abilities: string[] = []) {
+  // Check if user has permission to view products
+  if (!hasAbility(abilities, 'products.view')) {
+    return {
+      totalProducts: 0,
+      activeProducts: 0,
+      inactiveProducts: 0,
+      productsWithStock: 0,
+      productsWithoutStock: 0,
+      lowStockProducts: 0,
+      outOfStockProducts: 0,
+      productsWithPrice: 0,
+      productsWithoutPrice: 0,
+      totalCategories: 0,
+      productsByType: {},
+      newProductsLast30Days: 0,
+      newProductsLast7Days: 0,
+      productsWithMovements: 0,
+      totalStockValue: 0
+    };
+  }
+
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -1756,19 +1976,102 @@ async function getInventoryData() {
 }
 
 async function getTasksData() {
-  const [total, completed, overdue, pending] = await Promise.all([
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  
+  const [
+    total,
+    completed,
+    overdue,
+    pending,
+    inProgress,
+    cancelled,
+    tasksLast7Days,
+    tasksLast30Days,
+    tasksWithDueDates,
+    tasksWithoutDueDates,
+    highPriorityTasks,
+    urgentTasks,
+    tasksByStatus,
+    tasksByPriority
+  ] = await Promise.all([
     prisma.task.count(),
     prisma.task.count({ where: { status: 'COMPLETED' } }),
     prisma.task.count({ 
       where: { 
         status: { not: 'COMPLETED' },
-        dueDate: { lt: new Date() }
+        dueDate: { lt: now }
       }
     }),
-    prisma.task.count({ where: { status: 'PENDING' } })
+    prisma.task.count({ where: { status: 'PENDING' } }),
+    prisma.task.count({ where: { status: 'IN_PROGRESS' } }),
+    prisma.task.count({ where: { status: 'CANCELLED' } }),
+    prisma.task.count({ where: { createdAt: { gte: sevenDaysAgo } } }),
+    prisma.task.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+    prisma.task.count({ where: { dueDate: { not: null } } }),
+    prisma.task.count({ where: { dueDate: null } }),
+    prisma.task.count({ where: { priority: 'HIGH' } }),
+    prisma.task.count({ where: { priority: 'URGENT' } }),
+    prisma.task.groupBy({
+      by: ['status'],
+      _count: { id: true }
+    }),
+    prisma.task.groupBy({
+      by: ['priority'],
+      _count: { id: true }
+    })
   ]);
 
-  return { total, completed, overdue, pending };
+  // Calculate completion rate
+  const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  // Get tasks due soon (within 3 days)
+  const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const tasksDueSoon = await prisma.task.count({
+    where: {
+      status: { not: 'COMPLETED' },
+      dueDate: {
+        gte: now,
+        lte: threeDaysFromNow
+      }
+    }
+  });
+
+  // Get overdue tasks by priority
+  const overdueHighPriority = await prisma.task.count({
+    where: {
+      status: { not: 'COMPLETED' },
+      dueDate: { lt: now },
+      priority: { in: ['HIGH', 'URGENT'] }
+    }
+  });
+
+  return {
+    total,
+    completed,
+    overdue,
+    pending,
+    inProgress,
+    cancelled,
+    tasksLast7Days,
+    tasksLast30Days,
+    tasksWithDueDates,
+    tasksWithoutDueDates,
+    highPriorityTasks,
+    urgentTasks,
+    tasksDueSoon,
+    overdueHighPriority,
+    completionRate,
+    statusBreakdown: tasksByStatus.reduce((acc, item) => {
+      acc[item.status] = item._count.id;
+      return acc;
+    }, {} as Record<string, number>),
+    priorityBreakdown: tasksByPriority.reduce((acc, item) => {
+      acc[item.priority] = item._count.id;
+      return acc;
+    }, {} as Record<string, number>)
+  };
 }
 
 async function getProjectsData(userId: string) {
@@ -2198,7 +2501,27 @@ async function getBackordersData() {
   };
 }
 
-async function getInvoicesData() {
+async function getInvoicesData(abilities: string[] = []) {
+  // Check if user has permission to view invoices
+  if (!hasAbility(abilities, 'invoices.view')) {
+    return {
+      totalInvoices: 0,
+      draftInvoices: 0,
+      sentInvoices: 0,
+      overdueInvoices: 0,
+      paidInvoices: 0,
+      unpaidInvoices: 0,
+      partiallyPaidInvoices: 0,
+      invoicesLast30Days: 0,
+      invoicesThisMonth: 0,
+      totalInvoiceValue: 0,
+      overdueAmount: 0,
+      paidThisMonth: 0,
+      unpaidAmount: 0,
+      averageDaysOverdue: 0
+    };
+  }
+
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -2290,7 +2613,26 @@ async function getInvoicesData() {
   };
 }
 
-async function getQuotationsData() {
+async function getQuotationsData(abilities: string[] = []) {
+  // Check if user has permission to view quotations
+  if (!hasAbility(abilities, 'quotations.view')) {
+    return {
+      totalQuotations: 0,
+      draftQuotations: 0,
+      sentQuotations: 0,
+      acceptedQuotations: 0,
+      rejectedQuotations: 0,
+      expiredQuotations: 0,
+      quotationsLast30Days: 0,
+      quotationsThisMonth: 0,
+      totalQuotationValue: 0,
+      acceptedValue: 0,
+      pendingValue: 0,
+      quotationsNeedingFollowUp: 0,
+      conversionRate: 0
+    };
+  }
+
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -3738,6 +4080,13 @@ function createDefaultRecommendations(page: string, count: number) {
       { title: 'Call top COD risks', description: 'Focus on ecommerce customers with overdue COD balances to secure payment.', priority: 'high', action: 'Call high-risk customers' },
       { title: 'Offer retention perks', description: 'Send personalized offers to recent ecommerce customers to encourage repeat orders.', priority: 'medium', action: 'Send retention campaign' },
       { title: 'Update contact details', description: 'Verify phone and email details for ecommerce customers flagged with failed deliveries.', priority: 'medium', action: 'Confirm customer info' }
+    ],
+    'tasks': [
+      { title: 'Complete overdue tasks', description: 'Review and complete tasks that are past their due date to improve workflow efficiency', priority: 'high', action: 'Update task status' },
+      { title: 'Set task priorities', description: 'Assign priority levels to tasks to focus on important work and improve completion rates', priority: 'medium', action: 'Update priorities' },
+      { title: 'Review task assignments', description: 'Ensure tasks are properly assigned to team members for better task management', priority: 'low', action: 'Reassign tasks' },
+      { title: 'Add due dates to tasks', description: 'Set due dates for tasks without deadlines to improve deadline adherence', priority: 'medium', action: 'Set due dates' },
+      { title: 'Address high priority tasks', description: 'Focus on urgent and high priority tasks to prevent bottlenecks', priority: 'high', action: 'Prioritize tasks' }
     ]
   };
 

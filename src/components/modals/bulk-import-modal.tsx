@@ -98,6 +98,7 @@ export function BulkImportModal({ isOpen, onClose, onSuccess }: BulkImportModalP
       'SKU': 'sku', 'sku': 'sku', 'product_sku': 'sku',
       'Name': 'name', 'name': 'name', 'product_name': 'name',
       'Description': 'description', 'description': 'description', 'product_description': 'description',
+      'Brand': 'brand', 'brand': 'brand', 'product_brand': 'brand',
       'Price': 'price', 'price': 'price', 'selling_price': 'price',
       'Cost': 'cost', 'cost': 'cost', 'cost_price': 'cost', 'purchase_price': 'cost',
       'Quantity': 'quantity', 'quantity': 'quantity', 'stock_quantity': 'quantity',
@@ -262,11 +263,11 @@ export function BulkImportModal({ isOpen, onClose, onSuccess }: BulkImportModalP
   const downloadTemplate = () => {
     // Create CSV template with all supported fields
     const csvContent = [
-      'SKU,Name,Description,Type,Price,Cost,Quantity,Reorder Point,Import Currency,Selling Currency,UOM Base,UOM Sell,Active,Barcode,Barcode Type,Supplier Name,Supplier SKU,Supplier Barcode,Service Code,Duration,Category',
-      'PROD-001,Premium Headphones,High-quality wireless headphones,PRODUCT,299.99,200.00,50,10,USD,GHS,pcs,pcs,true,1234567890123,EAN13,AudioTech Inc,ATH-001,ATH-001-BC,,,Electronics',
-      'PROD-002,Office Chair,Ergonomic office chair,PRODUCT,199.99,120.00,25,5,USD,GHS,pcs,pcs,true,2345678901234,EAN13,Office Solutions,OS-002,OS-002-BC,,,Furniture',
-      'PROD-003,Fitness Tracker,Smart fitness tracker,PRODUCT,149.99,80.00,100,20,USD,GHS,pcs,pcs,true,3456789012345,EAN13,FitTech Corp,FT-003,FT-003-BC,,,Electronics',
-      'PROD-004,Wireless Mouse,Ergonomic wireless mouse,PRODUCT,29.99,15.00,200,25,USD,GHS,pcs,pcs,true,4567890123456,EAN13,Peripheral Pro,PP-004,PP-004-BC,,,Electronics',
+      'SKU,Name,Description,Brand,Type,Price,Cost,Quantity,Reorder Point,Import Currency,Selling Currency,UOM Base,UOM Sell,Active,Barcode,Barcode Type,Supplier Name,Supplier SKU,Supplier Barcode,Service Code,Duration,Category',
+      'PROD-001,Premium Headphones,High-quality wireless headphones,Sony,PRODUCT,299.99,200.00,50,10,USD,GHS,pcs,pcs,true,1234567890123,EAN13,AudioTech Inc,ATH-001,ATH-001-BC,,,Electronics',
+      'PROD-002,Office Chair,Ergonomic office chair,Herman Miller,PRODUCT,199.99,120.00,25,5,USD,GHS,pcs,pcs,true,2345678901234,EAN13,Office Solutions,OS-002,OS-002-BC,,,Furniture',
+      'PROD-003,Fitness Tracker,Smart fitness tracker,Apple,PRODUCT,149.99,80.00,100,20,USD,GHS,pcs,pcs,true,3456789012345,EAN13,FitTech Corp,FT-003,FT-003-BC,,,Electronics',
+      'PROD-004,Wireless Mouse,Ergonomic wireless mouse,Logitech,PRODUCT,29.99,15.00,200,25,USD,GHS,pcs,pcs,true,4567890123456,EAN13,Peripheral Pro,PP-004,PP-004-BC,,,Electronics',
       'SERV-001,Consulting Service,Professional consulting services,SERVICE,,,0,0,USD,GHS,hours,hours,true,,,,,CONS-001,2 hours,Services'
     ].join('\n');
 

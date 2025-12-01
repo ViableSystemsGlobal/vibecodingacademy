@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { getCompanyName } from '@/lib/company-settings';
 import nodemailer from 'nodemailer';
 
 // Helper function to get setting value
@@ -412,8 +413,10 @@ export async function PUT(
         console.error('Error creating distributor record:', error);
       }
       
+      const companyName = await getCompanyName();
+      
       // SMS Message
-      const smsMessage = `Congratulations ${contactName}! Your distributor application for ${businessName} has been approved. Welcome to the AdPools Group family! You will receive further instructions via email.`;
+      const smsMessage = `Congratulations ${contactName}! Your distributor application for ${businessName} has been approved. Welcome to the ${companyName || 'Team'} family! You will receive further instructions via email.`;
       
       // Email Message
       const emailSubject = `Distributor Application Approved - ${businessName}`;
@@ -421,7 +424,7 @@ export async function PUT(
 
 Congratulations! We are pleased to inform you that your distributor application for ${businessName} has been approved.
 
-Welcome to the AdPools Group family! As an approved distributor, you will have access to our comprehensive product range and support services.
+Welcome to the ${companyName || 'Team'} family! As an approved distributor, you will have access to our comprehensive product range and support services.
 
 Next Steps:
 1. You will receive a welcome package with detailed information about our products and services
@@ -432,7 +435,7 @@ Next Steps:
 If you have any questions, please don't hesitate to contact us.
 
 Best regards,
-AdPools Group Team`;
+${companyName || 'Team'}`;
 
       // Send notifications asynchronously (don't wait for them to complete)
       Promise.all([

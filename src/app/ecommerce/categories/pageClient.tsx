@@ -318,8 +318,8 @@ export default function EcommerceCategoriesClient() {
   );
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((card) => (
           <Card
             key={card.title}
@@ -347,17 +347,17 @@ export default function EcommerceCategoriesClient() {
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <Card className="border border-gray-100 shadow-sm">
           <CardHeader className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
-                <CardTitle className="text-lg font-semibold">
+                <CardTitle className="text-base sm:text-lg font-semibold">
                   Ecommerce Categories
                 </CardTitle>
-                <p className="text-sm text-gray-500">
+                <p className="text-xs sm:text-sm text-gray-500">
                   Manage merchandising metadata, featured placement, and
                   operations guidance by category.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                 <Button
                   variant={featuredOnly ? "default" : "outline"}
                   size="sm"
@@ -369,8 +369,9 @@ export default function EcommerceCategoriesClient() {
                       "text-gray-400": !featuredOnly,
                     })}
                   />
-                  <span className="ml-2 text-sm">
-                    {featuredOnly ? "Showing featured" : "Show featured only"}
+                  <span className="ml-2 text-xs sm:text-sm">
+                    <span className="hidden sm:inline">{featuredOnly ? "Showing featured" : "Show featured only"}</span>
+                    <span className="sm:hidden">Featured</span>
                   </span>
                 </Button>
                 <Button
@@ -384,36 +385,36 @@ export default function EcommerceCategoriesClient() {
                 </Button>
               </div>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <div className="relative flex-1 min-w-[220px]">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1 w-full sm:min-w-[220px]">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <Input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search categories..."
-                  className="pl-9"
+                  className="pl-9 w-full"
                 />
               </div>
               {(search || featuredOnly) && (
-                <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+                <Button variant="ghost" size="sm" onClick={handleResetFilters} className="w-full sm:w-auto">
                   Clear filters
                 </Button>
               )}
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-100">
+            <div className="overflow-x-auto -mx-6 sm:mx-0 px-6 sm:px-0">
+              <table className="min-w-[800px] sm:min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50/60">
                   <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-500">
-                    <th className="px-4 py-3">Category</th>
-                    <th className="px-4 py-3">Parent</th>
-                    <th className="px-4 py-3 text-center">Children</th>
-                    <th className="px-4 py-3 text-center">Products</th>
-                    <th className="px-4 py-3 text-center">Active</th>
-                    <th className="px-4 py-3 text-center">New (30d)</th>
-                    <th className="px-4 py-3 text-center">Featured</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
+                    <th className="px-2 sm:px-4 py-3">Category</th>
+                    <th className="px-2 sm:px-4 py-3 hidden md:table-cell">Parent</th>
+                    <th className="px-2 sm:px-4 py-3 text-center hidden lg:table-cell">Children</th>
+                    <th className="px-2 sm:px-4 py-3 text-center">Products</th>
+                    <th className="px-2 sm:px-4 py-3 text-center hidden md:table-cell">Active</th>
+                    <th className="px-2 sm:px-4 py-3 text-center hidden lg:table-cell">New (30d)</th>
+                    <th className="px-2 sm:px-4 py-3 text-center">Featured</th>
+                    <th className="px-2 sm:px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-sm">
@@ -441,52 +442,58 @@ export default function EcommerceCategoriesClient() {
                   ) : (
                     categories.map((category) => (
                       <tr key={category.id} className="hover:bg-gray-50/40">
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col gap-1">
-                            <span className="font-medium text-gray-900">
+                        <td className="px-2 sm:px-4 py-3">
+                          <div className="flex flex-col gap-1 min-w-0">
+                            <span className="font-medium text-gray-900 break-words">
                               {category.name}
                             </span>
                             {category.description ? (
-                              <span className="text-xs text-gray-500">
+                              <span className="text-xs text-gray-500 break-words">
                                 {category.description}
                               </span>
                             ) : null}
+                            <div className="md:hidden text-xs text-gray-500 mt-1">
+                              {category.parent && <span>Parent: {category.parent.name}</span>}
+                              {category.childCount > 0 && <span className="ml-2">Children: {category.childCount}</span>}
+                            </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                        <td className="px-2 sm:px-4 py-3 text-sm text-gray-600 hidden md:table-cell">
                           {category.parent ? category.parent.name : "—"}
                         </td>
-                        <td className="px-4 py-3 text-center text-sm text-gray-600">
+                        <td className="px-2 sm:px-4 py-3 text-center text-sm text-gray-600 hidden lg:table-cell">
                           {category.childCount}
                         </td>
-                        <td className="px-4 py-3 text-center text-sm text-gray-600">
+                        <td className="px-2 sm:px-4 py-3 text-center text-sm text-gray-600">
                           {category.productCount}
                         </td>
-                        <td className="px-4 py-3 text-center text-sm text-gray-600">
+                        <td className="px-2 sm:px-4 py-3 text-center text-sm text-gray-600 hidden md:table-cell">
                           {category.activeProductCount}
                         </td>
-                        <td className="px-4 py-3 text-center text-sm text-gray-600">
+                        <td className="px-2 sm:px-4 py-3 text-center text-sm text-gray-600 hidden lg:table-cell">
                           {category.newProductsLast30Days}
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-2 sm:px-4 py-3 text-center">
                           {category.ecommerce?.isFeatured ? (
-                            <Badge className="bg-amber-100 text-amber-700">
+                            <Badge className="bg-amber-100 text-amber-700 text-xs">
                               Featured
                             </Badge>
                           ) : (
-                            <Badge variant="outline">Standard</Badge>
+                            <Badge variant="outline" className="text-xs">Standard</Badge>
                           )}
                         </td>
-                        <td className="px-4 py-3">
-                          <div className="flex justify-end gap-2">
+                        <td className="px-2 sm:px-4 py-3">
+                          <div className="flex justify-end gap-1 sm:gap-2">
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() =>
                                 handleSelectCategory(category)
                               }
+                              className="text-xs sm:text-sm"
                             >
-                              Configure
+                              <span className="hidden sm:inline">Configure</span>
+                              <span className="sm:hidden">Config</span>
                             </Button>
                             <Button
                               size="sm"
@@ -494,8 +501,9 @@ export default function EcommerceCategoriesClient() {
                               onClick={() =>
                                 handleSelectCategory(category)
                               }
+                              className="p-1 sm:p-2"
                             >
-                              <ArrowUpRight className="h-4 w-4 text-gray-400" />
+                              <ArrowUpRight className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
                             </Button>
                           </div>
                         </td>
@@ -552,7 +560,7 @@ export default function EcommerceCategoriesClient() {
         }}
       >
         {selectedCategory && (
-          <DialogContent className="max-w-4xl">
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {selectedCategory.name}
@@ -569,7 +577,7 @@ export default function EcommerceCategoriesClient() {
             </DialogHeader>
 
             <div className="space-y-6">
-              <section className="grid gap-4 md:grid-cols-2">
+              <section className="grid gap-4 grid-cols-1 md:grid-cols-2">
                 <Card className="border border-gray-100 shadow-none">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm text-gray-600">
@@ -750,7 +758,7 @@ export default function EcommerceCategoriesClient() {
                 </Card>
               </section>
 
-              <section className="grid gap-4 md:grid-cols-2">
+              <section className="grid gap-4 grid-cols-1 md:grid-cols-2">
                 <div className="space-y-3">
                   <Label htmlFor="merchandisingNotes" className="text-sm">
                     Merchandising notes
@@ -797,14 +805,15 @@ export default function EcommerceCategoriesClient() {
               </section>
             </div>
 
-            <DialogFooter className="mt-6 flex justify-between gap-4">
+            <DialogFooter className="mt-6 flex flex-col sm:flex-row justify-between gap-3 sm:gap-4">
               <Button
                 variant="outline"
                 onClick={() => setSelectedCategory(null)}
+                className="w-full sm:w-auto"
               >
                 Cancel
               </Button>
-              <Button onClick={handleSaveConfig} disabled={saving}>
+              <Button onClick={handleSaveConfig} disabled={saving} className="w-full sm:w-auto">
                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save changes
               </Button>

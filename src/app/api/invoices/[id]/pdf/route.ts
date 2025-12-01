@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { generateQRCode } from '@/lib/qrcode';
 
 // Currency symbol helper - using HTML entities for proper encoding
 function getCurrencySymbol(code: string = 'GHS'): string {
@@ -123,6 +124,16 @@ export async function GET(
 
     const headerMargin = pdfHeaderImage ? '160px' : '0';
     const footerMargin = pdfFooterImage ? '160px' : '0';
+
+    // Generate QR code with public URL
+    const qrBaseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
+    const publicPdfUrl = `${qrBaseUrl}/api/public/invoices/${invoice.id}/pdf`;
+    let qrCodeDataUrl = '';
+    try {
+      qrCodeDataUrl = await generateQRCode(publicPdfUrl);
+    } catch (qrError) {
+      console.error('Failed to generate QR code:', qrError);
+    }
 
     // Get invoice currency (default to GHS if not set)
     const invoiceCurrency = (invoiceData.currency as string) || 'GHS';
@@ -559,6 +570,34 @@ export async function GET(
             white-space: pre-wrap;
           }
           
+          .qr-code-section {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+          }
+          
+          .qr-code-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+          }
+          
+          .qr-code-image {
+            width: 120px;
+            height: 120px;
+          }
+          
+          .qr-code-text {
+            font-size: 10px;
+            color: #6b7280;
+            text-align: center;
+          }
+          
           @media print {
             body {
               padding: 0;
@@ -698,6 +737,15 @@ export async function GET(
           <div class="notes-section">
             <div class="notes-title">Notes</div>
             <div class="notes-content">${invoice.notes}</div>
+          </div>
+        ` : ''}
+        
+        <!-- QR Code Section -->
+        ${qrCodeDataUrl ? `
+          <div class="qr-code-section">
+            <div class="qr-code-title">QR Code</div>
+            <img src="${qrCodeDataUrl}" alt="QR Code" class="qr-code-image" />
+            <div class="qr-code-text">Scan to view invoice details</div>
           </div>
         ` : ''}
         </div>

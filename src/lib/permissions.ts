@@ -16,6 +16,7 @@ export const ABILITIES = {
   'products.create': 'Create products',
   'products.edit': 'Edit products',
   'products.delete': 'Delete products',
+  'products.view_cost': 'View product cost prices and profit margins',
   
   // Inventory
   'inventory.view': 'View inventory',
@@ -289,6 +290,8 @@ export const MODULE_ACCESS = {
   'settings': ['settings.view'],
   'users': ['users.view'],
   'roles': ['roles.view'],
+  'profile': ['settings.view'], // Profile is accessible to anyone with settings access
+  'security': ['settings.view'], // Security/Login History is accessible to anyone with settings access
   'product-settings': ['product-settings.view'],
   'currency-settings': ['currency-settings.view'],
   'business-settings': ['business-settings.view'],
@@ -325,13 +328,13 @@ export const ROLE_ABILITIES = {
     'dashboard.view',
     
     // Products
-    'products.view', 'products.create', 'products.edit', 'products.delete',
+    'products.view', 'products.create', 'products.edit', 'products.delete', 'products.view_cost',
     
     // Projects
     'projects.view', 'projects.create', 'projects.edit', 'projects.delete', 'projects.manage',
     
     // Inventory
-    'inventory.view', 'stock.view', 'stock.create', 'stock.edit', 'stock.delete',
+    'inventory.view', 'stock.view', 'stock.create', 'stock.edit', 'stock.delete', 'stock.view_cost',
     
     // Warehouses
     'warehouses.view', 'warehouses.create', 'warehouses.edit', 'warehouses.delete',
@@ -411,13 +414,13 @@ export const ROLE_ABILITIES = {
     'dashboard.view',
     
     // Products
-    'products.view', 'products.create', 'products.edit', 'products.delete',
+    'products.view', 'products.create', 'products.edit', 'products.delete', 'products.view_cost',
     
     // Projects
     'projects.view', 'projects.create', 'projects.edit', 'projects.delete', 'projects.manage',
     
     // Inventory
-    'inventory.view', 'stock.view', 'stock.create', 'stock.edit', 'stock.delete',
+    'inventory.view', 'stock.view', 'stock.create', 'stock.edit', 'stock.delete', 'stock.view_cost',
     
     // Warehouses
     'warehouses.view', 'warehouses.create', 'warehouses.edit', 'warehouses.delete',

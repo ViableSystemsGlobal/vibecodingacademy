@@ -33,6 +33,7 @@ interface Product {
   id: string;
   name: string;
   description: string | null;
+  brand?: string | null;
   price: number;
   originalPrice?: number;
   currency: string;
@@ -644,6 +645,9 @@ function ShopPageContent() {
                             {product.name}
                           </h3>
                         </Link>
+                        {product.brand && (
+                          <p className="text-xs text-gray-500 mt-1">{product.brand}</p>
+                        )}
                         
                         <div className="mt-3 flex items-center justify-between">
                           <div className="flex flex-col">
@@ -680,44 +684,97 @@ function ShopPageContent() {
                 </div>
 
                 {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="mt-8 flex justify-center">
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                        disabled={page === 1}
-                        className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Previous
-                      </button>
+                {totalPages > 1 && (() => {
+                  // Generate page numbers to display
+                  const getPageNumbers = () => {
+                    const pages: (number | string)[] = [];
+                    const maxVisible = 7; // Show up to 7 page numbers
+                    
+                    if (totalPages <= maxVisible) {
+                      // Show all pages if total is small
+                      for (let i = 1; i <= totalPages; i++) {
+                        pages.push(i);
+                      }
+                    } else {
+                      // Always show first page
+                      pages.push(1);
                       
-                      {[...Array(Math.min(5, totalPages))].map((_, i) => {
-                        const pageNum = i + 1;
-                        return (
-                          <button
-                            key={pageNum}
-                            onClick={() => setPage(pageNum)}
-                            className={`px-4 py-2 border rounded-lg ${
-                              page === pageNum
-                                ? "bg-blue-600 text-white"
-                                : "hover:bg-gray-50"
-                            }`}
-                          >
-                            {pageNum}
-                          </button>
-                        );
-                      })}
+                      if (page <= 3) {
+                        // Near the beginning: show 1, 2, 3, 4, ..., last
+                        for (let i = 2; i <= 4; i++) {
+                          pages.push(i);
+                        }
+                        pages.push('...');
+                        pages.push(totalPages);
+                      } else if (page >= totalPages - 2) {
+                        // Near the end: show 1, ..., last-3, last-2, last-1, last
+                        pages.push('...');
+                        for (let i = totalPages - 3; i <= totalPages; i++) {
+                          pages.push(i);
+                        }
+                      } else {
+                        // In the middle: show 1, ..., current-1, current, current+1, ..., last
+                        pages.push('...');
+                        for (let i = page - 1; i <= page + 1; i++) {
+                          pages.push(i);
+                        }
+                        pages.push('...');
+                        pages.push(totalPages);
+                      }
+                    }
+                    
+                    return pages;
+                  };
+                  
+                  const pageNumbers = getPageNumbers();
+                  
+                  return (
+                    <div className="mt-8 flex justify-center">
+                      <div className="flex flex-wrap items-center justify-center gap-2">
+                        <button
+                          onClick={() => setPage((p) => Math.max(1, p - 1))}
+                          disabled={page === 1}
+                          className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Previous
+                        </button>
+                        
+                        {pageNumbers.map((pageNum, index) => {
+                          if (pageNum === '...') {
+                            return (
+                              <span key={`ellipsis-${index}`} className="px-2 py-2 text-gray-500">
+                                ...
+                              </span>
+                            );
+                          }
+                          
+                          const num = pageNum as number;
+                          return (
+                            <button
+                              key={num}
+                              onClick={() => setPage(num)}
+                              className={`px-4 py-2 border rounded-lg transition-colors ${
+                                page === num
+                                  ? "bg-[#23185c] text-white border-[#23185c] hover:bg-[#1c1448]"
+                                  : "hover:bg-gray-50 border-gray-300"
+                              }`}
+                            >
+                              {num}
+                            </button>
+                          );
+                        })}
 
-                      <button
-                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                        disabled={page === totalPages}
-                        className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Next
-                      </button>
+                        <button
+                          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={page === totalPages}
+                          className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Next
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </>
             )}
 

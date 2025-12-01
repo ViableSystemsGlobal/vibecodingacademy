@@ -73,11 +73,17 @@ export async function POST(request: NextRequest) {
     // Get all extracted files
     const extractedFiles = await readdir(extractPath, { recursive: true });
     const imageFiles = extractedFiles.filter(file => {
-      const ext = file.split('.').pop()?.toLowerCase();
-      return ['jpg', 'jpeg', 'png', 'webp'].includes(ext || '');
+      const fileName = String(file);
+      // Skip hidden files, macOS metadata, and directories
+      if (fileName.startsWith('.') || fileName.includes('__MACOSX') || fileName.includes('.DS_Store')) {
+        return false;
+      }
+      const ext = fileName.split('.').pop()?.toLowerCase();
+      return ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '');
     });
 
     console.log(`Found ${imageFiles.length} image files in ZIP`);
+    console.log('Image files:', imageFiles);
 
     // Create uploads directory
     const uploadsDir = join(process.cwd(), 'public', 'uploads', 'product');
@@ -85,32 +91,121 @@ export async function POST(request: NextRequest) {
       await mkdir(uploadsDir, { recursive: true });
     }
 
+    // Fetch all products for case-insensitive matching (SQLite doesn't support mode: 'insensitive')
+    const allProducts = await prisma.product.findMany({
+      select: { id: true, sku: true, serviceCode: true, name: true }
+    });
+    console.log(`Loaded ${allProducts.length} products for matching`);
+
+    // Create lookup maps (lowercase for case-insensitive matching)
+    const skuToProduct: { [key: string]: typeof allProducts[0] } = {};
+    const serviceCodeToProduct: { [key: string]: typeof allProducts[0] } = {};
+    const nameToProduct: { [key: string]: typeof allProducts[0] } = {};
+    
+    for (const product of allProducts) {
+      if (product.sku) {
+        skuToProduct[product.sku.toLowerCase()] = product;
+      }
+      if (product.serviceCode) {
+        serviceCodeToProduct[product.serviceCode.toLowerCase()] = product;
+      }
+      if (product.name) {
+        // Map by full name
+        nameToProduct[product.name.toLowerCase()] = product;
+        
+        // Also map by name parts (before first comma, before first space with special chars)
+        const nameBeforeComma = product.name.split(',')[0].trim().toLowerCase();
+        if (nameBeforeComma && !nameToProduct[nameBeforeComma]) {
+          nameToProduct[nameBeforeComma] = product;
+        }
+        
+        // Map by first part of name (common for product codes like EPV150-WIFI+RS485)
+        const firstPart = product.name.split(/[\s,]/)[0].trim().toLowerCase();
+        if (firstPart && !nameToProduct[firstPart]) {
+          nameToProduct[firstPart] = product;
+        }
+      }
+    }
+    
+    console.log('Sample SKU mappings:', Object.keys(skuToProduct).slice(0, 10));
+    console.log('Sample name mappings:', Object.keys(nameToProduct).slice(0, 10));
+
     // Group images by SKU/serviceCode
     const imagesBySku: { [key: string]: string[] } = {};
+    const notFoundSkus: string[] = [];
 
     for (const imageFile of imageFiles) {
       // Extract SKU/serviceCode from filename
       // Support formats: PROD-001.jpg, PROD-001-2.jpg, PROD-001_2.jpg, SERV-001.jpg
-      const fileName = imageFile.split('/').pop() || imageFile;
-      const nameWithoutExt = fileName.replace(/\.(jpg|jpeg|png|webp)$/i, '');
+      const fileName = (imageFile as string).split('/').pop() || imageFile;
+      const nameWithoutExt = (fileName as string).replace(/\.(jpg|jpeg|png|gif|webp)$/i, '');
       
-      // Remove suffix for multiple images (-2, _2, etc.)
-      const baseName = nameWithoutExt.replace(/[-_]\d+$/, '');
+      // Remove ONLY multiple image suffixes like -2, _2, (2) at the very end
+      // But NOT the main SKU numbers like PROD-001
+      // Pattern: only remove single digit suffixes that are clearly image counters
+      let baseName = nameWithoutExt
+        .replace(/[-_](\d)$/, '')           // Remove -2, _3 (single digit only)
+        .replace(/\s*\(\d+\)$/, '')          // Remove (1), (2), etc.
+        .replace(/\s*copy\s*\d*$/i, '')      // Remove "copy", "copy 2"
+        .replace(/\s+$/, '')                 // Trim trailing spaces
+        .trim();
       
-      // Try to find product by SKU or serviceCode
-      const product = await prisma.product.findFirst({
-        where: {
-          OR: [
-            { sku: baseName },
-            { serviceCode: baseName }
-          ]
+      const baseNameLower = baseName.toLowerCase();
+      
+      console.log(`Processing image: ${fileName} -> Looking for: ${baseName}`);
+      
+      // Try to find product by SKU, serviceCode, or name (case-insensitive)
+      let product = skuToProduct[baseNameLower] || serviceCodeToProduct[baseNameLower] || nameToProduct[baseNameLower];
+      let matchedBy = 'direct';
+      
+      // Also try without common prefixes/suffixes
+      if (!product) {
+        // Try with different variations
+        const variations = [
+          baseNameLower,
+          baseNameLower.replace(/^prod[-_]?/i, ''),
+          baseNameLower.replace(/^sku[-_]?/i, ''),
+          `prod-${baseNameLower}`,
+          `sku-${baseNameLower}`,
+          // Try replacing + with different chars (file systems may alter these)
+          baseNameLower.replace(/\+/g, ' '),
+          baseNameLower.replace(/\+/g, '-'),
+          baseNameLower.replace(/\+/g, '_'),
+          baseNameLower.replace(/_/g, '+'),
+          baseNameLower.replace(/-/g, '+'),
+        ];
+        
+        for (const variation of variations) {
+          product = skuToProduct[variation] || serviceCodeToProduct[variation] || nameToProduct[variation];
+          if (product) {
+            matchedBy = `variation: ${variation}`;
+            break;
+          }
         }
-      });
+      }
+      
+      // Try partial name matching if still not found
+      if (!product) {
+        // Look for products whose name starts with the filename
+        for (const [key, prod] of Object.entries(nameToProduct)) {
+          if (key.startsWith(baseNameLower) || baseNameLower.startsWith(key)) {
+            product = prod;
+            matchedBy = `partial name: ${key}`;
+            break;
+          }
+        }
+      }
 
       if (!product) {
-        console.log(`⚠️  No product found for SKU/serviceCode: ${baseName}`);
+        console.log(`⚠️  No product found for: ${baseName}`);
+        if (!notFoundSkus.includes(baseName)) {
+          notFoundSkus.push(baseName);
+        }
         continue;
       }
+      
+      console.log(`  ✓ Matched to product: ${product.name} (SKU: ${product.sku}) via ${matchedBy}`);
+      
 
       // Read image file
       const imagePath = join(extractPath, imageFile);
@@ -212,6 +307,7 @@ export async function POST(request: NextRequest) {
         updated: results.success,
         failed: results.failed,
         notFound: results.notFound,
+        notFoundSkus: notFoundSkus, // List of SKUs that weren't found
         updatedProducts: results.updated,
         errors: results.errors
       }

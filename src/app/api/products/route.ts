@@ -43,9 +43,16 @@ export async function GET(request: NextRequest) {
     // 'active' field is handled by buildOrderBy, no special case needed
 
     const where = buildWhereClause(params, {
-      searchFields: ['name', 'sku', 'serviceCode', 'description'],
+      searchFields: ['name', 'sku', 'serviceCode', 'description'], // 'brand' removed - it's a relation
       customFilters,
     });
+
+    // Add brand name search (it's a relation, so we need to handle it separately)
+    if (params.search && (where as any).OR) {
+      (where as any).OR.push({
+        brand: { name: { contains: params.search } }
+      });
+    }
 
     const page = params.page || 1;
     const limit = params.limit || 10;
@@ -92,9 +99,16 @@ export async function GET(request: NextRequest) {
 
     // Get total counts for metrics (using base where clause without pagination)
     const baseWhere = buildWhereClause(params, {
-      searchFields: ['name', 'sku', 'serviceCode', 'description'],
+      searchFields: ['name', 'sku', 'serviceCode', 'description'], // 'brand' removed - it's a relation
       customFilters,
     });
+
+    // Add brand name search to baseWhere as well
+    if (params.search && (baseWhere as any).OR) {
+      (baseWhere as any).OR.push({
+        brand: { name: { contains: params.search } }
+      });
+    }
 
     const [totalActive, totalLowStock, totalOutOfStock] = await Promise.all([
       prisma.product.count({ 

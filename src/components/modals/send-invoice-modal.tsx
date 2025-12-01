@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/contexts/toast-context";
 import { useTheme } from "@/contexts/theme-context";
+import { useCompany } from "@/contexts/company-context";
 
 interface Invoice {
   id: string;
@@ -55,6 +56,7 @@ export const SendInvoiceModal: React.FC<SendInvoiceModalProps> = ({
   const { getThemeClasses, getThemeColor } = useTheme();
   const theme = getThemeClasses();
   const themeColorValue = getThemeColor();
+  const { companyName } = useCompany();
 
   // Get customer info
   const customerName = invoice.account?.name || 
@@ -73,7 +75,7 @@ export const SendInvoiceModal: React.FC<SendInvoiceModalProps> = ({
       setEmail(customerEmail);
       setCcEmail('');
       setPhone(customerPhone);
-      setMessage(`Dear ${customerName},\n\nPlease find your invoice ${invoice.number} attached. The total amount is GH₵${invoice.total.toFixed(2)} and is due on ${new Date(invoice.dueDate).toLocaleDateString()}.\n\nAmount Due: GH₵${invoice.amountDue.toFixed(2)}\n\nView your invoice here: ${pdfUrl}\n\nBest regards,\nAD Pools Team`);
+      setMessage(`Dear ${customerName},\n\nPlease find your invoice ${invoice.number} attached. The total amount is GH₵${invoice.total.toFixed(2)} and is due on ${new Date(invoice.dueDate).toLocaleDateString()}.\n\nAmount Due: GH₵${invoice.amountDue.toFixed(2)}\n\nView your invoice here: ${pdfUrl}\n\nBest regards,\n${companyName || 'Team'}`);
     }
   }, [isOpen, customerName, customerEmail, customerPhone, invoice, pdfUrl]);
 
@@ -133,8 +135,8 @@ export const SendInvoiceModal: React.FC<SendInvoiceModalProps> = ({
 
     setIsLoading(true);
     try {
-      // Create SMS message with PDF link
-      const smsMessage = `Dear ${customerName}, your invoice ${invoice.number} is due on ${new Date(invoice.dueDate).toLocaleDateString()}. Amount due: GH₵${invoice.amountDue.toFixed(2)}. View invoice: ${pdfUrl}`;
+      // Create SMS message with PDF link (use GHS instead of GH₵ for SMS)
+      const smsMessage = `Dear ${customerName}, your invoice ${invoice.number} is due on ${new Date(invoice.dueDate).toLocaleDateString()}. Amount due: GHS ${invoice.amountDue.toFixed(2)}. View invoice: ${pdfUrl}`;
 
       const response = await fetch('/api/communication/sms/send', {
         method: 'POST',

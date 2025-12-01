@@ -59,6 +59,7 @@ interface ProductSuggestion {
 
 export function EcommerceNavigation() {
   const router = useRouter();
+  const pathname = usePathname();
   const { branding } = useBranding();
   const { customer, logout, cartCount, refreshCartCount } = useCustomerAuth();
   const { openCart } = useCartFlyout();
@@ -165,7 +166,9 @@ export function EcommerceNavigation() {
         setIsSearching(true);
         const response = await fetch(`/api/public/shop/products?search=${encodeURIComponent(term)}&limit=3`);
         if (!response.ok) {
-          throw new Error("Failed to fetch suggestions");
+          const errorData = await response.json().catch(() => ({}));
+          console.error("Search suggestions API error:", response.status, errorData);
+          throw new Error(errorData.error || "Failed to fetch suggestions");
         }
         const data = await response.json();
         const products = data?.products ?? [];
@@ -184,6 +187,12 @@ export function EcommerceNavigation() {
       fetchSuggestions.cancel();
     };
   }, [searchTerm]);
+
+  // Close suggestions when navigating to a different page
+  useEffect(() => {
+    setSuggestions([]);
+    setSearchTerm("");
+  }, [pathname]);
 
   const categoryColumns = useMemo(() => {
     if (menuCategories.length === 0) {
@@ -366,6 +375,10 @@ export function EcommerceNavigation() {
                         <Link
                           href={`/shop/products/${product.id}`}
                           className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-[#23185c]/5 hover:text-[#23185c]"
+                          onClick={() => {
+                            setSuggestions([]);
+                            setSearchTerm("");
+                          }}
                         >
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100">
                             {product.images && product.images[0] ? (
@@ -419,7 +432,11 @@ export function EcommerceNavigation() {
                           <Link
                             href={`/shop/products/${product.id}`}
                             className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-[#23185c]/5 hover:text-[#23185c]"
-                            onClick={() => setIsMobileMenuOpen(false)}
+                            onClick={() => {
+                              setSuggestions([]);
+                              setSearchTerm("");
+                              setIsMobileMenuOpen(false);
+                            }}
                           >
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100">
                               {product.images && product.images[0] ? (

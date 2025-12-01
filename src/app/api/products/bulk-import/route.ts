@@ -1,6 +1,67 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateBarcode, validateBarcode, detectBarcodeType } from "@/lib/barcode-utils";
+import * as XLSX from 'xlsx';
+
+// Column mapping for flexible header names
+const columnMap: { [key: string]: string } = {
+  'SKU': 'sku', 'sku': 'sku', 'product_sku': 'sku', 'Product SKU': 'sku',
+  'Name': 'name', 'name': 'name', 'product_name': 'name', 'Product Name': 'name', 'Product': 'name', 'Item Name': 'name', 'Item': 'name', 'Title': 'name', 'title': 'name',
+  'Description': 'description', 'description': 'description', 'product_description': 'description', 'Product Description': 'description',
+  'Brand': 'brand', 'brand': 'brand', 'product_brand': 'brand', 'Product Brand': 'brand',
+  'Type': 'type', 'type': 'type', 'item_type': 'type', 'Item Type': 'type', 'Product Type': 'type',
+  'Price': 'price', 'price': 'price', 'selling_price': 'price', 'Selling Price': 'price',
+  'Cost': 'cost', 'cost': 'cost', 'cost_price': 'cost', 'purchase_price': 'cost', 'Cost Price': 'cost', 'Purchase Price': 'cost',
+  'Quantity': 'quantity', 'quantity': 'quantity', 'stock_quantity': 'quantity', 'Stock Quantity': 'quantity', 'Stock': 'quantity', 'stock': 'quantity',
+  'Reorder Point': 'reorder_point', 'reorder_point': 'reorder_point', 'Reorder': 'reorder_point', 'reorder': 'reorder_point',
+  'Import Currency': 'import_currency', 'import_currency': 'import_currency', 'currency': 'import_currency', 'Currency': 'import_currency',
+  'Selling Currency': 'selling_currency', 'selling_currency': 'selling_currency', 'price_currency': 'selling_currency', 'base_currency': 'selling_currency', 'Base Currency': 'selling_currency',
+  'UOM Base': 'uom_base', 'uom_base': 'uom_base', 'unit_base': 'uom_base', 'Unit': 'uom_base', 'unit': 'uom_base',
+  'UOM Sell': 'uom_sell', 'uom_sell': 'uom_sell', 'unit_sell': 'uom_sell',
+  'Active': 'active', 'active': 'active', 'Status': 'active', 'status': 'active',
+  'Barcode': 'barcode', 'barcode': 'barcode', 'product_barcode': 'barcode', 'Product Barcode': 'barcode',
+  'Barcode Type': 'barcode_type', 'barcode_type': 'barcode_type',
+  'Supplier Name': 'supplier_name', 'supplier_name': 'supplier_name', 'Supplier': 'supplier_name', 'supplier': 'supplier_name',
+  'Supplier SKU': 'supplier_sku', 'supplier_sku': 'supplier_sku',
+  'Supplier Barcode': 'supplier_barcode', 'supplier_barcode': 'supplier_barcode',
+  'Service Code': 'service_code', 'service_code': 'service_code',
+  'Duration': 'duration', 'duration': 'duration',
+  'Category': 'category', 'category': 'category', 'category_name': 'category', 'Category Name': 'category'
+};
+
+// Helper function to normalize a row using column mapping
+function normalizeRow(row: any): any {
+  const normalized: any = {};
+  for (const [key, value] of Object.entries(row)) {
+    const normalizedKey = columnMap[key] || key.toLowerCase().replace(/\s+/g, '_');
+    normalized[normalizedKey] = value;
+  }
+  return normalized;
+}
+
+// Helper function to parse Excel file
+function parseExcel(buffer: ArrayBuffer): any[] {
+  try {
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+    
+    console.log(`Excel headers found: ${Object.keys(jsonData[0] || {}).join(', ')}`);
+    console.log(`First row data:`, jsonData[0]);
+    
+    // Normalize each row using column mapping
+    const rows = jsonData.map(row => normalizeRow(row));
+    
+    console.log(`First normalized row:`, rows[0]);
+    console.log(`Parsed ${rows.length} rows from Excel`);
+    
+    return rows;
+  } catch (error) {
+    console.error('Error parsing Excel:', error);
+    throw new Error(`Failed to parse Excel file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
 
 // Helper function to parse CSV content with flexible column mapping
 function parseCSV(content: string): any[] {
@@ -14,31 +75,7 @@ function parseCSV(content: string): any[] {
     const originalHeaders = lines[0].split(',').map(h => h.trim().replace(/['"]/g, ''));
     console.log('CSV headers:', originalHeaders);
     
-    // Column mapping for flexible header names
-    const columnMap: { [key: string]: string } = {
-      'SKU': 'sku', 'sku': 'sku', 'product_sku': 'sku',
-      'Name': 'name', 'name': 'name', 'product_name': 'name',
-      'Description': 'description', 'description': 'description', 'product_description': 'description',
-      'Type': 'type', 'type': 'type', 'item_type': 'type',
-      'Price': 'price', 'price': 'price', 'selling_price': 'price',
-      'Cost': 'cost', 'cost': 'cost', 'cost_price': 'cost', 'purchase_price': 'cost',
-      'Quantity': 'quantity', 'quantity': 'quantity', 'stock_quantity': 'quantity',
-      'Reorder Point': 'reorder_point', 'reorder_point': 'reorder_point',
-      'Import Currency': 'import_currency', 'import_currency': 'import_currency', 'currency': 'import_currency',
-      'Selling Currency': 'selling_currency', 'selling_currency': 'selling_currency', 'price_currency': 'selling_currency', 'base_currency': 'selling_currency',
-      'UOM Base': 'uom_base', 'uom_base': 'uom_base', 'unit_base': 'uom_base',
-      'UOM Sell': 'uom_sell', 'uom_sell': 'uom_sell', 'unit_sell': 'uom_sell',
-      'Active': 'active', 'active': 'active',
-      'Barcode': 'barcode', 'barcode': 'barcode', 'product_barcode': 'barcode',
-      'Barcode Type': 'barcode_type', 'barcode_type': 'barcode_type',
-      'Supplier Name': 'supplier_name', 'supplier_name': 'supplier_name',
-      'Supplier SKU': 'supplier_sku', 'supplier_sku': 'supplier_sku',
-      'Supplier Barcode': 'supplier_barcode', 'supplier_barcode': 'supplier_barcode',
-      'Service Code': 'service_code', 'service_code': 'service_code',
-      'Duration': 'duration', 'duration': 'duration',
-      'Category': 'category', 'category': 'category', 'category_name': 'category'
-    };
-    
+    // Use global columnMap for normalization
     const rows = [];
     
     for (let i = 1; i < lines.length; i++) {
@@ -99,11 +136,33 @@ export async function POST(request: NextRequest) {
 
     console.log(`Processing file: ${file.name}, size: ${file.size} bytes, type: ${file.type}`);
     
-    const fileContent = await file.text();
-    console.log(`File content length: ${fileContent.length} characters`);
+    // Detect file type and parse accordingly
+    const fileName = file.name.toLowerCase();
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || 
+                    file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+                    file.type === 'application/vnd.ms-excel';
     
-    const csvData = parseCSV(fileContent);
-    console.log(`Parsed CSV data: ${csvData.length} rows`);
+    let parsedData: any[];
+    
+    if (isExcel) {
+      console.log('Detected Excel file, using XLSX parser');
+      const buffer = await file.arrayBuffer();
+      parsedData = parseExcel(buffer);
+    } else {
+      console.log('Detected CSV file, using CSV parser');
+      const fileContent = await file.text();
+      console.log(`File content length: ${fileContent.length} characters`);
+      parsedData = parseCSV(fileContent);
+    }
+    
+    console.log(`Parsed data: ${parsedData.length} rows`);
+    
+    // Debug: log first row to see what we're getting
+    if (parsedData.length > 0) {
+      console.log('First row keys:', Object.keys(parsedData[0]));
+      console.log('First row name value:', parsedData[0].name);
+      console.log('First row sku value:', parsedData[0].sku);
+    }
     
     const result = {
       success: 0,
@@ -111,7 +170,7 @@ export async function POST(request: NextRequest) {
       warnings: [] as string[]
     };
 
-    if (csvData.length === 0) {
+    if (parsedData.length === 0) {
       return NextResponse.json(
         { error: "No valid data found in the file" },
         { status: 400 }
@@ -137,7 +196,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      for (const row of csvData) {
+      for (const row of parsedData) {
         try {
           // Validate required fields
           if (!row.sku || !row.name) {
@@ -217,24 +276,81 @@ export async function POST(request: NextRequest) {
             }
           }
 
+          // Handle brand lookup or creation
+          let brandId = null;
+          if (row.brand?.trim()) {
+            const brandName = row.brand.trim();
+            // SQLite doesn't support mode: 'insensitive', so we fetch all and compare
+            const allBrands = await prisma.brand.findMany({ select: { id: true, name: true } });
+            let brand = allBrands.find(b => b.name.toLowerCase() === brandName.toLowerCase());
+            
+            if (!brand) {
+              // Create brand if it doesn't exist
+              const newBrand = await prisma.brand.create({
+                data: {
+                  name: brandName,
+                  description: `Auto-created from bulk import`
+                }
+              });
+              brandId = newBrand.id;
+            } else {
+              brandId = brand.id;
+            }
+          }
+
+          // Parse active status with better handling
+          const isActive = (() => {
+            // Handle boolean values directly
+            if (typeof row.active === 'boolean') {
+              return row.active;
+            }
+            
+            // Handle numeric values (Excel might send 1 or 0)
+            if (typeof row.active === 'number') {
+              return row.active === 1 || row.active > 0;
+            }
+            
+            // Handle string values
+            const activeValue = String(row.active || '').trim().toLowerCase();
+            
+            // Default to true if empty/undefined
+            if (!row.active || activeValue === '' || activeValue === 'undefined' || activeValue === 'null') {
+              return true; // Default to active
+            }
+            
+            // Handle various true values: true, TRUE, True, 1, yes, YES, Yes, y, Y
+            return activeValue === 'true' || 
+                   activeValue === '1' || 
+                   activeValue === 'yes' || 
+                   activeValue === 'y' ||
+                   activeValue === 'active' ||
+                   activeValue === 'enabled';
+          })();
+          
+          // Debug logging for first few products
+          if (result.success < 3) {
+            console.log(`Product ${row.name}: active value="${row.active}" (type: ${typeof row.active}), result=${isActive}`);
+          }
+
           const productData = {
             type: productType,
             name: row.name || `Imported ${isService ? 'Service' : 'Product'} ${Date.now()}`,
             sku: isService ? null : productSku, // Services can have null SKU
             serviceCode: isService ? (row.service_code || row.sku || `SERV-${Date.now()}`) : null,
             description: row.description || `Imported ${isService ? 'service' : 'product'} from bulk upload`,
+            brandId: brandId,
             barcode: isService ? null : primaryBarcode, // Services don't have barcodes
             barcodeType: isService ? null : (primaryBarcode ? (barcodeType as any) : null),
             generateBarcode: !isService && !row.barcode,
-            price: parseFloat(row.price || '0') || 0,
-            cost: costPrice,
+            price: parseFloat(row.price || '0') || 0, // Selling price in selling_currency
+            cost: costPrice, // Cost price in import_currency
             originalPrice: parseFloat(row.price || '0') || 0,
             originalCost: costPrice,
-            originalPriceCurrency: row.import_currency || 'USD',
-            originalCostCurrency: row.import_currency || 'USD',
-            baseCurrency: row.selling_currency || 'GHS', // Selling price currency
+            originalPriceCurrency: row.selling_currency || 'GHS', // Price is in selling currency
+            originalCostCurrency: row.import_currency || 'USD', // Cost is in import currency
+            baseCurrency: row.selling_currency || 'GHS', // Base currency for display
             categoryId: categoryId,
-            active: row.active === 'true' || row.active === '1' || row.active === 'yes' || row.active === '' || row.active === undefined,
+            active: isActive,
             uomBase: row.uom_base || (isService ? 'hours' : 'pcs'),
             uomSell: row.uom_sell || (isService ? 'hours' : 'pcs'),
             duration: isService ? row.duration : null

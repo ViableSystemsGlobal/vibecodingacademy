@@ -33,6 +33,7 @@ interface Product {
   id: string;
   name: string;
   description: string | null;
+  brand?: string | null;
   price: number;
   originalPrice?: number;
   currency: string;
@@ -383,7 +384,12 @@ useEffect(() => {
                     {product.category.name}
                   </Link>
                   <span className="mx-2">/</span>
-                  <span className="text-gray-900">{product.name}</span>
+                  <div>
+                    <span className="text-gray-900">{product.name}</span>
+                    {product.brand && (
+                      <p className="text-sm text-gray-500 mt-1">Brand: {product.brand}</p>
+                    )}
+                  </div>
                 </div>
 
                 <h1 className="text-3xl font-bold text-gray-900 mb-4">{product.name}</h1>

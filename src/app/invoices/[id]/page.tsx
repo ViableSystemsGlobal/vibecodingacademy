@@ -495,8 +495,8 @@ export default function ViewInvoicePage() {
     <>
       <div className="p-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             <Button
               variant="ghost"
               size="sm"
@@ -534,11 +534,11 @@ export default function ViewInvoicePage() {
               </div>
 
               {/* Progress Line */}
-              <div className="flex-1 h-0.5 bg-green-200 mx-4"></div>
+              <div className="hidden lg:block flex-1 h-0.5 bg-green-200 mx-4"></div>
 
               {/* Send Invoice Step */}
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+                <div className="flex items-center space-x-2 sm:space-x-3">
                   <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
                     <Send className="h-5 w-5 text-green-600" />
                   </div>
@@ -552,13 +552,13 @@ export default function ViewInvoicePage() {
               </div>
 
               {/* Progress Line */}
-              <div className={`flex-1 h-0.5 mx-4 ${
+              <div className={`hidden lg:block flex-1 h-0.5 mx-4 ${
                 invoice.paymentStatus === 'PAID' ? 'bg-green-200' : 'bg-gray-200'
               }`}></div>
 
               {/* Get Paid Step */}
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+                <div className="flex items-center space-x-2 sm:space-x-3">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                     invoice.paymentStatus === 'PAID' ? 'bg-green-100' : 'bg-gray-100'
                   }`}>
@@ -587,11 +587,11 @@ export default function ViewInvoicePage() {
         </Card>
 
         {/* Tabs and Action Buttons */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between mb-6 gap-4">
+          <div className="flex overflow-x-auto space-x-1 bg-gray-100 p-1 rounded-lg scrollbar-hide">
             <button
               onClick={() => setActiveTab('invoice')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'invoice' 
                   ? 'bg-white text-gray-900 shadow-sm' 
                   : 'text-gray-600 hover:text-gray-900'
@@ -601,7 +601,7 @@ export default function ViewInvoicePage() {
             </button>
             <button
               onClick={() => setActiveTab('receipt')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'receipt' 
                   ? 'bg-white text-gray-900 shadow-sm' 
                   : 'text-gray-600 hover:text-gray-900'
@@ -611,7 +611,7 @@ export default function ViewInvoicePage() {
             </button>
             <button
               onClick={() => setActiveTab('credit')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'credit' 
                   ? 'bg-white text-gray-900 shadow-sm' 
                   : 'text-gray-600 hover:text-gray-900'
@@ -621,7 +621,7 @@ export default function ViewInvoicePage() {
             </button>
             <button
               onClick={() => setActiveTab('attachment')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'attachment' 
                   ? 'bg-white text-gray-900 shadow-sm' 
                   : 'text-gray-600 hover:text-gray-900'
@@ -631,7 +631,7 @@ export default function ViewInvoicePage() {
             </button>
           </div>
 
-          <div className="flex space-x-3">
+          <div className="flex flex-wrap gap-2 sm:space-x-3">
             {canUseProjectsModule && (
               <Button
                 variant="outline"
@@ -684,21 +684,21 @@ export default function ViewInvoicePage() {
             {/* Invoice Header */}
             <Card>
               <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+                  <div className="flex-1">
                     <h2 className="text-lg font-semibold text-gray-900 mb-2">Invoice</h2>
-                    <div className="flex items-center space-x-6 text-sm text-gray-600">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:space-x-6 text-sm text-gray-600">
                       <span>Issue Date: {new Date(invoice.issueDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                       <span>Due Date: {new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                     </div>
-                      </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-gray-900 mb-2">#{invoice.number}</div>
+                  </div>
+                  <div className="text-left sm:text-right">
+                    <div className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">#{invoice.number}</div>
                     {getStatusBadge(invoice.status)}
-                      </div>
-                      </div>
+                  </div>
+                </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {/* Billed To */}
                   <div>
                     <h3 className="text-sm font-medium text-gray-700 mb-2">Billed To :</h3>
@@ -735,7 +735,7 @@ export default function ViewInvoicePage() {
                       {getStatusBadge(invoice.status)}
                     </div>
                     {invoice.qrCodeData ? (
-                      <div className="w-32 h-32 bg-white border-2 border-gray-200 rounded-lg flex items-center justify-center mx-auto p-2">
+                      <div className="w-24 h-24 sm:w-32 sm:h-32 bg-white border-2 border-gray-200 rounded-lg flex items-center justify-center mx-auto p-2">
                         <img 
                           src={invoice.qrCodeData} 
                           alt="QR Code" 
@@ -751,8 +751,8 @@ export default function ViewInvoicePage() {
                         />
                 </div>
                     ) : (
-                      <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center mx-auto">
-                        <QrCode className="h-12 w-12 text-gray-400" />
+                      <div className="w-24 h-24 sm:w-32 sm:h-32 bg-gray-100 rounded-lg flex items-center justify-center mx-auto">
+                        <QrCode className="h-8 w-8 sm:h-12 sm:w-12 text-gray-400" />
                   </div>
                 )}
                   </div>
@@ -764,42 +764,42 @@ export default function ViewInvoicePage() {
             <Card>
               <CardContent className="p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Item Summary</h2>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+                <div className="overflow-x-auto -mx-6 sm:mx-0 px-6 sm:px-0">
+                  <table className="w-full min-w-[640px] sm:min-w-0">
                     <thead>
                       <tr style={{ backgroundColor: getThemeColor() || '#2563eb' }}>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">#</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">ITEM TYPE</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">ITEM</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">QUANTITY</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">RATE</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">DISCOUNT</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">TAX</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">DESCRIPTION</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">PRICE AFTER<br/>DISCOUNT & TAX</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">#</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider hidden sm:table-cell">ITEM TYPE</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">ITEM</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">QTY</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider hidden md:table-cell">RATE</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider hidden lg:table-cell">DISCOUNT</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider hidden lg:table-cell">TAX</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider hidden xl:table-cell">DESCRIPTION</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">TOTAL</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {invoice.lines.map((line, index) => (
                         <tr key={line.id}>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{index + 1}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">Product</td>
-                          <td className="px-4 py-4 text-sm text-gray-900">
-                            <div className="flex items-center space-x-3">
+                          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-gray-900">{index + 1}</td>
+                          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-gray-900 hidden sm:table-cell">Product</td>
+                          <td className="px-2 sm:px-4 py-4 text-sm text-gray-900">
+                            <div className="flex items-center space-x-2 sm:space-x-3">
                               <ProductImage images={line.images} name={line.productName} size="sm" />
-                              <span>{line.productName}</span>
+                              <span className="break-words">{line.productName}</span>
                             </div>
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{line.quantity}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{getCurrencySymbol(invoice.currency)}{line.unitPrice.toFixed(2)}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{getCurrencySymbol(invoice.currency)}{line.discount.toFixed(2)}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-gray-900">{line.quantity}</td>
+                          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-gray-900 hidden md:table-cell">{getCurrencySymbol(invoice.currency)}{line.unitPrice.toFixed(2)}</td>
+                          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-gray-900 hidden lg:table-cell">{getCurrencySymbol(invoice.currency)}{line.discount.toFixed(2)}</td>
+                          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm text-gray-900 hidden lg:table-cell">
                             VAT (15%) {getCurrencySymbol(invoice.currency)}{((line.lineTotal - line.discount) * 0.15).toFixed(2)}
                           </td>
-                          <td className="px-4 py-4 text-sm text-gray-900 max-w-xs">
+                          <td className="px-2 sm:px-4 py-4 text-sm text-gray-900 max-w-xs break-words hidden xl:table-cell">
                             {line.productName} - Professional service delivery
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          <td className="px-2 sm:px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {getCurrencySymbol(invoice.currency)}{line.lineTotal.toFixed(2)}
                           </td>
                         </tr>
@@ -809,22 +809,22 @@ export default function ViewInvoicePage() {
                 </div>
                 
                 {/* Breakdown and Total Section */}
-                <div className="mt-6 flex justify-end">
-                  <div className="w-full max-w-md space-y-2">
+                <div className="mt-6 flex justify-start sm:justify-end">
+                  <div className="w-full sm:max-w-md space-y-2">
                     <div className="flex justify-between text-sm text-gray-600">
                       <span>Subtotal:</span>
-                      <span className="font-medium text-gray-900">{getCurrencySymbol(invoice.currency)}{invoice.subtotal.toFixed(2)}</span>
+                      <span className="font-medium text-gray-900">{getCurrencySymbol(invoice.currency)}{((invoice as any).subtotal || invoice.total).toFixed(2)}</span>
                     </div>
-                    {invoice.discount > 0 && (
+                    {((invoice as any).discount || 0) > 0 && (
                       <div className="flex justify-between text-sm text-gray-600">
                         <span>Discount:</span>
-                        <span className="font-medium text-green-600">-{getCurrencySymbol(invoice.currency)}{invoice.discount.toFixed(2)}</span>
+                        <span className="font-medium text-green-600">-{getCurrencySymbol(invoice.currency)}{((invoice as any).discount || 0).toFixed(2)}</span>
                       </div>
                     )}
-                    {!invoice.taxInclusive && invoice.tax > 0 && (
+                    {!invoice.taxInclusive && ((invoice as any).tax || 0) > 0 && (
                       <div className="flex justify-between text-sm text-gray-600">
                         <span>Tax:</span>
-                        <span className="font-medium text-gray-900">{getCurrencySymbol(invoice.currency)}{invoice.tax.toFixed(2)}</span>
+                        <span className="font-medium text-gray-900">{getCurrencySymbol(invoice.currency)}{((invoice as any).tax || 0).toFixed(2)}</span>
                       </div>
                     )}
                     <div className="border-t border-gray-200 pt-2 mt-2">
@@ -846,9 +846,9 @@ export default function ViewInvoicePage() {
                   <div className="space-y-4">
                     {invoice.payments.map((paymentAllocation) => (
                       <div key={paymentAllocation.id} className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3 mb-2">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                          <div className="flex-1 w-full">
+                            <div className="flex items-center space-x-2 sm:space-x-3 mb-2">
                               <Receipt className="h-5 w-5 text-gray-600" />
                               <div>
                                 <h3 className="font-medium text-gray-900">{paymentAllocation.payment.number}</h3>
@@ -886,7 +886,7 @@ export default function ViewInvoicePage() {
                               )}
                             </div>
                           </div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex flex-wrap items-center gap-2 sm:space-x-2 w-full sm:w-auto">
                             {paymentAllocation.payment.receiptUrl && (
                               <Button
                                 variant="outline"
@@ -926,9 +926,9 @@ export default function ViewInvoicePage() {
                 <div className="space-y-4">
                   {invoice.payments.map((paymentAllocation) => (
                     <div key={paymentAllocation.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center space-x-3">
-                          <Receipt className="h-5 w-5 text-gray-600" />
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 gap-3">
+                        <div className="flex items-center space-x-2 sm:space-x-3">
+                          <Receipt className="h-5 w-5 text-gray-600 flex-shrink-0" />
                           <div>
                             <h3 className="font-medium text-gray-900">{paymentAllocation.payment.number}</h3>
                             <p className="text-sm text-gray-600">
@@ -942,7 +942,7 @@ export default function ViewInvoicePage() {
                             </p>
                           </div>
                         </div>
-                        <div className="text-right">
+                        <div className="text-left sm:text-right">
                           <div className="text-lg font-semibold text-gray-900">
                             {getCurrencySymbol(invoice.currency)}{paymentAllocation.amount.toFixed(2)}
                           </div>
@@ -951,7 +951,7 @@ export default function ViewInvoicePage() {
                           </div>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                         {paymentAllocation.payment.reference && (
                           <div>
                             <span className="text-gray-600">Reference:</span>
@@ -1000,12 +1000,12 @@ export default function ViewInvoicePage() {
         {activeTab === 'credit' && (
           <Card>
             <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
                 <h2 className="text-lg font-semibold text-gray-900">Credit Notes</h2>
                 <Button 
                   onClick={() => setShowCreditNoteModal(true)}
                   style={{ backgroundColor: theme.primary, color: 'white' }}
-                  className="hover:opacity-90"
+                  className="hover:opacity-90 w-full sm:w-auto"
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Create Credit Note
@@ -1053,7 +1053,7 @@ export default function ViewInvoicePage() {
                         </div>
                       </div>
                       
-                      <div className="flex items-center justify-between text-sm text-gray-600">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-sm text-gray-600 gap-2">
                         <span>Issued: {new Date(creditNote.issueDate).toLocaleDateString()}</span>
                         <div className="flex items-center gap-2">
                           <Button
@@ -1109,7 +1109,7 @@ export default function ViewInvoicePage() {
         {activeTab === 'attachment' && (
           <Card>
             <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-4">
                 <h2 className="text-lg font-semibold text-gray-900">Attachments</h2>
                 <Button
                   variant="outline"
@@ -1118,6 +1118,7 @@ export default function ViewInvoicePage() {
                     // TODO: Implement attachment upload modal
                     showError('Attachment upload feature coming soon');
                   }}
+                  className="w-full sm:w-auto"
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Attachment

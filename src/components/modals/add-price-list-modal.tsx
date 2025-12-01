@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { CurrencySelector } from "@/components/ui/currency-selector";
 import { useTheme } from "@/contexts/theme-context";
 import { useToast } from "@/contexts/toast-context";
+import { parseNumberInput, getNumberInputValue } from "@/lib/number-input-utils";
 import {
   X,
   DollarSign,
@@ -294,8 +295,11 @@ export function AddPriceListModal({ isOpen, onClose, onSuccess, initialData }: A
                   min="0"
                   max="100"
                   step="0.01"
-                  value={formData.percentage}
-                  onChange={(e) => handleInputChange('percentage', parseFloat(e.target.value) || 0)}
+                  value={getNumberInputValue(formData.percentage)}
+                  onChange={(e) => {
+                    const parsed = parseNumberInput(e.target.value);
+                    handleInputChange('percentage', parsed === "" ? 0 : parsed);
+                  }}
                   placeholder="e.g., 15"
                   className={getFocusRingClasses()}
                   required

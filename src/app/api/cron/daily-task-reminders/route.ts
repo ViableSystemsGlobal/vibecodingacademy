@@ -215,7 +215,7 @@ ${taskListText}
 Please review and complete these tasks at your earliest convenience. If you have any questions or need assistance, please don't hesitate to reach out.
 
 Best regards,
-${companyName || 'AdPools Group'}`;
+${companyName || 'Team'}`;
 
         const emailMessageHtml = `<p>Dear ${user.name},</p>
 
@@ -233,9 +233,9 @@ ${taskListHtml}
 <p>Please review and complete these tasks at your earliest convenience. If you have any questions or need assistance, please don't hesitate to reach out.</p>
 
 <p>Best regards,<br>
-${companyName || 'AdPools Group'}</p>`;
+${companyName || 'Team'}</p>`;
 
-        const smsMessage = `Hi ${user.name}, you have ${userTasks.length} incomplete task${userTasks.length > 1 ? 's' : ''}${overdueTasks.length > 0 ? ` (${overdueTasks.length} overdue)` : ''}. Please check your tasks. ${companyName || 'AdPools Group'}`;
+        const smsMessage = `Hi ${user.name}, you have ${userTasks.length} incomplete task${userTasks.length > 1 ? 's' : ''}${overdueTasks.length > 0 ? ` (${overdueTasks.length} overdue)` : ''}. Please check your tasks. ${companyName || ''}`;
 
         // Send notifications
         const results = await Promise.allSettled([

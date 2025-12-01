@@ -32,7 +32,8 @@ export async function POST(request: NextRequest) {
     }
 
     const companyName = await getCompanyName();
-    const currencySymbol = currency === 'GHS' ? 'GH₵' : (currency === 'USD' ? '$' : currency);
+    const currencySymbol = currency === 'GHS' ? 'GHS' : (currency === 'USD' ? '$' : currency);
+    const currencySymbolEmail = currency === 'GHS' ? 'GH₵' : (currency === 'USD' ? '$' : currency);
 
     // Prepare email and SMS messages
     const emailSubject = `Receipt Request - Invoice ${invoiceNumber}`;
@@ -44,9 +45,9 @@ We are writing to request a receipt or proof of payment for Invoice ${invoiceNum
 
 Invoice Details:
 - Invoice Number: ${invoiceNumber}
-- Invoice Total: ${currencySymbol}${invoiceTotal.toFixed(2)}
-- Amount Paid: ${currencySymbol}${amountPaid.toFixed(2)}
-${amountDue > 0 ? `- Amount Due: ${currencySymbol}${amountDue.toFixed(2)}` : ''}
+- Invoice Total: ${currencySymbolEmail}${invoiceTotal.toFixed(2)}
+- Amount Paid: ${currencySymbolEmail}${amountPaid.toFixed(2)}
+${amountDue > 0 ? `- Amount Due: ${currencySymbolEmail}${amountDue.toFixed(2)}` : ''}
 
 Could you please provide a receipt or proof of payment for the payments made on this invoice? This will help us update our records and ensure all transactions are properly documented.
 
@@ -55,9 +56,9 @@ If you have already sent the receipt, please disregard this message.
 Thank you for your cooperation.
 
 Best regards,
-${companyName || 'AdPools Group'}`;
+${companyName || 'Team'}`;
 
-    const smsMessage = `Dear ${customerName}, Please provide receipt/proof of payment for Invoice ${invoiceNumber} (${currencySymbol}${amountPaid.toFixed(2)} paid). ${companyName || 'AdPools Group'}`;
+    const smsMessage = `Dear ${customerName}, Please provide receipt/proof of payment for Invoice ${invoiceNumber} (${currencySymbol} ${amountPaid.toFixed(2)} paid). ${companyName || ''}`;
 
     // Send notifications
     const results = await Promise.allSettled([

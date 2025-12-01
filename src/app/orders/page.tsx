@@ -560,7 +560,7 @@ export default function OrdersPage() {
                 key: 'actions',
                 label: 'Actions',
                 render: (order) => (
-                  <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="ghost"
                       size="sm"

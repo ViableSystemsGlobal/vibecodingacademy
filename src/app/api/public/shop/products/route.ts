@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
         { name: { contains: search } },
         { description: { contains: search } },
         { sku: { contains: search } },
+        { brand: { name: { contains: search } } }, // brand is a relation, search by name
       ];
     }
 
@@ -196,6 +197,7 @@ export async function GET(request: NextRequest) {
         id: product.id,
         name: product.name,
         description: product.description,
+        brand: product.brand,
         price: Math.round(priceInGHS * 100) / 100,
         originalPrice: originalPriceInGHS ? Math.round(originalPriceInGHS * 100) / 100 : null,
         currency: "GHS",
@@ -365,6 +367,7 @@ export async function POST(request: NextRequest) {
       id: product.id,
       name: product.name,
       description: product.description,
+      brand: product.brand,
       price: Math.round(priceInGHS * 100) / 100,
       originalPrice: originalPriceInGHS ? Math.round(originalPriceInGHS * 100) / 100 : null,
       currency: "GHS",
@@ -381,9 +384,10 @@ export async function POST(request: NextRequest) {
       bestDealPrice: bestDealPrice ? Math.round(bestDealPrice * 100) / 100 : null,
     });
   } catch (error) {
-    console.error("Error fetching product details:", error);
+    console.error("Error fetching products:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to fetch products";
     return NextResponse.json(
-      { error: "Failed to fetch product" },
+      { error: errorMessage, details: error instanceof Error ? error.stack : undefined },
       { status: 500 }
     );
   }

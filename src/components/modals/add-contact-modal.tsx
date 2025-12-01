@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { useTheme } from '@/contexts/theme-context';
 import { useToast } from '@/contexts/toast-context';
+import { useLoading } from '@/contexts/loading-context';
 
 interface Account {
   id: string;
@@ -25,6 +26,7 @@ export function AddContactModal({ isOpen, onClose, onSave }: AddContactModalProp
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
   const { success, error } = useToast();
+  const { startLoading, stopLoading } = useLoading();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(false);
@@ -79,6 +81,7 @@ export function AddContactModal({ isOpen, onClose, onSave }: AddContactModalProp
 
     try {
       setLoading(true);
+      startLoading();
       const response = await fetch('/api/contacts', {
         method: 'POST',
         headers: {
@@ -110,6 +113,7 @@ export function AddContactModal({ isOpen, onClose, onSave }: AddContactModalProp
       error('Failed to create contact');
     } finally {
       setLoading(false);
+      stopLoading();
     }
   };
 

@@ -6,12 +6,16 @@ import { Input } from "@/components/ui/input";
 import { X, Package, Upload, Trash2 } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
 import { useToast } from "@/contexts/toast-context";
+import { AddBrandModal } from "@/components/modals/add-brand-modal";
+import { parseNumberInput, getNumberInputValue } from "@/lib/number-input-utils";
 
 interface Product {
   id: string;
   sku: string;
   name: string;
   description?: string;
+  brandId?: string | null;
+  brand?: { id: string; name: string } | null;
   images?: string | null;
   attributes?: any;
   uomBase: string;
@@ -64,6 +68,7 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
     sku: "",
     name: "",
     description: "",
+    brandId: "",
     categoryId: "",
     price: 0,
     cost: 0,
@@ -77,11 +82,14 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
   });
   const [images, setImages] = useState<string[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [brands, setBrands] = useState<{ id: string; name: string; description?: string }[]>([]);
   const [units, setUnits] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAddBrandModalOpen, setIsAddBrandModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [currentExchangeRate, setCurrentExchangeRate] = useState<number | null>(null);
+  const [isPriceManuallySet, setIsPriceManuallySet] = useState(false);
 
   const { getThemeClasses } = useTheme();
   const theme = getThemeClasses();
@@ -94,6 +102,7 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
         sku: product.sku ?? "",
         name: product.name ?? "",
         description: product.description ?? "",
+        brandId: product.brandId ?? product.brand?.id ?? "",
         categoryId: product.categoryId ?? "",
         price: product.price || 0,
         cost: product.cost || 0,
@@ -123,7 +132,7 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
     }
   }, [product]);
 
-  // Fetch categories
+  // Fetch categories and brands
   useEffect(() => {
     const fetchCategories = async () => {
       try {
@@ -137,21 +146,33 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
       }
     };
 
-  const fetchUnits = async () => {
-    try {
-      const response = await fetch('/api/units');
-      if (response.ok) {
-        const data = await response.json();
-        setUnits(data || []);
+    const fetchBrands = async () => {
+      try {
+        const response = await fetch('/api/brands');
+        if (response.ok) {
+          const data = await response.json();
+          setBrands(data || []);
+        }
+      } catch (error) {
+        console.error('Error fetching brands:', error);
       }
-    } catch (error) {
-      console.error('Error fetching units:', error);
-    }
-  };
+    };
 
+    const fetchUnits = async () => {
+      try {
+        const response = await fetch('/api/units');
+        if (response.ok) {
+          const data = await response.json();
+          setUnits(data || []);
+        }
+      } catch (error) {
+        console.error('Error fetching units:', error);
+      }
+    };
 
     if (isOpen) {
       fetchCategories();
+      fetchBrands();
       fetchUnits();
     }
   }, [isOpen]);
@@ -174,6 +195,27 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
     
     return () => {
       window.removeEventListener('categoryAdded', handleCategoryRefresh);
+    };
+  }, []);
+
+  // Listen for brand refresh events
+  useEffect(() => {
+    const handleBrandRefresh = async () => {
+      try {
+        const response = await fetch('/api/brands');
+        if (response.ok) {
+          const data = await response.json();
+          setBrands(data || []);
+        }
+      } catch (error) {
+        console.error('Error refreshing brands:', error);
+      }
+    };
+
+    window.addEventListener('brandAdded', handleBrandRefresh);
+    
+    return () => {
+      window.removeEventListener('brandAdded', handleBrandRefresh);
     };
   }, []);
 
@@ -212,19 +254,25 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
     }
   }, [formData.costCurrency, formData.sellingCurrency]);
 
-  // Auto-calculate selling price when in automatic mode
+  // Auto-calculate selling price when in automatic mode (only if not manually set)
   useEffect(() => {
     if (formData.exchangeRateMode === "automatic" && 
         formData.cost > 0 && 
         currentExchangeRate && 
-        formData.costCurrency !== formData.sellingCurrency) {
+        formData.costCurrency !== formData.sellingCurrency &&
+        !isPriceManuallySet) {
       const calculatedPrice = formData.cost * currentExchangeRate;
       setFormData(prev => ({
         ...prev,
         price: Math.round(calculatedPrice * 100) / 100 // Round to 2 decimal places
       }));
     }
-  }, [formData.cost, currentExchangeRate, formData.exchangeRateMode, formData.costCurrency, formData.sellingCurrency]);
+  }, [formData.cost, currentExchangeRate, formData.exchangeRateMode, formData.costCurrency, formData.sellingCurrency, isPriceManuallySet]);
+
+  // Reset manual flag when cost or currencies change significantly
+  useEffect(() => {
+    setIsPriceManuallySet(false);
+  }, [formData.costCurrency, formData.sellingCurrency]);
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({
@@ -398,6 +446,67 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Brand
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddBrandModalOpen(true)}
+                    className={`text-xs text-${theme.primary} hover:text-${theme.primaryDark} hover:underline`}
+                  >
+                    + Add Brand
+                  </button>
+                </div>
+                <select
+                  value={formData.brandId}
+                  onChange={(e) => handleInputChange('brandId', e.target.value)}
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-${theme.primary} focus:border-transparent`}
+                >
+                  <option value="">Select a brand (optional)</option>
+                  {brands.map((brand) => (
+                    <option key={brand.id} value={brand.id}>
+                      {brand.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Category *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Open Add Category modal
+                      const event = new CustomEvent('openAddCategoryModal');
+                      window.dispatchEvent(event);
+                    }}
+                    className={`text-xs text-${theme.primary} hover:text-${theme.primaryDark} hover:underline`}
+                  >
+                    + Add Category
+                  </button>
+                </div>
+                <select
+                  value={formData.categoryId}
+                  onChange={(e) => handleInputChange('categoryId', e.target.value)}
+                  required
+                  className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-${theme.primary} focus:border-transparent`}
+                >
+                  <option value="">Select a category</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Description
@@ -409,25 +518,6 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
                 className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-${theme.primary} focus:border-transparent`}
                 rows={3}
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Category *
-              </label>
-              <select
-                value={formData.categoryId}
-                onChange={(e) => handleInputChange('categoryId', e.target.value)}
-                required
-                className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-${theme.primary} focus:border-transparent`}
-              >
-                <option value="">Select a category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
 
@@ -446,8 +536,21 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
                   </label>
                   <Input
                     type="number"
-                    value={formData.cost}
-                    onChange={(e) => handleInputChange('cost', parseFloat(e.target.value) || 0)}
+                    value={formData.cost === 0 ? "" : formData.cost}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === "" || value === null || value === undefined) {
+                        handleInputChange('cost', 0);
+                      } else {
+                        const parsed = parseFloat(value);
+                        handleInputChange('cost', isNaN(parsed) ? 0 : parsed);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (e.target.value === "" || e.target.value === null) {
+                        handleInputChange('cost', 0);
+                      }
+                    }}
                     placeholder="0.00"
                     step="0.01"
                     min="0"
@@ -493,25 +596,38 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
                     </label>
                     <Input
                       type="number"
-                      value={formData.price}
-                      onChange={(e) => handleInputChange('price', parseFloat(e.target.value) || 0)}
+                      value={formData.price === 0 ? "" : formData.price}
+                      onChange={(e) => {
+                        setIsPriceManuallySet(true);
+                        const value = e.target.value;
+                        if (value === "" || value === null || value === undefined) {
+                          handleInputChange('price', 0);
+                        } else {
+                          const parsed = parseFloat(value);
+                          handleInputChange('price', isNaN(parsed) ? 0 : parsed);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (e.target.value === "" || e.target.value === null) {
+                          handleInputChange('price', 0);
+                        }
+                      }}
                       placeholder="0.00"
                       step="0.01"
                       min="0"
-                      disabled={formData.exchangeRateMode === "automatic" && 
-                               formData.costCurrency !== formData.sellingCurrency && 
-                               formData.cost > 0}
-                      className={`focus:ring-${theme.primary} focus:border-${theme.primary} ${
-                        formData.exchangeRateMode === "automatic" && 
-                        formData.costCurrency !== formData.sellingCurrency && 
-                        formData.cost > 0 ? 'bg-gray-50' : ''
-                      }`}
+                      className={`focus:ring-${theme.primary} focus:border-${theme.primary}`}
                     />
                     {formData.exchangeRateMode === "automatic" && 
                      formData.costCurrency !== formData.sellingCurrency && 
-                     formData.cost > 0 && (
+                     formData.cost > 0 && 
+                     !isPriceManuallySet && (
                       <p className="text-xs text-gray-500 mt-1">
-                        Calculated from cost price using current exchange rate
+                        Calculated from cost price using current exchange rate. You can edit this value.
+                      </p>
+                    )}
+                    {isPriceManuallySet && (
+                      <p className="text-xs text-blue-600 mt-1">
+                        ✓ Manually set price
                       </p>
                     )}
                   </div>
@@ -589,8 +705,11 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
                       </label>
                       <Input
                         type="number"
-                        value={formData.customExchangeRate}
-                        onChange={(e) => handleInputChange('customExchangeRate', parseFloat(e.target.value) || 1)}
+                        value={getNumberInputValue(formData.customExchangeRate)}
+                        onChange={(e) => {
+                          const parsed = parseNumberInput(e.target.value);
+                          handleInputChange('customExchangeRate', parsed === "" ? 1 : parsed);
+                        }}
                         placeholder="1.00"
                         step="0.0001"
                         min="0"
@@ -725,6 +844,18 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
           </div>
         </form>
       </div>
+      <AddBrandModal
+        isOpen={isAddBrandModalOpen}
+        onClose={() => setIsAddBrandModalOpen(false)}
+        onSuccess={() => {
+          setIsAddBrandModalOpen(false);
+          // Refresh brands
+          fetch('/api/brands')
+            .then(res => res.json())
+            .then(data => setBrands(data || []))
+            .catch(err => console.error('Error refreshing brands:', err));
+        }}
+      />
     </div>
   );
 }

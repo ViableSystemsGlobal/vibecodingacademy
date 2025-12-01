@@ -272,10 +272,10 @@ This credit note can be applied to future invoices or refunded to you.
 Thank you for your business.
 
 Best regards,
-${companyName || 'AdPools Group'}`;
+${companyName || 'Team'}`;
 
-            // Send SMS notification
-            const smsMessage = `Your return ${updatedReturn.number} has been approved. Credit Note ${creditNote.number} for GH₵${creditNote.amount.toFixed(2)} has been created. ${companyName || 'AdPools Group'}`;
+            // Send SMS notification (use GHS instead of GH₵ for SMS)
+            const smsMessage = `Your return ${updatedReturn.number} has been approved. Credit Note ${creditNote.number} for GHS ${creditNote.amount.toFixed(2)} has been created. ${companyName || ''}`;
 
             // Send notifications asynchronously
             await Promise.all([

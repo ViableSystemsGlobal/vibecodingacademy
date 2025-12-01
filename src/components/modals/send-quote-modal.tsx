@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Mail, MessageSquare, X } from 'lucide-react';
 import { useToast } from '@/contexts/toast-context';
 import { useTheme } from '@/contexts/theme-context';
+import { useCompany } from '@/contexts/company-context';
 
 interface SendQuoteModalProps {
   isOpen: boolean;
@@ -38,6 +39,7 @@ export const SendQuoteModal: React.FC<SendQuoteModalProps> = ({
   const { getThemeClasses, getThemeColor } = useTheme();
   const theme = getThemeClasses();
   const themeColorValue = getThemeColor();
+  const { companyName } = useCompany();
 
   // Get customer info
   const customerName = quotation.account?.name || 
@@ -55,7 +57,7 @@ export const SendQuoteModal: React.FC<SendQuoteModalProps> = ({
       setEmail(customerEmail);
       setCcEmail('');
       setPhone(customerPhone);
-      setMessage(`Dear ${customerName},\n\nPlease find your quotation (No: ${quotation.number}, Subject: ${quotation.subject}) attached. The total amount is GH₵${quotation.total.toFixed(2)}.\n\nView your quote here: ${pdfUrl}\n\nBest regards,\nAD Pools Team`);
+      setMessage(`Dear ${customerName},\n\nPlease find your quotation (No: ${quotation.number}, Subject: ${quotation.subject}) attached. The total amount is GH₵${quotation.total.toFixed(2)}.\n\nView your quote here: ${pdfUrl}\n\nBest regards,\n${companyName || 'Team'}`);
     }
   }, [isOpen, customerName, customerEmail, customerPhone, quotation, pdfUrl]);
 
@@ -115,8 +117,8 @@ export const SendQuoteModal: React.FC<SendQuoteModalProps> = ({
 
     setIsLoading(true);
     try {
-      // Create SMS message with PDF link
-      const smsMessage = `Dear ${customerName}, your quotation ${quotation.number} is ready. Total: GH₵${quotation.total.toFixed(2)}. View PDF: ${pdfUrl}`;
+      // Create SMS message with PDF link (use GHS instead of GH₵ for SMS)
+      const smsMessage = `Dear ${customerName}, your quotation ${quotation.number} is ready. Total: GHS ${quotation.total.toFixed(2)}. View PDF: ${pdfUrl}`;
 
       const response = await fetch('/api/communication/sms/send', {
         method: 'POST',

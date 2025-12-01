@@ -137,13 +137,13 @@ function getModuleSlugForNavigationModule(navModule: string): string {
     'communication': 'communication',
     'sms': 'communication',
     'email': 'communication',
-    'templates': 'communication',
-    'communication-logs': 'communication',
     
     // Settings module
     'settings': 'settings',
     'users': 'settings',
     'roles': 'settings',
+    'profile': 'settings', // Profile is part of settings module
+    'security': 'settings', // Security/Login History is part of settings module
     'notifications': 'settings',
     'notification-templates': 'settings',
     'notification_templates': 'settings',
@@ -339,6 +339,10 @@ function filterNavigationItems(
           // Special handling for modules (only SUPER_ADMIN and ADMIN)
           if (child.module === "modules") {
             return userRole === "SUPER_ADMIN" || userRole === "ADMIN";
+          }
+          // Profile and Security are accessible to all authenticated users (they have their own settings)
+          if (child.module === "profile" || child.module === "security") {
+            return true; // All authenticated users can access their own profile and security settings
           }
           // Check if user can access this child module
           return canAccess(child.module);

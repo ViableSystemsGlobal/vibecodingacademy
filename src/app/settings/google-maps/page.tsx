@@ -163,8 +163,8 @@ export default function GoogleMapsSettingsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Google Maps Settings</h1>
-            <p className="text-gray-600">Configure Google Maps API for location services and routing</p>
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">Google Maps Settings</h1>
+            <p className="text-sm sm:text-base text-gray-600">Configure Google Maps API for location services and routing</p>
           </div>
         </div>
 
@@ -250,7 +250,7 @@ export default function GoogleMapsSettingsPage() {
             <h2 className="text-xl font-semibold">Service Configuration</h2>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             <div className="space-y-4">
               <div className="flex items-center">
                 <input

@@ -167,6 +167,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('============ QUOTATION POST CALLED ============');
   try {
     console.log('🔍 Quotations API - Starting POST request');
     
@@ -303,12 +304,60 @@ export async function POST(request: NextRequest) {
       number = `QT-${Date.now().toString().slice(-6)}`;
     }
 
+    // Validate that all line items have valid productIds
+    if (lines && lines.length > 0) {
+      try {
+        console.log('🔍 Validating product IDs for', lines.length, 'lines');
+        const productIds = lines
+          .map((line: any) => line.productId)
+          .filter((id: string) => id && id !== 'dummy-product-id');
+        
+        console.log('🔍 Extracted product IDs:', productIds);
+        
+        if (productIds.length === 0) {
+          console.log('❌ No valid product IDs in lines');
+          return NextResponse.json(
+            { error: 'At least one valid product is required' },
+            { status: 400 }
+          );
+        }
+
+        // Verify all products exist
+        console.log('🔍 Checking if products exist in database...');
+        const existingProducts = await prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true }
+        });
+
+        console.log('🔍 Found', existingProducts.length, 'existing products out of', productIds.length, 'requested');
+
+        const existingProductIds = new Set(existingProducts.map(p => p.id));
+        const missingProductIds = productIds.filter((id: string) => !existingProductIds.has(id));
+
+        if (missingProductIds.length > 0) {
+          console.log('❌ Invalid product IDs:', missingProductIds);
+          return NextResponse.json(
+            { error: `Invalid product IDs: ${missingProductIds.join(', ')}` },
+            { status: 400 }
+          );
+        }
+        console.log('✅ All product IDs are valid');
+      } catch (validationError) {
+        console.error('❌ Error validating products:', validationError);
+        throw validationError;
+      }
+    }
+
     // Calculate totals with flexible taxes
     let subtotal = 0;
     let totalTax = 0;
     const taxesByType: { [key: string]: number } = {};
     
     const processedLines = lines.map((line: any) => {
+      if (!line.productId || line.productId === 'dummy-product-id') {
+        throw new Error(`Line item missing valid productId: ${JSON.stringify(line)}`);
+      }
+
       const lineSubtotal = (line.quantity || 0) * (line.unitPrice || 0);
       const discountAmount = lineSubtotal * ((line.discount || 0) / 100);
       const afterDiscount = lineSubtotal - discountAmount;
@@ -333,7 +382,20 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    const quotation = await prisma.quotation.create({
+    console.log('🔍 Creating quotation with', processedLines.length, 'lines');
+    console.log('🔍 Quotation data:', {
+      number,
+      subject,
+      accountId,
+      distributorId,
+      leadId,
+      ownerId: userId,
+      linesCount: processedLines.length
+    });
+
+    let quotation;
+    try {
+      quotation = await prisma.quotation.create({
       data: {
         number,
         subject,
@@ -377,7 +439,7 @@ export async function POST(request: NextRequest) {
         ownerId: userId,
         lines: {
           create: processedLines.map((line: any) => ({
-            productId: line.productId || 'dummy-product-id',
+            productId: line.productId, // Already validated above
             quantity: line.quantity,
             unitPrice: line.unitPrice,
             discount: line.discount || 0,
@@ -404,6 +466,17 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+    console.log('✅ Quotation created successfully:', quotation.id);
+    } catch (createError) {
+      console.error('❌ Error creating quotation in database:', createError);
+      console.error('❌ Error details:', {
+        message: createError instanceof Error ? createError.message : String(createError),
+        name: createError instanceof Error ? createError.name : 'Unknown',
+        code: (createError as any)?.code,
+        meta: (createError as any)?.meta
+      });
+      throw createError;
+    }
 
     // Create opportunity if this is for an account (with or without lead)
     if (accountId) {
@@ -551,9 +624,55 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(updatedQuotation, { status: 201 });
   } catch (error) {
     console.error('❌ Error creating quotation:', error);
+    console.error('❌ Error type:', error?.constructor?.name);
+    console.error('❌ Error message:', error instanceof Error ? error.message : String(error));
     console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    
+    // Log Prisma-specific error details
+    if ((error as any)?.code) {
+      console.error('❌ Prisma error code:', (error as any).code);
+    }
+    if ((error as any)?.meta) {
+      console.error('❌ Prisma error meta:', JSON.stringify((error as any).meta, null, 2));
+    }
+    
+    // Check for Prisma foreign key constraint errors
+    if (error instanceof Error) {
+      const errorMessage = error.message.toLowerCase();
+      if (errorMessage.includes('foreign key') || errorMessage.includes('constraint') || (error as any)?.code === 'P2003') {
+        console.error('❌ Database constraint error - likely invalid productId or customer reference');
+        return NextResponse.json(
+          { 
+            error: 'Failed to create quotation', 
+            details: 'Invalid product or customer reference. Please check that all products and customer information are valid.',
+            originalError: process.env.NODE_ENV === 'development' ? error.message : undefined,
+            prismaCode: (error as any)?.code
+          },
+          { status: 400 }
+        );
+      }
+      
+      // Check for unique constraint violations
+      if ((error as any)?.code === 'P2002') {
+        console.error('❌ Unique constraint violation');
+        return NextResponse.json(
+          { 
+            error: 'Failed to create quotation', 
+            details: 'A quotation with this number already exists. Please try again.',
+            originalError: process.env.NODE_ENV === 'development' ? error.message : undefined
+          },
+          { status: 409 }
+        );
+      }
+    }
+    
     return NextResponse.json(
-      { error: 'Failed to create quotation', details: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        error: 'Failed to create quotation', 
+        details: error instanceof Error ? error.message : 'Unknown error',
+        originalError: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.stack : String(error)) : undefined,
+        prismaCode: (error as any)?.code
+      },
       { status: 500 }
     );
   }

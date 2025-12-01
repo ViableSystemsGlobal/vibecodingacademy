@@ -643,46 +643,51 @@ function TasksPageContent() {
     <>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold">Tasks</h1>
-            <p className="text-gray-600">Manage and track all tasks across your team</p>
+            <h1 className="text-xl sm:text-2xl font-bold">Tasks</h1>
+            <p className="text-sm sm:text-base text-gray-600">Manage and track all tasks across your team</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <Button
               onClick={() => setViewMode('list')}
               variant={viewMode === 'list' ? 'default' : 'outline'}
-              className={`flex items-center gap-2 ${viewMode === 'list' ? 'text-white hover:opacity-90 transition-opacity' : ''}`}
+              size="sm"
+              className={`flex items-center gap-1 sm:gap-2 ${viewMode === 'list' ? 'text-white hover:opacity-90 transition-opacity' : ''}`}
               style={viewMode === 'list' ? { backgroundColor: getThemeColor() || '#dc2626' } : undefined}
             >
-              <List className="w-4 h-4" />
-              List
+              <List className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">List</span>
             </Button>
             <Button
               onClick={() => setViewMode('kanban')}
               variant={viewMode === 'kanban' ? 'default' : 'outline'}
-              className={`flex items-center gap-2 ${viewMode === 'kanban' ? 'text-white hover:opacity-90 transition-opacity' : ''}`}
+              size="sm"
+              className={`flex items-center gap-1 sm:gap-2 ${viewMode === 'kanban' ? 'text-white hover:opacity-90 transition-opacity' : ''}`}
               style={viewMode === 'kanban' ? { backgroundColor: getThemeColor() || '#dc2626' } : undefined}
             >
-              <Grid3X3 className="w-4 h-4" />
-              Kanban
+              <Grid3X3 className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Kanban</span>
             </Button>
             <Button
               onClick={() => setViewMode('calendar')}
               variant={viewMode === 'calendar' ? 'default' : 'outline'}
-              className={`flex items-center gap-2 ${viewMode === 'calendar' ? 'text-white hover:opacity-90 transition-opacity' : ''}`}
+              size="sm"
+              className={`flex items-center gap-1 sm:gap-2 ${viewMode === 'calendar' ? 'text-white hover:opacity-90 transition-opacity' : ''}`}
               style={viewMode === 'calendar' ? { backgroundColor: getThemeColor() || '#dc2626' } : undefined}
             >
-              <Calendar className="w-4 h-4" />
-              Calendar
+              <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Calendar</span>
             </Button>
             <Button
               onClick={() => setIsCreateTaskModalOpen(true)}
-              className="text-white hover:opacity-90 transition-opacity flex items-center gap-2"
+              size="sm"
+              className="text-white hover:opacity-90 transition-opacity flex items-center gap-1 sm:gap-2 w-full sm:w-auto"
               style={{ backgroundColor: getThemeColor() || '#dc2626' }}
             >
-              <Plus className="w-4 h-4" />
-              Create Task
+              <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Create Task</span>
+              <span className="sm:hidden">Create</span>
             </Button>
           </div>
         </div>
@@ -694,29 +699,8 @@ function TasksPageContent() {
               <AIRecommendationCard
                 title="Task Management AI"
                 subtitle="Your intelligent assistant for task optimization"
-                recommendations={[
-                  {
-                    id: 'completed-progress',
-                    title: 'Great Progress!',
-                    description: `${stats.COMPLETED || 0} tasks completed this week. Keep up the momentum!`,
-                    priority: 'high',
-                    completed: false
-                  },
-                  {
-                    id: 'overdue-warning',
-                    title: 'Overdue Tasks',
-                    description: `${stats.OVERDUE || 0} tasks are overdue. Consider reassigning or extending deadlines.`,
-                    priority: 'high',
-                    completed: false
-                  },
-                  {
-                    id: 'in-progress-info',
-                    title: 'In Progress',
-                    description: `${stats.IN_PROGRESS || 0} tasks are currently being worked on. Monitor progress regularly.`,
-                    priority: 'medium',
-                    completed: false
-                  }
-                ]}
+                page="tasks"
+                enableAI={true}
                 onRecommendationComplete={(id) => {
                   console.log('Recommendation completed:', id);
                 }}
@@ -727,7 +711,7 @@ function TasksPageContent() {
           
           {/* Enhanced Stats Cards */}
           <div className="flex">
-            <div className="grid grid-cols-3 gap-3 w-full">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 w-full">
               {/* Total Tasks */}
               <Card className="p-3 h-18">
                 <div className="flex items-center justify-between h-full">
@@ -818,7 +802,7 @@ function TasksPageContent() {
 
         {/* Content */}
         {viewMode === 'kanban' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-6 overflow-x-auto">
             <KanbanColumn 
               status="PENDING" 
               title="Pending" 
@@ -863,8 +847,8 @@ function TasksPageContent() {
           <Card className="p-0">
             {/* Search and Filter Header */}
             <div className="p-4 border-b border-gray-200">
-              <div className="flex flex-col md:flex-row gap-4 items-center">
-                <div className="flex-1">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center">
+                <div className="flex-1 w-full sm:w-auto">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <Input
@@ -872,12 +856,12 @@ function TasksPageContent() {
                       placeholder="Search tasks..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 w-full"
                     />
                   </div>
                 </div>
                 
-                <div className="flex gap-2 items-center">
+                <div className="flex flex-wrap gap-2 items-center">
                   <Button
                     variant="outline"
                     size="sm"

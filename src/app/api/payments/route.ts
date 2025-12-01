@@ -484,6 +484,47 @@ export async function POST(request: NextRequest) {
               });
             }
 
+            // Deduct stock when invoice becomes paid
+            if (isBecomingPaid) {
+              try {
+                console.log(`📦 Deducting stock for paid invoice ${alloc.invoiceId}`);
+                // Get invoice lines to deduct stock
+                const invoiceLines = await tx.invoiceLine.findMany({
+                  where: { invoiceId: alloc.invoiceId },
+                  include: {
+                    product: {
+                      select: { id: true }
+                    }
+                  }
+                });
+
+                if (invoiceLines.length > 0) {
+                  const lineItems = invoiceLines.map(line => ({
+                    productId: line.productId,
+                    quantity: Number(line.quantity),
+                    warehouseId: undefined // Will use any warehouse with reserved stock
+                  }));
+
+                  // Deduct stock using the service
+                  const { StockReservationService } = await import('@/lib/stock-reservation-service');
+                  const deductResult = await StockReservationService.deductStock(
+                    alloc.invoiceId,
+                    lineItems,
+                    userId
+                  );
+
+                  if (deductResult.success) {
+                    console.log(`✅ Stock deducted successfully for invoice ${alloc.invoiceId}`);
+                  } else {
+                    console.error(`⚠️ Failed to deduct stock for invoice ${alloc.invoiceId}:`, deductResult.message);
+                  }
+                }
+              } catch (stockError) {
+                console.error(`❌ Error deducting stock for invoice ${alloc.invoiceId}:`, stockError);
+                // Don't fail the payment if stock deduction fails
+              }
+            }
+
             // Update linked opportunity when invoice is fully paid
             if (paymentStatus === 'PAID') {
               const invoiceWithDetails = await tx.invoice.findUnique({

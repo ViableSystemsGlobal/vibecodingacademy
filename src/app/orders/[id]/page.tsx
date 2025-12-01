@@ -28,7 +28,8 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Upload
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -39,6 +40,8 @@ import {
 import Link from "next/link";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import SendCustomerEmailModal from "@/components/modals/send-customer-email-modal";
+import { GenerateWaybillModal } from "@/components/modals/generate-waybill-modal";
+import { UploadWaybillModal } from "@/components/modals/upload-waybill-modal";
 
 interface Order {
   id: string;
@@ -50,6 +53,8 @@ interface Order {
   notes?: string;
   deliveryAddress?: string;
   deliveryDate?: string;
+  waybillNumber?: string;
+  waybillImage?: string;
   createdAt: string;
   updatedAt: string;
   distributor?: {
@@ -99,6 +104,8 @@ export default function OrderDetailsPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [generateWaybillModalOpen, setGenerateWaybillModalOpen] = useState(false);
+  const [uploadWaybillModalOpen, setUploadWaybillModalOpen] = useState(false);
 
   const orderId = params.id as string;
 
@@ -193,6 +200,19 @@ export default function OrderDetailsPage() {
 
   const handleStatusUpdate = async (newStatus: string) => {
     if (!order) return;
+
+    // If trying to set status to DELIVERED, require waybill image
+    if (newStatus === 'DELIVERED' && !order.waybillImage) {
+      showError('Please upload a waybill image before marking the order as delivered');
+      setUploadWaybillModalOpen(true);
+      return;
+    }
+
+    // Prevent changing status if already delivered
+    if (order.status === 'DELIVERED' && newStatus !== 'DELIVERED') {
+      showError('Cannot change status of a delivered order');
+      return;
+    }
 
     try {
       const updateData: any = {
@@ -381,8 +401,8 @@ export default function OrderDetailsPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+        <div className="flex items-center space-x-2 sm:space-x-4">
           <Button
             variant="ghost"
             onClick={() => router.push('/orders')}
@@ -456,7 +476,7 @@ export default function OrderDetailsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Order Items */}
@@ -632,7 +652,17 @@ export default function OrderDetailsPage() {
                         <span className="w-2 h-2 bg-indigo-500 rounded-full mr-2"></span>
                         Shipped
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleStatusUpdate('DELIVERED')}>
+                <DropdownMenuItem 
+                  onClick={() => {
+                    if (!order.waybillImage) {
+                      showError('Please upload a waybill image before marking as delivered');
+                      setUploadWaybillModalOpen(true);
+                    } else {
+                      handleStatusUpdate('DELIVERED');
+                    }
+                  }}
+                  disabled={order.status === 'DELIVERED'}
+                >
                         <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
                         Delivered
                       </DropdownMenuItem>
@@ -676,6 +706,57 @@ export default function OrderDetailsPage() {
         </div>
       </div>
 
+      {/* Waybill Section */}
+      {order.waybillNumber && (
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Waybill Information</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <span className="text-sm font-medium text-gray-600">Waybill Number:</span>
+                <span className="ml-2 text-sm">{order.waybillNumber}</span>
+              </div>
+              {order.waybillImage && (
+                <div>
+                  <span className="text-sm font-medium text-gray-600">Waybill Image:</span>
+                  <div className="mt-2">
+                    <img
+                      src={order.waybillImage}
+                      alt="Waybill"
+                      className="max-w-full h-auto max-h-64 rounded-lg border"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Waybill Actions */}
+      {order.status !== 'DELIVERED' && (
+        <div className="lg:col-span-2 flex gap-3">
+          <Button
+            onClick={() => setGenerateWaybillModalOpen(true)}
+            variant="outline"
+            className="border-blue-600 text-blue-600 hover:bg-blue-50"
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            Generate Waybill
+          </Button>
+          <Button
+            onClick={() => setUploadWaybillModalOpen(true)}
+            style={{ backgroundColor: getThemeColor() }}
+            className="text-white"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Upload Waybill
+          </Button>
+        </div>
+      )}
+
       {/* Email Modal */}
       {getCustomerEmail() && (
         <SendCustomerEmailModal
@@ -685,6 +766,28 @@ export default function OrderDetailsPage() {
           emailAddress={getCustomerEmail() || ''}
         />
       )}
+
+      {/* Generate Waybill Modal */}
+      <GenerateWaybillModal
+        isOpen={generateWaybillModalOpen}
+        onClose={() => setGenerateWaybillModalOpen(false)}
+        orderNumber={order.orderNumber}
+        orderId={order.id}
+        onSuccess={loadOrder}
+      />
+
+      {/* Upload Waybill Modal */}
+      <UploadWaybillModal
+        isOpen={uploadWaybillModalOpen}
+        onClose={() => setUploadWaybillModalOpen(false)}
+        orderNumber={order.orderNumber}
+        orderId={order.id}
+        onSuccess={loadOrder}
+        onMarkDelivered={() => {
+          // Reload order to get updated status
+          loadOrder();
+        }}
+      />
     </div>
   );
 }

@@ -16,6 +16,8 @@ import {
   Store,
   UserCheck,
   Users,
+  History,
+  User,
 } from "lucide-react";
 
 import { defineModule } from "../define-module";
@@ -34,8 +36,10 @@ export default defineModule({
       module: "settings",
       order: 120,
       children: [
+        { name: "My Profile", href: "/settings/profile", icon: User, module: "profile", order: 5 },
         { name: "User Management", href: "/settings/users", icon: Users, module: "users", order: 10 },
         { name: "Role Management", href: "/settings/roles", icon: Shield, module: "roles", order: 20 },
+        { name: "Security & Login History", href: "/settings/profile/security", icon: History, module: "security", order: 25 },
         { name: "Notifications", href: "/settings/notifications", icon: Bell, module: "notifications", order: 30 },
         { name: "Notification Templates", href: "/settings/notification-templates", icon: FileText, module: "notification_templates", order: 40 },
         { name: "Task Templates", href: "/settings/task-templates", icon: CheckSquare, module: "task_templates", order: 50 },
