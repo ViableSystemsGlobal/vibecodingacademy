@@ -3,6 +3,34 @@ import { prisma } from "@/lib/prisma";
 import { generateBarcode, validateBarcode, detectBarcodeType } from "@/lib/barcode-utils";
 import * as XLSX from 'xlsx';
 
+// Helper function to parse numbers from Excel/CSV (handles commas, spaces, etc.)
+function parseNumber(value: any): number {
+  if (value === null || value === undefined || value === '') {
+    return 0;
+  }
+  
+  // If it's already a number, return it
+  if (typeof value === 'number') {
+    return isNaN(value) ? 0 : value;
+  }
+  
+  // Convert to string and clean it
+  let cleaned = String(value).trim();
+  
+  // Remove currency symbols, spaces, and other non-numeric characters except decimal point and minus
+  cleaned = cleaned.replace(/[^\d.-]/g, '');
+  
+  // Handle multiple decimal points (take the first one)
+  const parts = cleaned.split('.');
+  if (parts.length > 2) {
+    cleaned = parts[0] + '.' + parts.slice(1).join('');
+  }
+  
+  // Parse the cleaned string
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
 // Column mapping for flexible header names
 const columnMap: { [key: string]: string } = {
   'SKU': 'sku', 'sku': 'sku', 'product_sku': 'sku', 'Product SKU': 'sku',
@@ -281,12 +309,12 @@ export async function POST(request: NextRequest) {
           if (row.brand?.trim()) {
             const brandName = row.brand.trim();
             // SQLite doesn't support mode: 'insensitive', so we fetch all and compare
-            const allBrands = await prisma.brand.findMany({ select: { id: true, name: true } });
-            let brand = allBrands.find(b => b.name.toLowerCase() === brandName.toLowerCase());
+            const allBrands = await (prisma as any).brand.findMany({ select: { id: true, name: true } });
+            let brand = allBrands.find((b: { id: string; name: string }) => b.name.toLowerCase() === brandName.toLowerCase());
             
             if (!brand) {
               // Create brand if it doesn't exist
-              const newBrand = await prisma.brand.create({
+              const newBrand = await (prisma as any).brand.create({
                 data: {
                   name: brandName,
                   description: `Auto-created from bulk import`
@@ -329,7 +357,10 @@ export async function POST(request: NextRequest) {
           
           // Debug logging for first few products
           if (result.success < 3) {
-            console.log(`Product ${row.name}: active value="${row.active}" (type: ${typeof row.active}), result=${isActive}`);
+            console.log(`Product ${row.name}:`);
+            console.log(`  - Price: raw="${row.price}" (type: ${typeof row.price}), parsed=${parseNumber(row.price)}`);
+            console.log(`  - Cost: raw="${row.cost}" (type: ${typeof row.cost}), parsed=${costPrice}`);
+            console.log(`  - Active: raw="${row.active}" (type: ${typeof row.active}), result=${isActive}`);
           }
 
           const productData = {
@@ -342,9 +373,9 @@ export async function POST(request: NextRequest) {
             barcode: isService ? null : primaryBarcode, // Services don't have barcodes
             barcodeType: isService ? null : (primaryBarcode ? (barcodeType as any) : null),
             generateBarcode: !isService && !row.barcode,
-            price: parseFloat(row.price || '0') || 0, // Selling price in selling_currency
+            price: parseNumber(row.price), // Selling price in selling_currency
             cost: costPrice, // Cost price in import_currency
-            originalPrice: parseFloat(row.price || '0') || 0,
+            originalPrice: parseNumber(row.price),
             originalCost: costPrice,
             originalPriceCurrency: row.selling_currency || 'GHS', // Price is in selling currency
             originalCostCurrency: row.import_currency || 'USD', // Cost is in import currency
@@ -405,9 +436,9 @@ export async function POST(request: NextRequest) {
 
           // Create stock item for products only (not services)
           if (!isService) {
-            const initialQuantity = parseFloat(row.quantity || '0') || 0;
+            const initialQuantity = parseNumber(row.quantity);
             const totalValue = initialQuantity * costPrice;
-            const reorderPoint = parseFloat(row.reorder_point || '0') || 0;
+            const reorderPoint = parseNumber(row.reorder_point);
             
             await prisma.stockItem.create({
               data: {

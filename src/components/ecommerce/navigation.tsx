@@ -229,20 +229,13 @@ export function EcommerceNavigation() {
           <div className="flex items-center space-x-4">
             <span className="flex items-center gap-2 font-medium">
               <Phone className="h-4 w-4" />
-              <span>
-                {contactBanner?.isActive && contactBanner.phone1 ? (
-                  <>
-                    Call on: <strong>{contactBanner.phone1}</strong> ({contactBanner.phone1Hours || ""}){contactBanner.phone2 && (
-                      <> & <strong>{contactBanner.phone2}</strong> ({contactBanner.phone2Hours || ""})</>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    Call on: <strong>+233 59 691 1818</strong> (8am - 5pm) &{" "}
-                    <strong>+233 56 111 2777</strong> (5pm till 8am)
-                  </>
-                )}
-              </span>
+              {contactBanner?.isActive && contactBanner.phone1 && (
+                <span>
+                  Call on: <strong>{contactBanner.phone1}</strong> ({contactBanner.phone1Hours || ""}){contactBanner.phone2 && (
+                    <> & <strong>{contactBanner.phone2}</strong> ({contactBanner.phone2Hours || ""})</>
+                  )}
+                </span>
+              )}
             </span>
               </div>
           <nav className="flex items-center space-x-3 font-medium">
@@ -328,7 +321,7 @@ export function EcommerceNavigation() {
                 <div className="relative h-12 w-auto">
                   <Image
                     src={branding.companyLogo}
-                    alt={branding.companyName || "The POOLSHOP"}
+                    alt={branding.companyName || "Company"}
                     width={150}
                     height={48}
                     className="h-12 w-auto object-contain"
@@ -336,13 +329,15 @@ export function EcommerceNavigation() {
                   />
                 </div>
               ) : (
-                <div className="flex items-center space-x-2">
-                  <ShoppingBag className="h-8 w-8 text-[#23185c]" />
-                  <span className="text-xl font-bold text-[#23185c]">
-                    {branding.companyName || "The POOLSHOP"}
-                  </span>
-                </div>
-            )}
+                branding.companyName && (
+                  <div className="flex items-center space-x-2">
+                    <ShoppingBag className="h-8 w-8 text-[#23185c]" />
+                    <span className="text-xl font-bold text-[#23185c]">
+                      {branding.companyName}
+                    </span>
+                  </div>
+                )
+              )}
           </Link>
           </div>
 

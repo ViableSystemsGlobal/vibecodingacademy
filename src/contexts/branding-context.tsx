@@ -146,9 +146,13 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
           ...data,
         });
         
-        // Update document title
-        if (typeof document !== 'undefined') {
-          document.title = data.companyName || 'AdPools Group';
+        // Update document title only if company name exists and title is not already set by a page
+        if (typeof document !== 'undefined' && data.companyName) {
+          // Only set title if it's still the default or contains "AdPools Group"
+          const currentTitle = document.title;
+          if (!currentTitle || currentTitle === 'AdPools Group' || currentTitle.includes('AdPools Group')) {
+            document.title = data.companyName;
+          }
         }
         
         // Update favicon

@@ -234,6 +234,22 @@ export async function GET() {
       }
     }
 
+    // If items were removed (cart had invalid products), update the cart cookie
+    if (validatedItems.length !== cart.items.length) {
+      const cleanedCart = {
+        items: validatedItems.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity
+        }))
+      };
+      cookieStore.set(`cart_${cartId}`, JSON.stringify(cleanedCart), {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+      });
+    }
+
     // Get tax rate from ecommerce settings (defaults to 12.5%)
     const taxRateSetting = await getSettingValue("ECOMMERCE_TAX_RATE", "12.5");
     const taxRate = parseFloat(taxRateSetting) || 12.5;
@@ -246,6 +262,7 @@ export async function GET() {
       tax,
       total,
       itemCount: validatedItems.reduce((sum, item) => sum + item.quantity, 0),
+      cleaned: validatedItems.length !== cart.items.length, // Indicate if cart was cleaned
     });
   } catch (error) {
     console.error("Error getting cart:", error);

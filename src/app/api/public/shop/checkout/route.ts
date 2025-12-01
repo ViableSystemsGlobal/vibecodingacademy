@@ -203,27 +203,50 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Validate products exist before checking minimum order
+    const invalidProductIds: string[] = [];
+    const validItems = [];
+    
+    for (const item of cart.items) {
+      const product = await prisma.product.findUnique({
+        where: { id: item.productId },
+        select: { id: true, price: true, baseCurrency: true, originalPriceCurrency: true }
+      });
+      
+      if (!product) {
+        invalidProductIds.push(item.productId);
+      } else {
+        validItems.push({ item, product });
+      }
+    }
+    
+    // If there are invalid products, return error before processing
+    if (invalidProductIds.length > 0) {
+      return NextResponse.json(
+        { 
+          error: "Some products in your cart are no longer available",
+          invalidProducts: invalidProductIds,
+          message: "Please remove unavailable products from your cart and try again. You may need to clear your cart and add products again."
+        },
+        { status: 400 }
+      );
+    }
+    
     // Check minimum order amount from settings
     const minimumOrderAmount = parseFloat(await getSettingValue("ECOMMERCE_MIN_ORDER_AMOUNT", "0"));
     if (minimumOrderAmount > 0) {
       // Calculate cart total (we'll recalculate it properly later, but this is a quick check)
       let cartTotal = 0;
-      for (const item of cart.items) {
-        const product = await prisma.product.findUnique({
-          where: { id: item.productId },
-          select: { price: true, baseCurrency: true, originalPriceCurrency: true }
-        });
-        if (product) {
-          let priceInGHS = product.price || 0;
-          const baseCurrency = product.baseCurrency || "GHS";
-          if (baseCurrency !== "GHS" && product.price) {
-            const priceConversion = await convertCurrency(baseCurrency, "GHS", product.price);
-            if (priceConversion) {
-              priceInGHS = priceConversion.convertedAmount;
-            }
+      for (const { item, product } of validItems) {
+        let priceInGHS = product.price || 0;
+        const baseCurrency = product.baseCurrency || "GHS";
+        if (baseCurrency !== "GHS" && product.price) {
+          const priceConversion = await convertCurrency(baseCurrency, "GHS", product.price);
+          if (priceConversion) {
+            priceInGHS = priceConversion.convertedAmount;
           }
-          cartTotal += priceInGHS * item.quantity;
         }
+        cartTotal += priceInGHS * item.quantity;
       }
       const taxRateSetting = await getSettingValue("ECOMMERCE_TAX_RATE", "12.5");
       const taxRate = parseFloat(taxRateSetting) || 12.5;
@@ -401,6 +424,10 @@ export async function POST(request: NextRequest) {
         lineTotal: number;
       }> = [];
       
+      // Validate all products exist before processing
+      const invalidProducts: string[] = [];
+      const validCartItems = [];
+      
       for (const item of cart.items) {
         const product = await tx.product.findUnique({
           where: { id: item.productId },
@@ -408,6 +435,45 @@ export async function POST(request: NextRequest) {
         });
 
         if (!product) {
+          invalidProducts.push(item.productId);
+          console.warn(`Product ${item.productId} not found - removing from cart`);
+        } else {
+          validCartItems.push(item);
+        }
+      }
+      
+      // If there are invalid products, return a helpful error
+      if (invalidProducts.length > 0) {
+        return NextResponse.json(
+          { 
+            error: "Some products in your cart are no longer available",
+            invalidProducts,
+            message: "Please remove unavailable products from your cart and try again"
+          },
+          { status: 400 }
+        );
+      }
+      
+      // If cart becomes empty after filtering, return error
+      if (validCartItems.length === 0) {
+        return NextResponse.json(
+          { 
+            error: "Your cart is empty or all products are no longer available",
+            message: "Please add products to your cart and try again"
+          },
+          { status: 400 }
+        );
+      }
+      
+      // Process only valid items
+      for (const item of validCartItems) {
+        const product = await tx.product.findUnique({
+          where: { id: item.productId },
+          include: { stockItems: true },
+        });
+
+        if (!product) {
+          // This shouldn't happen since we validated above, but just in case
           throw new Error(`Product ${item.productId} not found`);
         }
 
@@ -629,7 +695,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Update stock levels with intelligent warehouse allocation
-      for (const item of cart.items) {
+      for (const item of validCartItems) {
         // Get stock items for the product with warehouse information
         const stockItems = await tx.stockItem.findMany({
           where: {

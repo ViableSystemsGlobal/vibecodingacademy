@@ -128,7 +128,7 @@ function StockPageContent() {
     outOfStockProducts: 0,
   });
 
-  // Read URL parameters on mount
+  // Read URL parameters on mount and set initial state
   useEffect(() => {
     const stockStatusParam = searchParams.get('stockStatus');
     if (stockStatusParam) {
@@ -140,10 +140,12 @@ function StockPageContent() {
     router.push(`/products/${product.id}`);
   };
 
-  // Initial load on mount
+  // Initial load on mount - wait for URL params to be read
   useEffect(() => {
     fetchCategories();
-    fetchStock(1);
+    // Read stockStatus from URL for initial fetch
+    const stockStatusParam = searchParams.get('stockStatus') || '';
+    fetchStock(1, stockStatusParam);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -186,7 +188,7 @@ function StockPageContent() {
     }
   };
 
-  const fetchStock = async (page: number = currentPage) => {
+  const fetchStock = async (page: number = currentPage, overrideStockStatus?: string) => {
     try {
       setIsLoading(true);
       const params = new URLSearchParams();
@@ -199,8 +201,9 @@ function StockPageContent() {
       if (selectedCategory && selectedCategory !== '' && selectedCategory !== 'all') {
         params.append('category', selectedCategory);
       }
-      if (stockStatus && stockStatus !== '' && stockStatus !== 'all') {
-        params.append('stockStatus', stockStatus);
+      const statusToUse = overrideStockStatus !== undefined ? overrideStockStatus : stockStatus;
+      if (statusToUse && statusToUse !== '' && statusToUse !== 'all') {
+        params.append('stockStatus', statusToUse);
       }
       if (priceRange.min) {
         params.append('priceMin', priceRange.min);
@@ -237,7 +240,16 @@ function StockPageContent() {
           setMetrics(data.metrics);
         }
       } else {
-        const errorData = await response.json().catch(() => ({}));
+        let errorData: any = {};
+        try {
+          const text = await response.text();
+          if (text) {
+            errorData = JSON.parse(text);
+          }
+        } catch (parseError) {
+          console.error('❌ Failed to parse error response:', parseError);
+          errorData = { rawResponse: await response.text().catch(() => 'Unable to read response') };
+        }
         console.error('❌ Failed to fetch stock:', response.status, errorData);
         setProducts([]);
         setTotalPages(1);

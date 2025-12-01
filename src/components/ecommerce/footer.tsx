@@ -63,29 +63,43 @@ export function EcommerceFooter() {
                   className="h-10 w-auto object-contain"
                 />
               ) : (
-                <>
-                  <Package className="h-8 w-8 text-white" />
-              <span className="text-xl font-bold">{branding.companyName || "The POOLSHOP"}</span>
-                </>
+                branding.companyName && (
+                  <>
+                    <Package className="h-8 w-8 text-white" />
+                    <span className="text-xl font-bold">{branding.companyName}</span>
+                  </>
+                )
               )}
             </div>
-            <p className="text-white/80 text-sm mb-4">
-              {footerContent?.description || branding.description || "Your one-stop shop for premium pool products, accessories, and expert solutions"}
-            </p>
-            <div className="flex space-x-4">
-              <a href={footerContent?.facebookUrl || "https://facebook.com"} target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
-                <Facebook className="h-5 w-5" />
-              </a>
-              <a href={footerContent?.twitterUrl || "https://twitter.com"} target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
-                <Twitter className="h-5 w-5" />
-              </a>
-              <a href={footerContent?.instagramUrl || "https://instagram.com"} target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
-                <Instagram className="h-5 w-5" />
-              </a>
-              <a href={footerContent?.linkedinUrl || "https://linkedin.com"} target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
-                <Linkedin className="h-5 w-5" />
-              </a>
-            </div>
+            {(footerContent?.description || branding.description) && (
+              <p className="text-white/80 text-sm mb-4">
+                {footerContent?.description || branding.description}
+              </p>
+            )}
+            {(footerContent?.facebookUrl || footerContent?.twitterUrl || footerContent?.instagramUrl || footerContent?.linkedinUrl) && (
+              <div className="flex space-x-4">
+                {footerContent?.facebookUrl && (
+                  <a href={footerContent.facebookUrl} target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
+                    <Facebook className="h-5 w-5" />
+                  </a>
+                )}
+                {footerContent?.twitterUrl && (
+                  <a href={footerContent.twitterUrl} target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
+                    <Twitter className="h-5 w-5" />
+                  </a>
+                )}
+                {footerContent?.instagramUrl && (
+                  <a href={footerContent.instagramUrl} target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
+                    <Instagram className="h-5 w-5" />
+                  </a>
+                )}
+                {footerContent?.linkedinUrl && (
+                  <a href={footerContent.linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-white/70 hover:text-white transition">
+                    <Linkedin className="h-5 w-5" />
+                  </a>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Quick Links */}
@@ -156,33 +170,41 @@ export function EcommerceFooter() {
           <div>
             <h3 className="text-lg font-semibold mb-4">Contact Us</h3>
             <ul className="space-y-3">
-              <li className="flex items-start space-x-3">
-                <MapPin className="h-5 w-5 text-white flex-shrink-0 mt-0.5" />
-                <span className="text-white/75 text-sm whitespace-pre-line">
-                  {footerContent?.address || "123 Pool Street\nAccra, Ghana"}
-                </span>
-              </li>
-              <li className="flex items-center space-x-3">
-                <Phone className="h-5 w-5 text-white flex-shrink-0" />
-                <a href={`tel:${footerContent?.phone || "+233123456789"}`} className="text-white/75 hover:text-white transition text-sm">
-                  {footerContent?.phone || "+233 123 456 789"}
-                </a>
-              </li>
-              <li className="flex items-center space-x-3">
-                <Mail className="h-5 w-5 text-white flex-shrink-0" />
-                <a href={`mailto:${footerContent?.email || "info@thepoolshop.africa"}`} className="text-white/75 hover:text-white transition text-sm">
-                  {footerContent?.email || "info@thepoolshop.africa"}
-                </a>
-              </li>
+              {footerContent?.address && (
+                <li className="flex items-start space-x-3">
+                  <MapPin className="h-5 w-5 text-white flex-shrink-0 mt-0.5" />
+                  <span className="text-white/75 text-sm whitespace-pre-line">
+                    {footerContent.address}
+                  </span>
+                </li>
+              )}
+              {footerContent?.phone && (
+                <li className="flex items-center space-x-3">
+                  <Phone className="h-5 w-5 text-white flex-shrink-0" />
+                  <a href={`tel:${footerContent.phone}`} className="text-white/75 hover:text-white transition text-sm">
+                    {footerContent.phone}
+                  </a>
+                </li>
+              )}
+              {footerContent?.email && (
+                <li className="flex items-center space-x-3">
+                  <Mail className="h-5 w-5 text-white flex-shrink-0" />
+                  <a href={`mailto:${footerContent.email}`} className="text-white/75 hover:text-white transition text-sm">
+                    {footerContent.email}
+                  </a>
+                </li>
+              )}
             </ul>
           </div>
         </div>
 
         <div className="border-t border-white/20 mt-8 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-white/75 text-sm text-center md:text-left">
-              © {currentYear} {branding.companyName || "The POOLSHOP"}. All rights reserved.
-            </p>
+            {branding.companyName && (
+              <p className="text-white/75 text-sm text-center md:text-left">
+                © {currentYear} {branding.companyName}. All rights reserved.
+              </p>
+            )}
             <div className="flex space-x-6">
               <Link href={footerContent?.privacyPolicyLink || "/shop/privacy"} className="text-white/75 hover:text-white transition text-sm">
                 Privacy Policy

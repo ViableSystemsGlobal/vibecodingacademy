@@ -49,73 +49,108 @@ export async function GET(request: NextRequest) {
     // Fetch ALL products matching the base where clause (before filtering)
     // We need to process all products to calculate stock metrics, then filter, then paginate
     console.log('📦 Stock API - Fetching products with where clause:', JSON.stringify(finalWhere, null, 2));
-    const allProducts = await prisma.product.findMany({
-      where: finalWhere,
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        stockItems: {
-          // Include all stockItems, not just those with warehouseId
-          // We'll filter for metrics calculation but show all products
-          include: {
-            warehouse: {
-              select: {
-                id: true,
-                name: true,
-                code: true,
-              },
+    console.log('📦 Stock API - Query params:', { 
+      stockStatus: params.filters?.stockStatus || params.stockStatus,
+      category: params.filters?.category || params.category,
+      search: params.search 
+    });
+    
+    let allProducts;
+    try {
+      allProducts = await prisma.product.findMany({
+        where: finalWhere,
+        include: {
+          category: {
+            select: {
+              id: true,
+              name: true,
             },
           },
+          stockItems: {
+            // Include all stockItems, not just those with warehouseId
+            // We'll filter for metrics calculation but show all products
+            include: {
+              warehouse: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                },
+              },
+            },
+            // Don't fail if warehouse doesn't exist
+            take: undefined, // Get all stock items
+          },
         },
-      },
-    });
-    console.log('📦 Stock API - Found products:', allProducts.length);
+      });
+      console.log('📦 Stock API - Found products:', allProducts.length);
+    } catch (dbError) {
+      console.error('📦 Stock API - Database error:', dbError);
+      console.error('📦 Stock API - Database error details:', {
+        message: dbError instanceof Error ? dbError.message : String(dbError),
+        name: dbError instanceof Error ? dbError.name : undefined,
+        code: (dbError as any)?.code,
+        meta: (dbError as any)?.meta,
+      });
+      throw new Error(`Database query failed: ${dbError instanceof Error ? dbError.message : String(dbError)}`);
+    }
 
     // Process products to calculate aggregated stock metrics
     const processedProducts = allProducts.map((product) => {
-      // For aggregation, only count stockItems with warehouseId (for metrics)
-      const stockItemsForMetrics = (product.stockItems || []).filter(item => item.warehouseId !== null);
-      // For display, show all stockItems
-      const allStockItems = product.stockItems || [];
-      
-      // Aggregate stock across all warehouses (only those with warehouseId for metrics)
-      const totalQuantity = stockItemsForMetrics.reduce((sum, item) => sum + (item.quantity || 0), 0);
-      const totalReserved = stockItemsForMetrics.reduce((sum, item) => sum + (item.reserved || 0), 0);
-      const totalAvailable = stockItemsForMetrics.reduce((sum, item) => sum + (item.available || 0), 0);
-      const maxReorderPoint = stockItemsForMetrics.reduce((max, item) => Math.max(max, item.reorderPoint || 0), 0);
-      
-      // Calculate total inventory value (using averageCost)
-      const totalValue = stockItemsForMetrics.reduce((sum, item) => {
-        const itemValue = (item.quantity || 0) * (item.averageCost || 0);
-        return sum + itemValue;
-      }, 0);
+      try {
+        // For aggregation, only count stockItems with warehouseId (for metrics)
+        const stockItemsForMetrics = (product.stockItems || []).filter(item => item.warehouseId !== null);
+        // For display, show all stockItems
+        const allStockItems = product.stockItems || [];
+        
+        // Aggregate stock across all warehouses (only those with warehouseId for metrics)
+        const totalQuantity = stockItemsForMetrics.reduce((sum, item) => sum + (item.quantity || 0), 0);
+        const totalReserved = stockItemsForMetrics.reduce((sum, item) => sum + (item.reserved || 0), 0);
+        const totalAvailable = stockItemsForMetrics.reduce((sum, item) => sum + (item.available || 0), 0);
+        const maxReorderPoint = stockItemsForMetrics.reduce((max, item) => Math.max(max, item.reorderPoint || 0), 0);
+        
+        // Calculate total inventory value (using averageCost)
+        const totalValue = stockItemsForMetrics.reduce((sum, item) => {
+          const itemValue = (item.quantity || 0) * (item.averageCost || 0);
+          return sum + itemValue;
+        }, 0);
 
-      // Determine stock status
-      let stockStatus = 'out-of-stock';
-      if (totalAvailable > maxReorderPoint) {
-        stockStatus = 'in-stock';
-      } else if (totalAvailable > 0) {
-        stockStatus = 'low-stock';
+        // Determine stock status
+        let stockStatus = 'out-of-stock';
+        if (totalAvailable > maxReorderPoint) {
+          stockStatus = 'in-stock';
+        } else if (totalAvailable > 0) {
+          stockStatus = 'low-stock';
+        }
+
+        return {
+          ...product,
+          stockItems: allStockItems.map(item => ({
+            ...item,
+            warehouse: item.warehouse || null, // Ensure warehouse is null if not loaded
+          })),
+          // Aggregated stock metrics
+          totalQuantity,
+          totalReserved,
+          totalAvailable,
+          maxReorderPoint,
+          totalValue,
+          stockStatus,
+        };
+      } catch (productError) {
+        console.error(`❌ Error processing product ${product.id}:`, productError);
+        // Return product with default values if processing fails
+        return {
+          ...product,
+          stockItems: [],
+          totalQuantity: 0,
+          totalReserved: 0,
+          totalAvailable: 0,
+          maxReorderPoint: 0,
+          totalValue: 0,
+          stockStatus: 'out-of-stock',
+        };
       }
-
-      return {
-        ...product,
-        stockItems: allStockItems.map(item => ({
-          ...item,
-          warehouse: item.warehouse,
-        })),
-        // Aggregated stock metrics
-        totalQuantity,
-        totalReserved,
-        totalAvailable,
-        maxReorderPoint,
-        totalValue,
-        stockStatus,
-      };
     });
 
     // Apply stock status filter if provided (after processing)
@@ -195,9 +230,42 @@ export async function GET(request: NextRequest) {
         : undefined,
     });
   } catch (error) {
-    console.error('Error fetching stock:', error);
+    console.error('❌ Stock API Error:', error);
+    console.error('❌ Error type:', typeof error);
+    console.error('❌ Error constructor:', error?.constructor?.name);
+    
+    // Safely extract error information
+    let errorMessage = 'Failed to fetch stock';
+    let errorStack: string | undefined;
+    let errorName: string | undefined;
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      errorStack = error.stack;
+      errorName = error.name;
+    } else if (typeof error === 'object' && error !== null) {
+      errorMessage = (error as any).message || String(error);
+      errorStack = (error as any).stack;
+      errorName = (error as any).name;
+    } else {
+      errorMessage = String(error);
+    }
+    
+    // Log full error details
+    console.error('❌ Error details:', {
+      message: errorMessage,
+      name: errorName,
+      stack: errorStack?.substring(0, 500), // First 500 chars of stack
+    });
+    
     return NextResponse.json(
-      { error: 'Failed to fetch stock' },
+      { 
+        error: 'Failed to fetch stock',
+        message: errorMessage,
+        name: errorName,
+        // Only include stack in development
+        ...(process.env.NODE_ENV === 'development' && errorStack ? { stack: errorStack.substring(0, 1000) } : {}),
+      },
       { status: 500 }
     );
   }

@@ -796,20 +796,19 @@ function ShopPageContent() {
                     {promoSection.subtitle}
                   </span>
                 )}
-                {!promoSection?.subtitle && (
-                  <span className="inline-flex items-center rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
-                    Summer Splash Deals
-                  </span>
+                {promoSection?.title && (
+                  <h2 className="mt-2 text-xl font-bold leading-tight lg:text-2xl">
+                    {promoSection.title}
+                  </h2>
                 )}
-                <h2 className="mt-2 text-xl font-bold leading-tight lg:text-2xl">
-                  {promoSection?.title || 'Save More On Poolside Essentials'}
-                </h2>
-                <p className="mt-1.5 max-w-2xl text-xs text-white/80">
-                  {promoSection?.description || 'Bundle chemicals, floats, and accessories to unlock free express delivery and exclusive loyalty rewards. Perfect for weekend gatherings and maintenance pros.'}
-                </p>
+                {promoSection?.description && (
+                  <p className="mt-1.5 max-w-2xl text-xs text-white/80">
+                    {promoSection.description}
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
-                {promoSection?.ctaText && promoSection?.ctaLink ? (
+                {promoSection?.ctaText && promoSection?.ctaLink && (
                   <Link
                     href={promoSection.ctaLink}
                     className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-blue-600 shadow transition hover:bg-blue-50"
@@ -817,23 +816,6 @@ function ShopPageContent() {
                     {promoSection.ctaText}
                     <ArrowRight className="h-3 w-3" />
                   </Link>
-                ) : (
-                  <>
-                    <Link
-                      href="/shop?sort=deals"
-                      className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-blue-600 shadow transition hover:bg-blue-50"
-                    >
-                      Shop Best Deals
-                      <ArrowRight className="h-3 w-3" />
-                    </Link>
-                    <Link
-                      href="/shop?category=chemicals"
-                      className="inline-flex items-center gap-1.5 rounded-full border border-white/50 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10"
-                    >
-                      Pool Care Kits
-                      <ChevronRight className="h-3 w-3" />
-                    </Link>
-                  </>
                 )}
               </div>
             </div>

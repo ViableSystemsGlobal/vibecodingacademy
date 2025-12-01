@@ -93,7 +93,7 @@ export const DEFAULT_STOREFRONT_CONTENT: StorefrontContentMap = {
       role: "Homeowner • Accra",
       rating: 5,
       quote:
-        "AdPools transformed maintenance for our pool. The digital test kit and delivery service mean we always have what we need, on time.",
+        "The digital test kit and delivery service mean we always have what we need, on time.",
       avatarColor: "bg-blue-600",
       avatarImage: null,
       isFeatured: true,

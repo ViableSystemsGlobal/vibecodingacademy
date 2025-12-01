@@ -64,23 +64,10 @@ export default function ProductDetailPage() {
   const { success, error: showError } = useToast();
   const { refreshCartCount } = useCustomerAuth();
   const normalizeProductPromo = (banner: any) => {
-    const defaults = DEFAULT_STOREFRONT_CONTENT.product_promo_banner as Record<string, any>;
-    const base = {
-      eyebrow: defaults?.eyebrow ?? "Poolside Upgrade",
-      title: defaults?.title ?? "Bundle & Save on Spa Accessories",
-      description:
-        defaults?.description ??
-        "Complete your relaxation setup with curated accessories. Members enjoy an extra 10% off when buying two or more.",
-      ctaText: defaults?.ctaText ?? "Explore Accessories",
-      ctaHref: defaults?.ctaHref ?? "/shop?category=accessories",
-      gradient: defaults?.gradient ?? "from-sky-500 via-cyan-500 to-emerald-500",
-      isActive: defaults?.isActive ?? true,
-    };
-    if (!banner) return base;
+    if (!banner) return null;
     return {
-      ...base,
       ...banner,
-      isActive: banner.isActive ?? base.isActive,
+      isActive: banner.isActive ?? true,
     };
   };
 
@@ -112,15 +99,9 @@ const normalizeTestimonials = (list: any): Testimonial[] => {
     .filter((item) => item.name && item.quote);
 };
 
-const [reviews, setReviews] = useState<Testimonial[]>(
-  normalizeTestimonials(DEFAULT_STOREFRONT_CONTENT.testimonials).filter(
-    (testimonial) => testimonial.isActive !== false
-  )
-);
+const [reviews, setReviews] = useState<Testimonial[]>([]);
   const [recommendedProducts, setRecommendedProducts] = useState<Product[]>([]);
-  const [productPromoBanner, setProductPromoBanner] = useState(
-    normalizeProductPromo(DEFAULT_STOREFRONT_CONTENT.product_promo_banner)
-  );
+  const [productPromoBanner, setProductPromoBanner] = useState<any>(null);
   const hasTrackedView = useRef(false);
 
   useEffect(() => {
@@ -245,7 +226,7 @@ useEffect(() => {
         const banner = normalizeProductPromo(data?.content?.product_promo_banner);
         setProductPromoBanner(banner);
         const testimonials = normalizeTestimonials(
-          data?.content?.testimonials ?? DEFAULT_STOREFRONT_CONTENT.testimonials
+          data?.content?.testimonials
         ).filter((testimonial) => testimonial.isActive !== false);
         setReviews(testimonials);
       } else {
@@ -257,11 +238,8 @@ useEffect(() => {
       }
     } catch (error) {
       console.error("Failed to fetch storefront content:", error);
-      const fallback = normalizeTestimonials(DEFAULT_STOREFRONT_CONTENT.testimonials).filter(
-        (testimonial) => testimonial.isActive !== false
-      );
-      setReviews(fallback);
-      setProductPromoBanner(normalizeProductPromo(undefined));
+      setReviews([]);
+      setProductPromoBanner(null);
     }
   };
 
@@ -691,7 +669,7 @@ useEffect(() => {
         </div>
       </div>
 
-      {productPromoBanner?.isActive !== false ? (
+      {productPromoBanner && productPromoBanner.isActive !== false ? (
         <section className="py-12">
           <EcommercePromoBanner {...(productPromoBanner as any)} />
         </section>

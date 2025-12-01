@@ -10,24 +10,29 @@ export default function ShopLayout({
   children: React.ReactNode;
 }) {
   useEffect(() => {
+    // Set default title immediately to prevent branding context from setting "AdPools Group"
+    if (typeof document !== 'undefined') {
+      document.title = "Shop";
+    }
+    
     // Update document title for shop pages
     const updateTitle = () => {
       const path = window.location.pathname;
       if (path.startsWith('/shop')) {
         if (path === '/shop') {
-          document.title = "Shop | Ecommerce";
+          document.title = "Shop";
         } else if (path.includes('/products/')) {
           // Title will be set by product detail page
         } else if (path.includes('/cart')) {
-          document.title = "Shopping Cart | Ecommerce";
+          document.title = "Shopping Cart";
         } else if (path.includes('/checkout')) {
-          document.title = "Checkout | Ecommerce";
+          document.title = "Checkout";
         } else if (path.includes('/account')) {
-          document.title = "My Account | Ecommerce";
+          document.title = "My Account";
         } else if (path.includes('/wishlist')) {
-          document.title = "Wishlist | Ecommerce";
+          document.title = "Wishlist";
         } else if (path.includes('/compare')) {
-          document.title = "Compare Products | Ecommerce";
+          document.title = "Compare Products";
         }
       }
     };

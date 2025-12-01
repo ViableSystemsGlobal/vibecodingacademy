@@ -22,31 +22,6 @@ type HeroSliderProps = {
   autoPlayInterval?: number;
 };
 
-const FALLBACK_SLIDES: HeroSlide[] = [
-  {
-    id: "fallback-1",
-    eyebrow: "Smart Deals",
-    heading: "Spend Less!",
-    subheading: "Too Hot To Miss",
-    description: "Shop unbeatable prices on everyday essentials.",
-    ctaText: "Shop Now",
-    ctaLink: "/shop",
-    image: null,
-    accentColor: "#ff463c",
-  },
-  {
-    id: "fallback-2",
-    eyebrow: "Premium Brands",
-    heading: "Stock Up & Save",
-    subheading: "Fresh picks every week",
-    description: "Explore top household brands with special discounts.",
-    ctaText: "Browse Deals",
-    ctaLink: "/shop?category=all",
-    image: null,
-    accentColor: "#2a6df4",
-  },
-];
-
 export function HeroSlider({
   slides,
   autoPlayInterval = 6000,
@@ -60,7 +35,7 @@ export function HeroSlider({
         ],
       }));
     }
-    return FALLBACK_SLIDES;
+    return [];
   }, [slides]);
 
   const [activeIndex, setActiveIndex] = useState(0);
@@ -113,7 +88,7 @@ export function HeroSlider({
             ) : null}
           </div>
 
-          {currentSlide.ctaText && currentSlide.ctaLink ? (
+          {currentSlide.ctaText && currentSlide.ctaLink && (
             <div className="flex flex-wrap gap-3">
               <Link
                 href={currentSlide.ctaLink}
@@ -121,14 +96,8 @@ export function HeroSlider({
               >
                 {currentSlide.ctaText}
               </Link>
-              <Link
-                href="/shop?category=all"
-                className="inline-flex items-center rounded-full bg-white px-6 py-3 text-base font-semibold text-[#1a1a1a] shadow-inner transition hover:bg-gray-100"
-              >
-                Explore Categories
-              </Link>
             </div>
-          ) : null}
+          )}
         </div>
 
         <div className="relative flex justify-center lg:justify-end">

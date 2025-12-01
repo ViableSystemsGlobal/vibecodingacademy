@@ -73,11 +73,7 @@ function ShopHomePage() {
   const [mounted, setMounted] = useState(false)
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([])
   const [dealProducts, setDealProducts] = useState<Product[]>([])
-  const [categoryTiles, setCategoryTiles] = useState<CategoryTile[]>(
-    ((DEFAULT_STOREFRONT_CONTENT.home_categories as CategoryTile[]) || []).filter(
-      (tile) => tile.isActive !== false
-    )
-  )
+  const [categoryTiles, setCategoryTiles] = useState<CategoryTile[]>([])
   const [loading, setLoading] = useState(true)
   const [banners, setBanners] = useState<any[]>([])
   const [specialDeal, setSpecialDeal] = useState<{
@@ -161,11 +157,9 @@ function ShopHomePage() {
   }
 
   const [heroSlides, setHeroSlides] = useState<HeroSlideContent[]>(
-    normalizeHeroSlides(
-      (DEFAULT_STOREFRONT_CONTENT.home_hero as { slides: HeroSlideContent[] }).slides
-    )
+    []
   )
-  const [promoBanner, setPromoBanner] = useState(DEFAULT_STOREFRONT_CONTENT.home_promo_banner)
+  const [promoBanner, setPromoBanner] = useState<any>(null)
   const { success: toastSuccess, error: toastError } = useToast()
   const { addItem: addWishlistItem, isInWishlist } = useWishlist()
   const {
@@ -277,28 +271,16 @@ function ShopHomePage() {
       )
       if (response.ok) {
         const data = await response.json()
-        const tiles =
-          (data?.content?.home_categories as CategoryTile[]) ||
-          ((DEFAULT_STOREFRONT_CONTENT.home_categories as CategoryTile[]) || [])
+        const tiles = (data?.content?.home_categories as CategoryTile[]) || []
         const activeTiles = tiles
           .filter((tile) => tile?.isActive !== false)
           .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
         setCategoryTiles(activeTiles)
       } else {
-        // Silently fallback to defaults
-        const fallback =
-          ((DEFAULT_STOREFRONT_CONTENT.home_categories as CategoryTile[]) || []).filter(
-            (tile) => tile?.isActive !== false
-          )
-        setCategoryTiles(fallback)
+        setCategoryTiles([])
       }
     } catch (error) {
-      // Silently fallback to defaults
-      const fallback =
-        ((DEFAULT_STOREFRONT_CONTENT.home_categories as CategoryTile[]) || []).filter(
-          (tile) => tile?.isActive !== false
-        )
-      setCategoryTiles(fallback)
+      setCategoryTiles([])
     }
   }
 
@@ -566,28 +548,30 @@ function ShopHomePage() {
                     })(),
                   }}
                 >
-                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
-                    {specialDeal?.subtitle || "Today's Special Deal"}
-                  </span>
-                  <h3 className="mt-4 text-3xl font-bold leading-tight lg:text-4xl">
-                    {specialDeal?.title || (
-                      <>
-                        Healthy & Fresh
-                        <br />
-                        Vegetables
-                      </>
-                    )}
-                  </h3>
-                  <p className="mt-3 max-w-sm text-sm text-emerald-50">
-                    {specialDeal?.description || "Save up to 50% on seasonal produce, curated for your pool parties and weekend getaways. Bundle fresh picks with accessories and get free delivery."}
-                  </p>
-                  <Link
-                    href={specialDeal?.ctaLink || "/shop?sort=deals"}
-                    className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-semibold text-emerald-600 hover:bg-emerald-50"
-                  >
-                    {specialDeal?.ctaText || "Explore Deals"}
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
+                  {specialDeal?.subtitle && (
+                    <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
+                      {specialDeal.subtitle}
+                    </span>
+                  )}
+                  {specialDeal?.title && (
+                    <h3 className="mt-4 text-3xl font-bold leading-tight lg:text-4xl">
+                      {specialDeal.title}
+                    </h3>
+                  )}
+                  {specialDeal?.description && (
+                    <p className="mt-3 max-w-sm text-sm text-emerald-50">
+                      {specialDeal.description}
+                    </p>
+                  )}
+                  {specialDeal?.ctaText && specialDeal?.ctaLink && (
+                    <Link
+                      href={specialDeal.ctaLink}
+                      className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-semibold text-emerald-600 hover:bg-emerald-50"
+                    >
+                      {specialDeal.ctaText}
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  )}
                 </div>
 
                 <div>
