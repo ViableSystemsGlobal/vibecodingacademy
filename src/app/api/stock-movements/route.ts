@@ -32,44 +32,12 @@ export async function GET(request: NextRequest) {
         reason: true,
         notes: true,
         userId: true,
+        productId: true,
+        stockItemId: true, // Select stockItemId instead of including stockItem
         createdAt: true,
-        product: {
-          select: {
-            id: true,
-            name: true,
-            sku: true,
-            uomBase: true,
-            images: true,
-          }
-        },
-        stockItem: {
-          select: {
-            id: true,
-            quantity: true,
-            available: true,
-          }
-        },
-        warehouse: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          }
-        },
-        fromWarehouse: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          }
-        },
-        toWarehouse: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          }
-        }
+        warehouseId: true,
+        fromWarehouseId: true,
+        toWarehouseId: true,
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -78,8 +46,54 @@ export async function GET(request: NextRequest) {
 
     const total = await prisma.stockMovement.count({ where });
 
+    // Fetch product data separately to handle deleted products gracefully
+    const productIds = [...new Set(movements.map(m => m.productId).filter(Boolean))];
+    const existingProducts = productIds.length > 0
+      ? await prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, name: true, sku: true, uomBase: true, images: true },
+        })
+      : [];
+    const productMap = new Map(existingProducts.map(p => [p.id, p]));
+
+    // Fetch stock items separately to handle deleted stock items gracefully
+    const stockItemIds = [...new Set(movements.map(m => m.stockItemId).filter(Boolean))];
+    const existingStockItems = stockItemIds.length > 0
+      ? await prisma.stockItem.findMany({
+          where: { id: { in: stockItemIds } },
+          select: { id: true, quantity: true, available: true },
+        })
+      : [];
+    const stockItemMap = new Map(existingStockItems.map(si => [si.id, si]));
+
+    // Fetch warehouses separately (these should rarely be deleted, but handle gracefully)
+    const warehouseIds = [
+      ...new Set([
+        ...movements.map(m => m.warehouseId).filter(Boolean),
+        ...movements.map(m => m.fromWarehouseId).filter(Boolean),
+        ...movements.map(m => m.toWarehouseId).filter(Boolean),
+      ])
+    ];
+    const existingWarehouses = warehouseIds.length > 0
+      ? await prisma.warehouse.findMany({
+          where: { id: { in: warehouseIds } },
+          select: { id: true, name: true, code: true },
+        })
+      : [];
+    const warehouseMap = new Map(existingWarehouses.map(w => [w.id, w]));
+
+    // Enrich movements with product, stockItem, and warehouse data
+    const enrichedMovements = movements.map(movement => ({
+      ...movement,
+      product: movement.productId ? productMap.get(movement.productId) || null : null,
+      stockItem: movement.stockItemId ? stockItemMap.get(movement.stockItemId) || null : null,
+      warehouse: movement.warehouseId ? warehouseMap.get(movement.warehouseId) || null : null,
+      fromWarehouse: movement.fromWarehouseId ? warehouseMap.get(movement.fromWarehouseId) || null : null,
+      toWarehouse: movement.toWarehouseId ? warehouseMap.get(movement.toWarehouseId) || null : null,
+    }));
+
     return NextResponse.json({
-      movements,
+      movements: enrichedMovements,
       total,
       hasMore: offset + movements.length < total,
     });

@@ -598,8 +598,8 @@ export default function Sidebar({ onClose }: SidebarProps = {}) {
         )}
       </nav>
 
-      {/* Shortcuts */}
-      {!collapsed && (
+      {/* Shortcuts - Only show for Super Admin */}
+      {!collapsed && (session?.user as any)?.role === 'SUPER_ADMIN' && (
         <div className="px-4 py-2">
           <div className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
             Shortcuts
@@ -647,81 +647,6 @@ export default function Sidebar({ onClose }: SidebarProps = {}) {
           </div>
         </div>
       )}
-
-      {/* Footer */}
-      <div className="border-t border-gray-200 p-4">
-        {!collapsed ? (
-          <>
-            {/* User Menu */}
-            <div className="flex items-center space-x-3 mb-3">
-              <div 
-                className="h-8 w-8 rounded-full flex items-center justify-center"
-                style={{
-                  background: `linear-gradient(to bottom right, ${getThemeColor()}, ${getThemeColor()}dd)`
-                }}
-              >
-                <span className="text-white text-sm font-medium">
-                  {session?.user?.name ? session.user.name.substring(0, 2).toUpperCase() : 'U'}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
-                  {session?.user?.name || 'User'}
-                </p>
-                <p className="text-xs text-gray-500 truncate">
-                  {session?.user?.email || 'user@example.com'}
-                </p>
-              </div>
-            </div>
-
-            {/* Help */}
-            <button 
-              className="flex items-center w-full text-sm text-gray-500 transition-colors"
-              style={{ color: '#6b7280' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = getThemeColor();
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = '#6b7280';
-              }}
-              onClick={() => {
-                // Could open a help modal or navigate to help page
-                alert('Help & Keyboard shortcuts coming soon!');
-              }}
-            >
-              <HelpCircle className="mr-2 h-4 w-4" />
-              Help & Keyboard shortcuts
-            </button>
-          </>
-        ) : (
-          <div className="flex flex-col items-center space-y-2">
-            <div 
-              className="h-8 w-8 rounded-full flex items-center justify-center"
-              style={{
-                background: `linear-gradient(to bottom right, ${getThemeColor()}, ${getThemeColor()}dd)`
-              }}
-            >
-              <span className="text-white text-sm font-medium">
-                {session?.user?.name ? session.user.name.substring(0, 2).toUpperCase() : 'U'}
-              </span>
-            </div>
-            <button 
-              className="text-gray-500 transition-colors"
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = getThemeColor();
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = '#6b7280';
-              }}
-              onClick={() => {
-                alert('Help & Keyboard shortcuts coming soon!');
-              }}
-            >
-              <HelpCircle className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-      </div>
 
       {/* Collapse Toggle */}
       <div className="border-t border-gray-200 p-2">

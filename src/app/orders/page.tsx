@@ -560,15 +560,15 @@ export default function OrdersPage() {
                 key: 'actions',
                 label: 'Actions',
                 render: (order) => (
-                  <div className="flex items-center flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <Button
                       variant="ghost"
                       size="sm"
+                      className="h-8 w-8 p-0 text-green-600 hover:text-green-900"
                       onClick={(e) => {
                         e.stopPropagation();
                         router.push(`/orders/${order.id}`);
                       }}
-                      className="text-green-600 hover:text-green-900"
                       title="View order details"
                     >
                       <Eye className="w-4 h-4" />
@@ -576,12 +576,12 @@ export default function OrdersPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      className="h-8 w-8 p-0 text-blue-600 hover:text-blue-900"
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedOrder(order);
                         setShowEditModal(true);
                       }}
-                      className="text-blue-600 hover:text-blue-900"
                       title="Edit order"
                     >
                       <Edit className="w-4 h-4" />
@@ -589,12 +589,12 @@ export default function OrdersPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      className="h-8 w-8 p-0 text-red-600 hover:text-red-900"
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedOrder(order);
                         setShowDeleteConfirmation(true);
                       }}
-                      className="text-red-600 hover:text-red-900"
                       title="Delete order"
                     >
                       <Trash2 className="w-4 h-4" />

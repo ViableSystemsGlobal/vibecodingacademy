@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
     const where = buildWhereClause(params, {
       searchFields: ['name', 'sku'],
       customFilters,
+      // Exclude computed filters that are handled after aggregation
+      excludeFilters: ['stockStatus', 'priceMin', 'priceMax', 'category'],
     });
 
     // Ensure where clause is not empty object (Prisma needs at least {})
@@ -78,8 +80,7 @@ export async function GET(request: NextRequest) {
                 },
               },
             },
-            // Don't fail if warehouse doesn't exist
-            take: undefined, // Get all stock items
+            // Get all stock items (no take limit)
           },
         },
       });
@@ -175,11 +176,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate metrics from all processed products (before status/price filtering)
+    // Calculate total inventory value across ALL products (not just filtered/paginated)
+    const totalInventoryValue = processedProducts.reduce((sum, p) => sum + (p.totalValue || 0), 0);
+    
     const metrics = {
       totalProducts: processedProducts.length,
       inStockProducts: processedProducts.filter((p) => p.stockStatus === 'in-stock').length,
       lowStockProducts: processedProducts.filter((p) => p.stockStatus === 'low-stock').length,
       outOfStockProducts: processedProducts.filter((p) => p.stockStatus === 'out-of-stock').length,
+      totalInventoryValue, // Total value of all inventory (in USD, from averageCost)
     };
 
     // Apply sorting to filtered products

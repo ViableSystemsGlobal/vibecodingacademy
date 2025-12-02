@@ -71,6 +71,7 @@ export async function GET() {
       requireAccountCreation: (await getSettingValue("ECOMMERCE_REQUIRE_ACCOUNT_CREATION", "false")) === "true",
       allowGuestCheckout: (await getSettingValue("ECOMMERCE_ALLOW_GUEST_CHECKOUT", "true")) === "true",
       requireEmailVerification: (await getSettingValue("ECOMMERCE_REQUIRE_EMAIL_VERIFICATION", "false")) === "true",
+      enableRecaptcha: (await getSettingValue("ECOMMERCE_ENABLE_RECAPTCHA", "false")) === "true",
       
       // Storefront Display
       productsPerPage: parseInt(await getSettingValue("ECOMMERCE_PRODUCTS_PER_PAGE", "12")),
@@ -179,6 +180,9 @@ export async function POST(request: NextRequest) {
     }
     if (body.requireEmailVerification !== undefined) {
       await setSettingValue("ECOMMERCE_REQUIRE_EMAIL_VERIFICATION", String(body.requireEmailVerification), "ecommerce", "Require email verification");
+    }
+    if (body.enableRecaptcha !== undefined) {
+      await setSettingValue("ECOMMERCE_ENABLE_RECAPTCHA", String(body.enableRecaptcha), "ecommerce", "Enable Google reCAPTCHA for login and signup");
     }
 
     // Storefront Display

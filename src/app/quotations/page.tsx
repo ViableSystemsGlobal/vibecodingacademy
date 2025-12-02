@@ -898,24 +898,29 @@ export default function QuotationsPage() {
                   key: 'actions',
                   label: 'Actions',
                   render: (quotation) => (
-                    <div className="flex items-center flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="h-8 w-8 p-0"
                         onClick={() => router.push(`/quotations/${quotation.id}`)}
+                        title="View"
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="h-8 w-8 p-0"
                         onClick={() => router.push(`/quotations/${quotation.id}/edit`)}
+                        title="Edit"
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
                       <Button 
                         size="sm" 
                         variant="ghost"
+                        className="h-8 w-8 p-0"
                         onClick={(e) => handleDownload(e, quotation)}
                         title="Download as PDF"
                       >
@@ -924,6 +929,7 @@ export default function QuotationsPage() {
                       <Button 
                         size="sm" 
                         variant="ghost"
+                        className="h-8 w-8 p-0"
                         onClick={() => handleSendQuote(quotation)}
                         title="Send quotation via email/SMS"
                       >
@@ -931,7 +937,7 @@ export default function QuotationsPage() {
                       </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button size="sm" variant="ghost">
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>

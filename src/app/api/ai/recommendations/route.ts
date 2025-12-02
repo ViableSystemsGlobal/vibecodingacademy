@@ -18,11 +18,22 @@ const PAGE_PROMPTS = {
 - HIGH-IMPACT (will significantly impact business outcomes)
 - SPECIFIC with concrete steps to take
 
+CRITICAL: Only create recommendations for metrics that have NON-ZERO values. If a metric is 0, DO NOT create a recommendation about it. For example:
+- If pendingQuotations = 0, DO NOT create "Follow up on 0 pending quotations"
+- If overdueInvoices = 0, DO NOT create "Collect GH₵0 in overdue invoices"
+- If qualifiedLeads = 0, DO NOT create "Convert 0 qualified leads"
+- If monthlyRevenue = 0, DO NOT create "Increase revenue from GH₵0"
+
+Instead, focus on:
+1. Metrics with actual values (e.g., if there are 5 pending quotations, recommend following up on those 5)
+2. Setup/getting started actions if the system is new (e.g., "Add your first product", "Create your first lead")
+3. Growth opportunities based on existing data (e.g., "Expand product catalog", "Improve lead generation")
+
 Prioritize actions that:
-1. Directly increase revenue (closing deals, following up on opportunities, converting leads)
-2. Prevent losses (overdue invoices, low stock alerts, abandoned opportunities)
-3. Optimize operations (pricing strategies, inventory levels, conversion rates)
-4. Address urgent issues (pending quotations, unpaid invoices, stuck opportunities)
+1. Directly increase revenue (closing deals, following up on opportunities, converting leads) - ONLY if there are actual opportunities/leads
+2. Prevent losses (overdue invoices, low stock alerts, abandoned opportunities) - ONLY if these exist
+3. Optimize operations (pricing strategies, inventory levels, conversion rates) - ONLY if there's data to optimize
+4. Address urgent issues (pending quotations, unpaid invoices, stuck opportunities) - ONLY if these exist
 
 Provide 5 recommendations in priority order (highest impact first). Each should include a clear title, detailed description explaining WHY it matters and WHAT to do, priority level (high/medium/low), and suggested action.`,
   
@@ -185,7 +196,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get business data based on page context
-    const businessData = await getBusinessDataForPage(page, userId, context);
+    const businessData = await getBusinessDataForPage(page, userId, context, userAbilities);
     
     // Log context-specific requests for debugging
     if (context?.accountId && page === 'accounts') {
@@ -204,7 +215,7 @@ export async function POST(request: NextRequest) {
     
     // Include context ID in cache key for context-specific requests
     // Add version to cache key to invalidate old cached recommendations (especially for tasks page filtering)
-    const cacheVersion = 'v2'; // Increment this when filtering logic changes
+    const cacheVersion = 'v3'; // Increment this when filtering logic changes (v3: added zero-value filtering for dashboard)
     const contextId = context?.leadId || context?.opportunityId || context?.accountId || '';
     const cacheKey = contextId 
       ? `ai_recommendations_${page}_${contextId}_${dataHash}_${cacheVersion}`
@@ -686,15 +697,18 @@ Here is the complete business data in JSON format:
 ${formattedDataForAI}
 
 CRITICAL INSTRUCTIONS - READ CAREFULLY:
-1. Use ONLY the exact numbers shown above. If a number is 0 or missing, say so explicitly.
-2. Do NOT create recommendations based on imaginary numbers (like "${currencySymbol}1.2M" or "${currencySymbol}800K" unless those exact amounts appear in the data above).
+1. Use ONLY the exact numbers shown above. If a number is 0 or missing, DO NOT create a recommendation about it.
+2. DO NOT create recommendations based on imaginary numbers (like "${currencySymbol}1.2M" or "${currencySymbol}800K" unless those exact amounts appear in the data above).
 3. Reference the ACTUAL numbers from the data in your recommendations. Use exact values like "${currencySymbol}${(businessData as any).monthlyRevenue || 0}" not approximations.
-4. If there are 0 pending quotations, say "0 pending quotations" - don't make up a number.
-5. If there are 0 overdue invoices, say so - don't create recommendations about invoices that don't exist.
-6. Base recommendations ONLY on what the numbers actually show.
-7. IMPORTANT: When referencing monetary amounts, ALWAYS use "${currencySymbol}" (${baseCurrency}) instead of "$" or "USD". NEVER use dollar signs ($) in your recommendations. Use the currency symbol "${currencySymbol}" for all money amounts.
-8. If a metric shows 0, acknowledge it explicitly in your recommendation (e.g., "There are currently 0 overdue invoices, which is excellent").
-9. DO NOT use phrases like "if you have X" or "consider X" - use the actual numbers from the data (e.g., "You have ${(businessData as any).pendingQuotations || 0} pending quotations that need follow-up").
+4. CRITICAL: If a metric is 0, DO NOT create a recommendation about it. For example:
+   - If pendingQuotations = 0, DO NOT create "Follow up on 0 pending quotations"
+   - If overdueInvoices = 0, DO NOT create "Collect ${currencySymbol}0 in overdue invoices"
+   - If qualifiedLeads = 0, DO NOT create "Convert 0 qualified leads"
+   - If monthlyRevenue = 0, DO NOT create "Increase revenue from ${currencySymbol}0"
+5. Base recommendations ONLY on metrics with NON-ZERO values. Focus on actionable items that have actual data.
+6. IMPORTANT: When referencing monetary amounts, ALWAYS use "${currencySymbol}" (${baseCurrency}) instead of "$" or "USD". NEVER use dollar signs ($) in your recommendations. Use the currency symbol "${currencySymbol}" for all money amounts.
+7. If most metrics are 0, provide setup/getting started recommendations (e.g., "Add your first product", "Create your first lead", "Set up inventory tracking").
+8. DO NOT use phrases like "if you have X" or "consider X" - use the actual numbers from the data (e.g., "You have ${(businessData as any).pendingQuotations || 0} pending quotations that need follow-up").
 
 Based on the EXACT numbers provided above, provide ${recommendationCount} specific, actionable recommendations. Each recommendation should:
 1. Use ONLY real numbers from the data above
@@ -705,7 +719,7 @@ Based on the EXACT numbers provided above, provide ${recommendationCount} specif
 
 CRITICAL: Each title must be unique, descriptive, and action-oriented. Never use placeholder titles like "AI Insight 1", "Recommendation 1", "Insight 1", etc. Use actual business actions in the title.
 
-${isSpecificLead ? 'Focus on SPECIFIC actions for THIS PARTICULAR LEAD. Provide recommendations tailored to their status, stage, and activity. Consider next steps like follow-ups, qualification, product demonstrations, or conversion to opportunity.' : isSpecificOpportunity ? 'Focus on SPECIFIC actions for THIS PARTICULAR OPPORTUNITY. Provide recommendations to progress this deal, address blockers, improve probability, or close the opportunity. Consider quotations, negotiations, or closing strategies.' : isSpecificAccount ? 'Focus on SPECIFIC actions for THIS PARTICULAR ACCOUNT. Provide recommendations to strengthen the relationship, grow revenue, develop opportunities, or optimize account engagement. Consider contact management, opportunity development, or revenue optimization.' : page === 'dashboard' ? 'Focus on HIGH-IMPACT actions that will move the needle based on the REAL data provided. Prioritize actions based on actual numbers - if there are unpaid invoices, mention the exact count. If there are open opportunities, use the actual count.' : page === 'tasks' ? 'CRITICAL: Focus EXCLUSIVELY on TASK MANAGEMENT. Provide recommendations ONLY about tasks, task completion, task priorities, task deadlines, overdue tasks, and task workflow. Do NOT mention quotations, invoices, leads, opportunities, products, or any other business areas. Base all recommendations on the task metrics provided above.' : ''}
+${isSpecificLead ? 'Focus on SPECIFIC actions for THIS PARTICULAR LEAD. Provide recommendations tailored to their status, stage, and activity. Consider next steps like follow-ups, qualification, product demonstrations, or conversion to opportunity.' : isSpecificOpportunity ? 'Focus on SPECIFIC actions for THIS PARTICULAR OPPORTUNITY. Provide recommendations to progress this deal, address blockers, improve probability, or close the opportunity. Consider quotations, negotiations, or closing strategies.' : isSpecificAccount ? 'Focus on SPECIFIC actions for THIS PARTICULAR ACCOUNT. Provide recommendations to strengthen the relationship, grow revenue, develop opportunities, or optimize account engagement. Consider contact management, opportunity development, or revenue optimization.' : page === 'dashboard' ? 'Focus on HIGH-IMPACT actions that will move the needle based on the REAL data provided. CRITICAL: Only create recommendations for metrics with NON-ZERO values. If a metric is 0, skip it entirely. Prioritize actions based on actual numbers - if there are unpaid invoices, mention the exact count. If there are open opportunities, use the actual count. If most metrics are 0, provide setup/getting started recommendations instead.' : page === 'tasks' ? 'CRITICAL: Focus EXCLUSIVELY on TASK MANAGEMENT. Provide recommendations ONLY about tasks, task completion, task priorities, task deadlines, overdue tasks, and task workflow. Do NOT mention quotations, invoices, leads, opportunities, products, or any other business areas. Base all recommendations on the task metrics provided above.' : ''}
 ${!isSpecificLead && !isSpecificOpportunity && !isSpecificAccount && page === 'leads' ? 'Focus on lead conversion optimization, follow-up strategies, and pipeline management based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of stale leads, unassigned leads, overdue follow-ups, etc. Reference specific conversion rates and deal values from the data.' : ''}
 ${!isSpecificLead && !isSpecificOpportunity && !isSpecificAccount && page === 'opportunities' ? 'Focus on opportunity pipeline optimization, deal progression, and win rate improvement based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of stuck opportunities, overdue close dates, high-value deals, etc. Reference specific pipeline values, win rates, and probability distributions from the data.' : ''}
 ${!isSpecificLead && !isSpecificOpportunity && !isSpecificAccount && page === 'accounts' ? 'Focus on account engagement, relationship management, and revenue growth based on the REAL data provided. Prioritize actions based on actual counts - mention exact numbers of inactive accounts, accounts without contacts, high-value opportunities, etc. Reference specific revenue figures, opportunity values, and engagement metrics from the data.' : ''}
@@ -812,6 +826,7 @@ Format your response as a JSON array:
     // Add IDs and format for the component
     // Also replace any dollar signs with the correct currency symbol
     // Filter out any recommendations with placeholder titles
+    // For dashboard, filter out recommendations with zero values
     // For tasks page, also filter out recommendations that mention non-task items
     const validRecommendations = recommendations.filter((rec: any) => {
       const title = (rec.title || '').trim();
@@ -821,6 +836,49 @@ Format your response as a JSON array:
       if (!title || title.match(/^(ai\s+)?insight\s*\d+$/i) || title.match(/^recommendation\s*\d+$/i) || title.match(/^insight\s*\d+$/i)) {
         console.log(`⚠️ Filtered out recommendation with placeholder title: "${title}"`);
         return false;
+      }
+      
+      // For dashboard, filter out recommendations with zero values
+      if (page === 'dashboard') {
+        // Check for patterns like "0 pending quotations", "GH₵0", "0 qualified leads", etc.
+        const zeroPatterns = [
+          /\b0\s+(pending|overdue|qualified|new|won|open)\s+/i,
+          /\bgh[₵¢]?\s*0\b/i,
+          /\bghc\s*0\b/i, // Also catch "GHC0" without special character
+          /\b0\s+(quotation|invoice|lead|opportunity|product|customer|account)/i,
+          /from\s+gh[₵¢c]?\s*0\s+to/i,
+          /collect\s+gh[₵¢c]?\s*0/i,
+          /follow\s+up\s+on\s+0/i,
+          /convert\s+0\s+/i,
+          /win\s+0\s+/i,
+          /increase.*from.*0/i,
+          /there\s+are\s+currently\s+0/i,
+          /there\s+have\s+been\s+0/i,
+          /there\s+are\s+0/i,
+          /currently\s+0/i,
+          /have\s+0/i,
+          /with\s+0/i,
+        ];
+        
+        const titleLower = title.toLowerCase();
+        const descLower = description.toLowerCase();
+        
+        const hasZeroValue = zeroPatterns.some(pattern => 
+          pattern.test(titleLower) || pattern.test(descLower)
+        ) || 
+        // Also check for explicit "0" followed by common action words
+        (titleLower.match(/\b0\b/) && (
+          titleLower.includes('follow up') ||
+          titleLower.includes('collect') ||
+          titleLower.includes('convert') ||
+          titleLower.includes('win') ||
+          titleLower.includes('increase')
+        ));
+        
+        if (hasZeroValue) {
+          console.log(`⚠️ Filtered out zero-value recommendation for dashboard: "${title}"`);
+          return false;
+        }
       }
       
       // For tasks page, reject recommendations that mention non-task items
@@ -858,6 +916,34 @@ Format your response as a JSON array:
           return !nonTaskKeywords.some(keyword => titleLower.includes(keyword) || descLower.includes(keyword));
         });
         validRecommendations.push(...taskDefaults);
+      } else if (page === 'dashboard') {
+        // For dashboard, filter defaults to only include setup/getting started recommendations if data is empty
+        // Check if business data suggests the system is new/empty
+        const hasData = (businessData as any).totalProducts > 0 || 
+                       (businessData as any).totalLeads > 0 || 
+                       (businessData as any).totalOpportunities > 0 || 
+                       (businessData as any).totalQuotations > 0 || 
+                       (businessData as any).totalInvoices > 0;
+        
+        if (!hasData) {
+          // System is new/empty - use setup recommendations
+          const setupDefaults = [
+            { title: 'Add your first product', description: 'Start by adding products to your catalog to begin selling', priority: 'high', action: 'Create product' },
+            { title: 'Create your first lead', description: 'Begin building your sales pipeline by adding leads', priority: 'high', action: 'Add lead' },
+            { title: 'Set up inventory tracking', description: 'Configure warehouses and stock levels for inventory management', priority: 'medium', action: 'Setup inventory' },
+            { title: 'Configure pricing strategy', description: 'Set up price lists and pricing rules for your products', priority: 'medium', action: 'Setup pricing' },
+            { title: 'Add customer accounts', description: 'Start building your customer database by adding accounts', priority: 'low', action: 'Add account' }
+          ];
+          validRecommendations.push(...setupDefaults.slice(0, recommendationCount - validRecommendations.length));
+        } else {
+          // Has some data - use regular defaults but filter out zero-value ones
+          const filteredDefaults = defaults.filter((rec: any) => {
+            const title = (rec.title || '').toLowerCase();
+            // Don't include defaults that might reference zero values
+            return !title.includes('0') && !title.match(/\bgh[₵¢]?\s*0\b/i);
+          });
+          validRecommendations.push(...filteredDefaults.slice(0, recommendationCount - validRecommendations.length));
+        }
       } else {
         validRecommendations.push(...defaults);
       }
@@ -912,6 +998,66 @@ Format your response as a JSON array:
       completed: false
       };
     });
+    
+    // Final post-formatting filter for dashboard - remove zero-value recommendations
+    if (page === 'dashboard') {
+      formattedRecommendations = formattedRecommendations.filter((rec: any) => {
+        const title = (rec.title || '').toLowerCase();
+        const description = (rec.description || '').toLowerCase();
+        
+        const zeroPatterns = [
+          /\b0\s+(pending|overdue|qualified|new|won|open)\s+/i,
+          /\bgh[₵¢c]?\s*0\b/i,
+          /\b0\s+(quotation|invoice|lead|opportunity|product|customer|account)/i,
+          /from\s+gh[₵¢c]?\s*0\s+to/i,
+          /collect\s+gh[₵¢c]?\s*0/i,
+          /follow\s+up\s+on\s+0/i,
+          /convert\s+0\s+/i,
+          /win\s+0\s+/i,
+          /increase.*from.*0/i,
+          /there\s+are\s+currently\s+0/i,
+          /there\s+have\s+been\s+0/i,
+        ];
+        
+        const hasZeroValue = zeroPatterns.some(pattern => 
+          pattern.test(title) || pattern.test(description)
+        ) || 
+        (title.match(/\b0\b/) && (
+          title.includes('follow up') ||
+          title.includes('collect') ||
+          title.includes('convert') ||
+          title.includes('win') ||
+          title.includes('increase')
+        ));
+        
+        if (hasZeroValue) {
+          console.log(`⚠️ Post-formatting dashboard filter: Removed zero-value recommendation: "${rec.title}"`);
+          return false;
+        }
+        return true;
+      });
+      
+      // If we filtered out too many, add setup recommendations if system is empty
+      if (formattedRecommendations.length < recommendationCount) {
+        const hasData = (businessData as any).totalProducts > 0 || 
+                       (businessData as any).totalLeads > 0 || 
+                       (businessData as any).totalOpportunities > 0 || 
+                       (businessData as any).totalQuotations > 0 || 
+                       (businessData as any).totalInvoices > 0;
+        
+        if (!hasData) {
+          console.log(`⚠️ Post-formatting: System appears empty, adding setup recommendations`);
+          const setupDefaults = [
+            { id: `${page}-setup-1`, title: 'Add your first product', description: 'Start by adding products to your catalog to begin selling', priority: 'high', action: 'Create product', completed: false },
+            { id: `${page}-setup-2`, title: 'Create your first lead', description: 'Begin building your sales pipeline by adding leads', priority: 'high', action: 'Add lead', completed: false },
+            { id: `${page}-setup-3`, title: 'Set up inventory tracking', description: 'Configure warehouses and stock levels for inventory management', priority: 'medium', action: 'Setup inventory', completed: false },
+            { id: `${page}-setup-4`, title: 'Configure pricing strategy', description: 'Set up price lists and pricing rules for your products', priority: 'medium', action: 'Setup pricing', completed: false },
+            { id: `${page}-setup-5`, title: 'Add customer accounts', description: 'Start building your customer database by adding accounts', priority: 'low', action: 'Add account', completed: false }
+          ];
+          formattedRecommendations.push(...setupDefaults.slice(0, recommendationCount - formattedRecommendations.length));
+        }
+      }
+    }
     
     // Final post-formatting filter for tasks page (catch any that slipped through)
     if (page === 'tasks') {
@@ -993,7 +1139,7 @@ Format your response as a JSON array:
   }
 }
 
-async function getBusinessDataForPage(page: string, userId: string, context?: any) {
+async function getBusinessDataForPage(page: string, userId: string, context?: any, abilities: string[] = []) {
   try {
     // Check for context-specific requests (single lead, opportunity, or account)
     if (context?.leadId && page === 'leads') {
@@ -1009,9 +1155,9 @@ async function getBusinessDataForPage(page: string, userId: string, context?: an
     // General page data
     switch (page) {
       case 'dashboard':
-        return await getDashboardData(userId);
+        return await getDashboardData(userId, abilities);
       case 'crm-dashboard':
-        return await getCRMDashboardData(userId);
+        return await getCRMDashboardData(userId, abilities);
       case 'opportunities':
         return await getOpportunitiesData(userId);
       case 'leads':
@@ -1061,7 +1207,7 @@ async function getBusinessDataForPage(page: string, userId: string, context?: an
       case 'projects':
         return await getProjectsData(userId);
       default:
-        return await getDashboardData(userId);
+        return await getDashboardData(userId, abilities);
     }
   } catch (error) {
     console.error('Error fetching business data:', error);
@@ -1155,14 +1301,15 @@ async function getDashboardData(userId: string, abilities: string[] = []) {
   const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
   
-  // Check permissions for each module
-  const canViewProducts = hasAbility(abilities, 'products.view');
-  const canViewInventory = hasAbility(abilities, 'inventory.view');
-  const canViewLeads = hasAbility(abilities, 'leads.view');
-  const canViewOpportunities = hasAbility(abilities, 'opportunities.view');
-  const canViewQuotations = hasAbility(abilities, 'quotations.view');
-  const canViewInvoices = hasAbility(abilities, 'invoices.view');
-  const canViewAccounts = hasAbility(abilities, 'accounts.view');
+  // If no abilities provided, fetch all data (for Super Admin or when abilities aren't available)
+  // Otherwise check permissions for each module
+  const canViewProducts = abilities.length === 0 || hasAbility(abilities, 'products.view');
+  const canViewInventory = abilities.length === 0 || hasAbility(abilities, 'inventory.view');
+  const canViewLeads = abilities.length === 0 || hasAbility(abilities, 'leads.view');
+  const canViewOpportunities = abilities.length === 0 || hasAbility(abilities, 'opportunities.view');
+  const canViewQuotations = abilities.length === 0 || hasAbility(abilities, 'quotations.view');
+  const canViewInvoices = abilities.length === 0 || hasAbility(abilities, 'invoices.view');
+  const canViewAccounts = abilities.length === 0 || hasAbility(abilities, 'accounts.view');
 
   // Build queries conditionally based on permissions
   const queries: Promise<any>[] = [];

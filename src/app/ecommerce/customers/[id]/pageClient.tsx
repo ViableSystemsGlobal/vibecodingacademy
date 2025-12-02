@@ -27,8 +27,10 @@ import {
   ArrowLeft,
   Plus,
   Sparkles,
+  Key,
 } from "lucide-react";
 import SendCustomerEmailModal from "@/components/modals/send-customer-email-modal";
+import { useState as useModalState } from "react";
 
 type CustomerMetrics = {
   totalOrders: number;
@@ -88,6 +90,10 @@ export default function EcommerceCustomerDetailClient({
   const [loading, setLoading] = useState(true);
   const [newNote, setNewNote] = useState("");
   const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resettingPassword, setResettingPassword] = useState(false);
 
   const fetchCustomer = useCallback(async () => {
     setLoading(true);
@@ -149,6 +155,48 @@ export default function EcommerceCustomerDetailClient({
     // TODO: In a real implementation, save the note to the account via API
     toastSuccess("Follow-up note added successfully");
     setNewNote("");
+  };
+
+  const handleResetPassword = async () => {
+    if (!newPassword || newPassword.length < 8) {
+      toastError("Password must be at least 8 characters long");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toastError("Passwords do not match");
+      return;
+    }
+
+    setResettingPassword(true);
+    try {
+      const response = await fetch(`/api/ecommerce/customers/${customerId}/reset-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ newPassword }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to reset password");
+      }
+
+      toastSuccess("Customer password reset successfully");
+      setPasswordModalOpen(false);
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      console.error("Error resetting password:", error);
+      toastError(
+        error instanceof Error ? error.message : "Failed to reset password"
+      );
+    } finally {
+      setResettingPassword(false);
+    }
   };
 
   const customerStatusBadge = (status: string) => {
@@ -256,6 +304,17 @@ export default function EcommerceCustomerDetailClient({
                 <span>Owner: {customer.owner.name ?? "System"}</span>
               </div>
             ) : null}
+            <div className="pt-2 border-t mt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPasswordModalOpen(true)}
+                className="w-full"
+              >
+                <Key className="h-3 w-3 mr-2" />
+                Reset Password
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -428,6 +487,75 @@ export default function EcommerceCustomerDetailClient({
           customerName={customer.name}
           emailAddress={customer.email}
         />
+      )}
+
+      {/* Password Reset Modal */}
+      {passwordModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Key className="h-5 w-5" />
+                Reset Customer Password
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  New Password
+                </label>
+                <Input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password (min 8 characters)"
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Confirm Password
+                </label>
+                <Input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm new password"
+                  className="w-full"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setPasswordModalOpen(false);
+                    setNewPassword("");
+                    setConfirmPassword("");
+                  }}
+                  className="flex-1"
+                  disabled={resettingPassword}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleResetPassword}
+                  disabled={resettingPassword}
+                  className="flex-1"
+                  style={{ backgroundColor: getThemeColor() }}
+                >
+                  {resettingPassword ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Resetting...
+                    </>
+                  ) : (
+                    "Reset Password"
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

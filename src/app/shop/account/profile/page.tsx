@@ -110,14 +110,14 @@ export default function ProfilePage() {
       return;
     }
 
-    if (newPassword.length < 8) {
-      showError("Password must be at least 8 characters long");
+    if (newPassword.length < 6) {
+      showError("Password must be at least 6 characters long");
       return;
     }
 
     try {
       setChangingPassword(true);
-      const response = await fetch("/api/public/shop/auth/profile", {
+      const response = await fetch("/api/public/shop/account/change-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -315,7 +315,7 @@ export default function ProfilePage() {
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
-                    minLength={8}
+                    minLength={6}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
                   />
                   <button
@@ -326,7 +326,7 @@ export default function ProfilePage() {
                     {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Must be at least 8 characters long</p>
+                <p className="text-xs text-gray-500 mt-1">Must be at least 6 characters long</p>
               </div>
 
               <div>
@@ -340,7 +340,7 @@ export default function ProfilePage() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
-                    minLength={8}
+                    minLength={6}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
                   />
                   <button

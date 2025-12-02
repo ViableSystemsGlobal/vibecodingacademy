@@ -124,10 +124,15 @@ export async function GET(request: NextRequest) {
             select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: true },
           },
           lines: {
-            include: {
-              product: {
-                select: { id: true, name: true, sku: true, images: true },
-              },
+            select: {
+              id: true,
+              productId: true,
+              quantity: true,
+              unitPrice: true,
+              discount: true,
+              lineTotal: true,
+              createdAt: true,
+              updatedAt: true,
             },
           },
           _count: {
@@ -139,6 +144,39 @@ export async function GET(request: NextRequest) {
     ]);
     
     console.log('✅ Found quotations:', quotations.length, 'Total:', total);
+
+    // Enrich lines with product data where products still exist
+    // Collect all unique productIds
+    const allProductIds = new Set<string>();
+    quotations.forEach((quotation: any) => {
+      quotation.lines?.forEach((line: any) => {
+        if (line.productId) {
+          allProductIds.add(line.productId);
+        }
+      });
+    });
+
+    // Fetch existing products
+    const existingProducts = allProductIds.size > 0 
+      ? await prisma.product.findMany({
+          where: { id: { in: Array.from(allProductIds) } },
+          select: { id: true, name: true, sku: true, images: true },
+        })
+      : [];
+    
+    // Create a map for quick lookup
+    const productMap = new Map(existingProducts.map(p => [p.id, p]));
+    
+    // Enrich quotation lines with product data
+    quotations.forEach((quotation: any) => {
+      quotation.lines = quotation.lines?.map((line: any) => {
+        const product = line.productId ? productMap.get(line.productId) : null;
+        return {
+          ...line,
+          product: product || null,
+        };
+      });
+    });
 
     return NextResponse.json({ 
       quotations,

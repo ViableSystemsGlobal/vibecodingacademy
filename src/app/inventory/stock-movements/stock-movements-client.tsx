@@ -165,7 +165,9 @@ function StockMovementsContent({ initialMovements }: StockMovementsClientProps) 
 
 
   const handleViewMovement = (movement: StockMovement) => {
-    router.push(`/products/${movement.product.id}`);
+    if (movement.product?.id) {
+      router.push(`/products/${movement.product.id}`);
+    }
   };
 
 
@@ -362,8 +364,8 @@ function StockMovementsContent({ initialMovements }: StockMovementsClientProps) 
   const filteredMovements = movements.filter(movement => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = 
-      movement.product.name.toLowerCase().includes(searchLower) ||
-      movement.product.sku.toLowerCase().includes(searchLower) ||
+      (movement.product?.name && movement.product.name.toLowerCase().includes(searchLower)) ||
+      (movement.product?.sku && movement.product.sku.toLowerCase().includes(searchLower)) ||
       (movement.reference && movement.reference.toLowerCase().includes(searchLower)) ||
       (movement.reason && movement.reason.toLowerCase().includes(searchLower));
     
@@ -559,8 +561,8 @@ function StockMovementsContent({ initialMovements }: StockMovementsClientProps) 
                       const exportData = movements
                         .filter(m => selectedMovements.includes(m.id))
                         .map(movement => ({
-                          'Product': movement.product.name,
-                          'SKU': movement.product.sku,
+                          'Product': movement.product?.name || 'Product Deleted',
+                          'SKU': movement.product?.sku || movement.productId || 'N/A',
                           'Type': movement.type,
                           'Quantity': movement.quantity,
                           'Reference': movement.reference || '',
@@ -597,11 +599,20 @@ function StockMovementsContent({ initialMovements }: StockMovementsClientProps) 
                 label: 'Product',
                 render: (movement) => (
                   <div className="flex items-center space-x-3">
-                    <ProductImage product={movement.product} size="sm" />
-                    <div>
-                      <div className="font-medium text-gray-900">{movement.product.name}</div>
-                      <div className="text-sm text-gray-500">{movement.product.sku}</div>
-                    </div>
+                    {movement.product ? (
+                      <>
+                        <ProductImage product={movement.product} size="sm" />
+                        <div>
+                          <div className="font-medium text-gray-900">{movement.product.name}</div>
+                          <div className="text-sm text-gray-500">{movement.product.sku}</div>
+                        </div>
+                      </>
+                    ) : (
+                      <div>
+                        <div className="font-medium text-gray-500 italic">Product Deleted</div>
+                        <div className="text-sm text-gray-400">SKU: {movement.productId || 'N/A'}</div>
+                      </div>
+                    )}
                   </div>
                 )
               },
@@ -627,7 +638,7 @@ function StockMovementsContent({ initialMovements }: StockMovementsClientProps) 
                   <div className={`flex items-center font-medium ${getQuantityColor(movement.quantity)}`}>
                     {getQuantityIcon(movement.quantity)}
                     <span className="ml-1">
-                      {movement.quantity > 0 ? '+' : ''}{movement.quantity} {movement.product.uomBase}
+                      {movement.quantity > 0 ? '+' : ''}{movement.quantity} {movement.product?.uomBase || 'pcs'}
                     </span>
                   </div>
                 )
@@ -715,10 +726,10 @@ function StockMovementsContent({ initialMovements }: StockMovementsClientProps) 
                 render: (movement) => (
                   <div>
                     <div className="text-sm font-medium text-gray-900">
-                      {movement.stockItem.quantity} {movement.product.uomBase}
+                      {movement.stockItem?.quantity || 0} {movement.product?.uomBase || 'pcs'}
                     </div>
                     <div className="text-xs text-gray-500">
-                      Available: {movement.stockItem.available}
+                      Available: {movement.stockItem?.available || 0}
                     </div>
                   </div>
                 )
@@ -735,11 +746,11 @@ function StockMovementsContent({ initialMovements }: StockMovementsClientProps) 
                       </Button>
                     }
                     items={[
-                      {
+                      ...(movement.product?.id ? [{
                         label: "View Product",
                         icon: <Eye className="h-4 w-4" />,
                         onClick: () => router.push(`/products/${movement.product.id}`)
-                      },
+                      }] : []),
                       {
                         label: "Download GRN",
                         icon: <Download className="h-4 w-4" />,

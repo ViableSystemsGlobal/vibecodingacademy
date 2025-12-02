@@ -26,6 +26,7 @@ interface BrandingSettings {
   emailTemplateHeader: string;
   emailTemplateFooter: string;
   heroVideo: string;
+  footerLogo: string;
 }
 
 interface PromoBannerContent {
@@ -78,7 +79,8 @@ export default function BrandingSettingsPage() {
     chatButtonImage: "",
     emailTemplateHeader: "",
     emailTemplateFooter: "",
-    heroVideo: ""
+    heroVideo: "",
+    footerLogo: ""
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -208,7 +210,7 @@ export default function BrandingSettingsPage() {
     document.head.appendChild(link);
   };
 
-  const handleFileUpload = async (field: 'companyLogo' | 'favicon' | 'pdfHeaderImage' | 'pdfFooterImage' | 'chatButtonImage' | 'heroVideo', file: File) => {
+  const handleFileUpload = async (field: 'companyLogo' | 'favicon' | 'pdfHeaderImage' | 'pdfFooterImage' | 'chatButtonImage' | 'heroVideo' | 'footerLogo', file: File) => {
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -231,7 +233,8 @@ export default function BrandingSettingsPage() {
           pdfHeaderImage: 'PDF header image',
           pdfFooterImage: 'PDF footer image',
           chatButtonImage: 'Chat button image',
-          heroVideo: 'Hero video'
+          heroVideo: 'Hero video',
+          footerLogo: 'Footer logo'
         };
         success(`${fieldNames[field]} uploaded successfully!`);
       } else {
@@ -477,6 +480,49 @@ export default function BrandingSettingsPage() {
                           <Globe className="h-6 w-6 mx-auto text-gray-400 mb-2" />
                           <p className="text-sm text-gray-600">Click to upload favicon</p>
                           <p className="text-xs text-gray-500">Recommended: 32x32 or 16x16 pixels</p>
+                        </div>
+                      </div>
+                    </Label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Logo */}
+              <div>
+                <Label>Footer Logo</Label>
+                <p className="text-xs text-gray-500 mb-2">This logo will appear in the admin sidebar footer</p>
+                <div className="mt-2 space-y-3">
+                  {settings.footerLogo && (
+                    <div className="flex items-center space-x-3">
+                      <img 
+                        src={settings.footerLogo} 
+                        alt="Footer Logo" 
+                        className="h-12 w-auto object-contain border rounded"
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-600">Current footer logo</p>
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          handleFileUpload('footerLogo', file);
+                        }
+                      }}
+                      className="hidden"
+                      id="footer-logo-upload"
+                    />
+                    <Label htmlFor="footer-logo-upload" className="cursor-pointer">
+                      <div className="flex items-center justify-center w-full h-20 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 transition-colors">
+                        <div className="text-center">
+                          <Upload className="h-6 w-6 mx-auto text-gray-400 mb-2" />
+                          <p className="text-sm text-gray-600">Click to upload footer logo</p>
+                          <p className="text-xs text-gray-500">Recommended: 200-300px width</p>
                         </div>
                       </div>
                     </Label>

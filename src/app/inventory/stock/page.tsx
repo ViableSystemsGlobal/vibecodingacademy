@@ -126,6 +126,7 @@ function StockPageContent() {
     inStockProducts: 0,
     lowStockProducts: 0,
     outOfStockProducts: 0,
+    totalInventoryValue: 0,
   });
 
   // Read URL parameters on mount and set initial state
@@ -303,21 +304,9 @@ function StockPageContent() {
     };
     fetchExchangeRate();
   }, []);
-  
-  const totalInventoryCost = products.reduce((sum, p) => {
-    // Only count stockItems that have a warehouseId assigned (exclude null warehouseId items)
-    const stockValue = p.stockItems?.filter(item => item.warehouseId !== null).reduce((sum, item) => {
-      // Convert USD to GHS using actual exchange rate from settings
-      const costInUSD = item.averageCost || 0;
-      const quantity = item.quantity || 0;
-      const usdToGhsRate = exchangeRate || 11.0; // Use actual exchange rate or fallback
-      const valueInGHS = (costInUSD * quantity) * usdToGhsRate;
-      return sum + valueInGHS;
-    }, 0) || 0;
-    return sum + stockValue;
-  }, 0);
 
   // Server-side filtering is handled by the API, so we just use products directly
+  // Total Inventory Value is calculated by the API and stored in metrics.totalInventoryValue
   // No client-side filtering needed
   const filteredProducts = products;
 
@@ -412,7 +401,7 @@ function StockPageContent() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Inventory Value</p>
-                  <p className="text-xl font-bold text-blue-600">{formatCurrency(totalInventoryCost, 'GHS')}</p>
+                  <p className="text-xl font-bold text-blue-600">{formatCurrency((metrics.totalInventoryValue || 0) * (exchangeRate || 11.0), 'GHS')}</p>
                 </div>
                 <div className="p-2 rounded-full bg-blue-100">
                   <DollarSign className="w-5 h-5 text-blue-600" />

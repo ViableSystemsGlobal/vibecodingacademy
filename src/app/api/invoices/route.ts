@@ -131,10 +131,19 @@ export async function GET(request: NextRequest) {
           select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: true },
         },
         lines: {
-          include: {
-            product: {
-              select: { id: true, name: true, sku: true, images: true },
-            },
+          select: {
+            id: true,
+            productId: true,
+            productName: true,
+            sku: true,
+            description: true,
+            quantity: true,
+            unitPrice: true,
+            discount: true,
+            taxes: true,
+            lineTotal: true,
+            createdAt: true,
+            updatedAt: true,
           },
         },
         quotation: {
@@ -148,9 +157,42 @@ export async function GET(request: NextRequest) {
       prisma.invoice.count({ where })
     ]);
 
+    // Enrich lines with product data where products still exist
+    // Collect all unique productIds
+    const allProductIds = new Set<string>();
+    invoices.forEach((invoice: any) => {
+      invoice.lines?.forEach((line: any) => {
+        if (line.productId) {
+          allProductIds.add(line.productId);
+        }
+      });
+    });
+
+    // Fetch existing products
+    const existingProducts = allProductIds.size > 0 
+      ? await prisma.product.findMany({
+          where: { id: { in: Array.from(allProductIds) } },
+          select: { id: true, name: true, sku: true, images: true },
+        })
+      : [];
+    
+    // Create a map for quick lookup
+    const productMap = new Map(existingProducts.map(p => [p.id, p]));
+    
+    // Enrich invoice lines with product data
+    invoices.forEach((invoice: any) => {
+      invoice.lines = invoice.lines?.map((line: any) => {
+        const product = line.productId ? productMap.get(line.productId) : null;
+        return {
+          ...line,
+          product: product || null,
+        };
+      });
+    });
+
     // Recalculate payment status for invoices on this page (fixes stale data)
     // Run in parallel for better performance
-    await Promise.all(invoices.map(async (invoice) => {
+    await Promise.all(invoices.map(async (invoice: any) => {
       try {
         // Get both payment allocations AND credit note applications
         const [allAllocations, creditNoteApplications] = await Promise.all([

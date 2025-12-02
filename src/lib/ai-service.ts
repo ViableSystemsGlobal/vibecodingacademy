@@ -77,7 +77,7 @@ export class AIService {
       }
     ];
 
-    // Add conversation history
+    // Add conversation history (but filter out problematic content)
     if (conversationHistory && conversationHistory.length > 0) {
       conversationHistory.slice(-5).forEach((msg: any) => {
         if (msg.role === 'user') {
@@ -86,18 +86,29 @@ export class AIService {
             content: msg.content
           });
         } else if (msg.role === 'assistant') {
-          const cleanContent = msg.content.replace(/\[CHART:[^\]]+\]/g, '').trim();
-          messages.push({
-            role: 'assistant',
-            content: cleanContent
-          });
+          // Clean content: remove charts and any fake dialogue patterns
+          let cleanContent = msg.content.replace(/\[CHART:[^\]]+\]/g, '').trim();
+          // Remove fake Q&A patterns like "H: question" or "A: answer"
+          cleanContent = cleanContent.replace(/\n\s*H:\s*.+/g, '').replace(/\n\s*A:\s*.+/g, '').trim();
+          // Only add if there's meaningful content left
+          if (cleanContent.length > 10) {
+            messages.push({
+              role: 'assistant',
+              content: cleanContent
+            });
+          }
         }
       });
     }
 
+    // Check if this is a simple greeting
+    const isGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening|greetings)[\s!.,?]*$/i.test(userMessage.trim());
+    
     messages.push({
       role: 'user',
-      content: userMessage
+      content: isGreeting 
+        ? `${userMessage}\n\n[INSTRUCTION: This is a simple greeting. Respond with ONLY a brief friendly greeting (1-2 sentences) asking how you can help. Do NOT provide any analysis, data, or answer questions not asked.]`
+        : userMessage
     });
 
     const completion = await this.openai.chat.completions.create({
@@ -128,15 +139,25 @@ export class AIService {
         if (msg.role === 'user') {
           conversationText += `Human: ${msg.content}\n\n`;
         } else if (msg.role === 'assistant') {
-          const cleanContent = msg.content.replace(/\[CHART:[^\]]+\]/g, '').trim();
-          conversationText += `Assistant: ${cleanContent}\n\n`;
+          // Clean content: remove charts and any fake dialogue patterns
+          let cleanContent = msg.content.replace(/\[CHART:[^\]]+\]/g, '').trim();
+          cleanContent = cleanContent.replace(/\n\s*H:\s*.+/g, '').replace(/\n\s*A:\s*.+/g, '').trim();
+          if (cleanContent.length > 10) {
+            conversationText += `Assistant: ${cleanContent}\n\n`;
+          }
         }
       });
     }
 
+    // Check if this is a simple greeting
+    const isGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening|greetings)[\s!.,?]*$/i.test(userMessage.trim());
+    const userPrompt = isGreeting 
+      ? `${userMessage}\n\n[INSTRUCTION: This is a simple greeting. Respond with ONLY a brief friendly greeting (1-2 sentences) asking how you can help. Do NOT provide any analysis, data, or answer questions not asked.]`
+      : userMessage;
+
     const fullPrompt = `${systemPrompt.replace('{BUSINESS_DATA}', JSON.stringify(businessData, null, 2))}
 
-${conversationText}Human: ${userMessage}
+${conversationText}Human: ${userPrompt}
 
 Assistant:`;
 
@@ -212,6 +233,19 @@ Assistant:`;
       responseText = aiText.replace(chartMatch[0], '').trim();
     }
 
+    // CRITICAL: Remove any fake Q&A patterns the AI might generate
+    // Remove patterns like "H: question" or "A: answer" or "H: Can you..." etc.
+    responseText = responseText
+      // Remove lines starting with "H:" or "A:" (with optional whitespace)
+      .replace(/^\s*[HA]:\s*.+$/gm, '')
+      // Remove patterns like "H: question" anywhere in text
+      .replace(/\n\s*[HA]:\s*[^\n]+/g, '')
+      // Remove standalone Q&A blocks
+      .replace(/\s*H:\s*[^\n]+\s*A:\s*[^\n]+/gi, '')
+      // Clean up multiple newlines
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
     return {
       text: responseText,
       chart
@@ -220,7 +254,16 @@ Assistant:`;
 }
 
 // System prompt template
-export const BUSINESS_ANALYST_PROMPT = `You are Jayne, a Strategic Business Partner AI for {COMPANY_NAME}. You are not just an analyst—you are a trusted advisor, strategist, and thought partner. Think like Warren Buffett meets a McKinsey consultant: wise, strategic, long-term focused, and deeply invested in the business's success.
+export const BUSINESS_ANALYST_PROMPT = `You are Jayne, a Strategic Business Partner AI for {COMPANY_NAME}.
+
+CRITICAL RULES - FOLLOW THESE EXACTLY:
+1. ONLY answer the user's CURRENT question. Do not answer questions they haven't asked.
+2. NEVER generate fake dialogue like "H: question" or "A: answer" - you are having a real conversation, not simulating one.
+3. NEVER write multiple Q&A pairs in a single response. ONE question = ONE answer.
+4. For simple greetings like "Hi" or "Hello", respond ONLY with a brief greeting (1-2 sentences) asking how you can help. Do NOT provide any analysis or data.
+5. Keep responses focused and concise. Do not ramble or add unnecessary information.
+
+You are a trusted advisor, strategist, and thought partner. Think like Warren Buffett meets a McKinsey consultant: wise, strategic, long-term focused, and deeply invested in the business's success.
 
 YOUR PERSONALITY:
 - Wise and thoughtful, like a seasoned business advisor
@@ -363,8 +406,11 @@ IMPORTANT INSTRUCTIONS:
 10. When asked follow-up questions, refer back to previous context and build on the conversation
 11. Always use GH₵ for currency (Ghana Cedis)
 12. Keep responses informative but conversational—aim for 300-500 words for strategic discussions, shorter for quick questions
-13. NEVER use roleplay elements like "*takes a sip of coffee*", "*leans in*", "*nods*", etc. Be direct and professional. Answer questions directly without adding unnecessary conversational flourishes or actions.
-14. Answer ONLY what the user asks. Do not add extra commentary or observations unless directly relevant to the question.
+13. NEVER use roleplay elements like "*takes a sip of coffee*", "*leans in*", "*nods*", "*smiles warmly*", etc. Be direct and professional. Answer questions directly without adding unnecessary conversational flourishes or actions. NO asterisk actions.
+14. Answer ONLY what the user asks. Do not add extra commentary or observations unless directly relevant to the question. If user says "Hi" or a simple greeting, respond with a brief, friendly greeting (1-2 sentences max) and ask how you can help—do NOT launch into analysis or answer questions they haven't asked.
+15. CRITICAL: Only respond to the CURRENT message. Do not continue or reference previous conversations unless the user explicitly asks about them.
+16. NEVER generate fake dialogue or conversations in your response. Do NOT write things like "H: Can you..." or "A: Certainly..." or simulate a back-and-forth conversation. You are responding to ONE message from the user - just answer that ONE message directly.
+17. NEVER anticipate or answer questions the user hasn't asked. Wait for them to ask before providing analysis.
 
 RESPONSE FORMAT:
 - Start with a direct, strategic answer
@@ -378,22 +424,12 @@ Example chart syntax:
 [CHART:bar:Revenue,Outstanding:1076.90,2214.30]
 [CHART:pie:Paid,Unpaid:1,3]
 
-STRATEGIC CONVERSATION STARTERS:
-- "Let's strategize about..."
-- "What's your take on..."
-- "Help me think through..."
-- "I'm considering..."
-- "What would you do if..."
-- "How should I approach..."
-- "What are the risks of..."
-- "Is this a good time to..."
-
-Remember: 
-- If they ask "which invoices", list them + analyze payment patterns + recommend collection strategies
-- If they ask "how do I create X", explain the steps
-- If they ask "what should I do about Y", provide strategic analysis with multiple options and a clear recommendation
-- If they ask strategic questions, use frameworks and think long-term
-- Always connect data to strategy—what does this mean for the business, and what should they do about it?`;
+RESPONSE GUIDELINES:
+- For greetings (Hi, Hello, Hey): Respond with a brief friendly greeting (1-2 sentences) and ask how you can help. Nothing more.
+- For data questions: Provide the specific data requested with brief strategic context.
+- For "how to" questions: Provide clear step-by-step instructions.
+- For strategic questions: Use frameworks and provide recommendations.
+- Always wait for the user to ask before providing analysis - never volunteer unsolicited information.`;
 
 export const KWAME_PROMPT = `You are Kwame, a helpful AI assistant for AdPools Group ERP/CRM system. You help users navigate and use the system effectively.
 

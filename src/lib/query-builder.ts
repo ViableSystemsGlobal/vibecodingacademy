@@ -46,6 +46,7 @@ export interface BuildWhereOptions {
   searchFields?: string[];
   customFilters?: (filters: Record<string, string | string[] | null>) => Prisma.InputJsonValue;
   dateField?: string;
+  excludeFilters?: string[]; // Filter keys to exclude from standard processing (for computed fields)
 }
 
 /**
@@ -56,7 +57,8 @@ export function buildWhereClause(
   options: BuildWhereOptions = {}
 ): Prisma.InputJsonValue {
   const where: any = {};
-  const { searchFields = [], customFilters, dateField = 'createdAt' } = options;
+  const { searchFields = [], customFilters, dateField = 'createdAt', excludeFilters = [] } = options;
+  const excludeSet = new Set(excludeFilters);
 
   // Search across multiple fields
   if (params.search && searchFields.length > 0) {
@@ -99,6 +101,11 @@ export function buildWhereClause(
   // Standard filters (direct field matching)
   if (params.filters) {
     Object.entries(params.filters).forEach(([key, value]) => {
+      // Skip excluded filters (computed fields handled separately)
+      if (excludeSet.has(key)) {
+        return;
+      }
+      
       if (value === null || value === undefined || value === '') {
         return; // Skip empty filters
       }
@@ -108,7 +115,7 @@ export function buildWhereClause(
         if (value.length > 0) {
           where[key] = { in: value };
         }
-      } else if (value.includes(',')) {
+      } else if (typeof value === 'string' && value.includes(',')) {
         // Comma-separated values
         where[key] = { in: value.split(',').map(s => s.trim()) };
       } else {

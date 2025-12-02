@@ -216,7 +216,7 @@ export default function CheckoutPage() {
         const incoming: SavedAddress[] = Array.isArray(data?.addresses)
           ? data.addresses
               .map(mapAccountAddressRecord)
-              .filter((address): address is SavedAddress => Boolean(address))
+              .filter((address: SavedAddress | null): address is SavedAddress => address !== null)
           : [];
 
         if (ignore || incoming.length === 0) {
@@ -234,6 +234,21 @@ export default function CheckoutPage() {
           incoming.find((address) => address.isDefault) ?? incoming[0];
 
         if (defaultAddress) {
+          // Populate customer information from default address
+          if (defaultAddress.firstName || defaultAddress.lastName || defaultAddress.phone) {
+            const fullName = [defaultAddress.firstName, defaultAddress.lastName]
+              .filter(Boolean)
+              .join(" ")
+              .trim();
+            
+            setCustomerInfo((prev) => ({
+              name: prev.name || fullName,
+              email: prev.email || customer?.email || "",
+              phone: prev.phone || defaultAddress.phone || customer?.phone || "",
+              company: prev.company || "",
+            }));
+          }
+
           setShippingAddress((prev) => {
             if (prev.street) {
               return prev;
@@ -285,7 +300,7 @@ export default function CheckoutPage() {
       if (stored) {
         const parsed = JSON.parse(stored) as Array<Partial<SavedAddress>>;
         const mapped: SavedAddress[] = parsed
-          .map((entry) => {
+          .map((entry): SavedAddress | null => {
             const type: AddressType = entry?.type === "BILLING" ? "BILLING" : "SHIPPING";
             const street = normalise(entry?.street);
             const city = normalise(entry?.city);
@@ -325,9 +340,9 @@ export default function CheckoutPage() {
                 typeof entry?.createdAt === "number"
                   ? entry.createdAt
                   : new Date().getTime(),
-            } satisfies SavedAddress;
+            };
           })
-          .filter((address): address is SavedAddress => Boolean(address));
+          .filter((address): address is SavedAddress => address !== null);
         setSavedAddresses(mapped);
       }
     } catch (error) {
@@ -564,6 +579,21 @@ export default function CheckoutPage() {
   };
 
   const applySavedAddress = (address: SavedAddress) => {
+    // Populate customer information from address
+    if (address.firstName || address.lastName || address.phone) {
+      const fullName = [address.firstName, address.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      
+      setCustomerInfo((prev) => ({
+        name: fullName || prev.name,
+        email: prev.email || customer?.email || "",
+        phone: address.phone || prev.phone || customer?.phone || "",
+        company: prev.company || "",
+      }));
+    }
+
     if (address.type === "SHIPPING" || address.type === "BOTH") {
       setShippingAddress({
         street: address.street,
@@ -581,6 +611,7 @@ export default function CheckoutPage() {
           postalCode: address.postalCode ?? "",
           country: address.country,
         });
+        setSelectedBillingAddressId(address.id);
       }
     } else {
       setBillingAddress({

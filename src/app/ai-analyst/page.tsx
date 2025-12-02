@@ -134,10 +134,12 @@ export default function AIAnalystPage() {
         },
         body: JSON.stringify({
           message: messageText,
-          conversationHistory: messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
+          conversationHistory: messages
+            .filter((m) => m.id !== "welcome") // Exclude welcome message from history
+            .map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
         }),
       });
 

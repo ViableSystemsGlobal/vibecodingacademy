@@ -400,6 +400,17 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Link Customer to Account if customer exists and isn't already linked
+      if (ecommerceCustomerId && account) {
+        await tx.customer.update({
+          where: { id: ecommerceCustomerId },
+          data: { accountId: account.id },
+        }).catch((error: any) => {
+          // If customer table doesn't exist or update fails, just log and continue
+          console.warn('Failed to link customer to account:', error);
+        });
+      }
+
       // Create quotation from cart
       const quotationNumber = `QT-${Date.now().toString(36).toUpperCase()}`;
       

@@ -20,17 +20,18 @@ interface Customer {
 interface CustomerAuthContextType {
   customer: Customer | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, recaptchaToken?: string) => Promise<void>;
   logout: () => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  register: (data: RegisterData, recaptchaToken?: string) => Promise<void>;
   refreshCartCount: () => Promise<void>;
   cartCount: number;
 }
 
 interface RegisterData {
-  name: string;
   email: string;
   password: string;
+  firstName: string;
+  lastName: string;
   phone?: string;
 }
 
@@ -99,14 +100,14 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, recaptchaToken?: string) => {
     try {
       const response = await fetch("/api/public/shop/auth/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, recaptchaToken }),
         credentials: "include",
       });
 
@@ -141,14 +142,14 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (data: RegisterData) => {
+  const register = async (data: RegisterData, recaptchaToken?: string) => {
     try {
       const response = await fetch("/api/public/shop/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, recaptchaToken }),
         credentials: "include",
       });
 

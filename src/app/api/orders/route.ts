@@ -386,7 +386,7 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
     const orderBy = buildOrderBy(params.sortBy, params.sortOrder) || { createdAt: 'desc' };
 
-    // Get both Order and SalesOrder models
+    // Get both Order and SalesOrder models (without product includes to handle deleted products)
     const [ordersResult, salesOrdersResult, ordersCount, salesOrdersCount] = await Promise.all([
       prisma.order.findMany({
         where,
@@ -416,13 +416,13 @@ export async function GET(request: NextRequest) {
             }
           },
           items: {
-            include: {
-              product: {
-                select: {
-                  name: true,
-                  sku: true
-                }
-              }
+            select: {
+              id: true,
+              productId: true,
+              quantity: true,
+              unitPrice: true,
+              totalPrice: true,
+              notes: true
             }
           }
         },
@@ -461,14 +461,13 @@ export async function GET(request: NextRequest) {
             }
           },
           lines: {
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  name: true,
-                  sku: true
-                }
-              }
+            select: {
+              id: true,
+              productId: true,
+              quantity: true,
+              unitPrice: true,
+              lineTotal: true,
+              description: true
             }
           },
           owner: {
@@ -484,12 +483,30 @@ export async function GET(request: NextRequest) {
       prisma.salesOrder.count({ where: salesOrderWhere })
     ]);
 
+    // Collect all product IDs and fetch existing products separately
+    const orderProductIds = ordersResult.flatMap((o: any) => o.items.map((i: any) => i.productId)).filter(Boolean);
+    const salesOrderProductIds = salesOrdersResult.flatMap((o: any) => o.lines.map((l: any) => l.productId)).filter(Boolean);
+    const allProductIds = [...new Set([...orderProductIds, ...salesOrderProductIds])];
+    
+    const existingProducts = allProductIds.length > 0
+      ? await prisma.product.findMany({
+          where: { id: { in: allProductIds } },
+          select: { id: true, name: true, sku: true }
+        })
+      : [];
+    const productMap = new Map(existingProducts.map(p => [p.id, p]));
+
     // Combine and transform orders - convert SalesOrder to Order-like format
     const allOrders = [
       ...ordersResult.map((order: any) => ({
         ...order,
         orderNumber: order.orderNumber,
-        type: 'order' as const
+        type: 'order' as const,
+        // Enrich items with product data
+        items: order.items.map((item: any) => ({
+          ...item,
+          product: item.productId ? productMap.get(item.productId) || null : null
+        }))
       })),
       ...salesOrdersResult.map((salesOrder: any) => {
         // Get payment method and status from invoice if available
@@ -565,7 +582,7 @@ export async function GET(request: NextRequest) {
             unitPrice: Number(line.unitPrice),
             totalPrice: Number(line.lineTotal),
             notes: line.description,
-            product: line.product
+            product: line.productId ? productMap.get(line.productId) || null : null
           })),
           createdByUser: {
             id: salesOrder.ownerId,

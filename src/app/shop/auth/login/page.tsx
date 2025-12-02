@@ -1,11 +1,24 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCustomerAuth } from "@/contexts/customer-auth-context";
 import { useToast } from "@/contexts/toast-context";
 import { Mail, Lock, ArrowRight } from "lucide-react";
+import Script from "next/script";
+import { isRecaptchaEnabled } from "@/lib/recaptcha-client";
+
+declare global {
+  interface Window {
+    grecaptcha: {
+      ready: (callback: () => void) => void;
+      execute: (siteKey: string, options: { action: string }) => Promise<string>;
+    };
+  }
+}
+
+const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_GOOGLE_RECAPTCHA_SITE_KEY || "";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,6 +27,8 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [recaptchaReady, setRecaptchaReady] = useState(false);
+  const [recaptchaEnabled, setRecaptchaEnabled] = useState(false);
 
   // Redirect if already logged in
   useEffect(() => {
@@ -21,6 +36,24 @@ export default function LoginPage() {
       router.push("/shop/account");
     }
   }, [customer, authLoading, router]);
+
+  // Check if reCAPTCHA is enabled and initialize
+  useEffect(() => {
+    const checkRecaptcha = async () => {
+      const enabled = await isRecaptchaEnabled();
+      setRecaptchaEnabled(enabled);
+      
+      if (enabled && RECAPTCHA_SITE_KEY && typeof window !== "undefined") {
+        window.grecaptcha?.ready(() => {
+          setRecaptchaReady(true);
+        });
+      } else {
+        // If disabled or no site key, allow form submission
+        setRecaptchaReady(true);
+      }
+    };
+    checkRecaptcha();
+  }, []);
 
   if (authLoading) {
     return (
@@ -39,7 +72,20 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await login(email, password);
+      // Get reCAPTCHA token if enabled and site key is configured
+      let recaptchaToken = "";
+      if (recaptchaEnabled && RECAPTCHA_SITE_KEY && typeof window !== "undefined" && window.grecaptcha) {
+        try {
+          recaptchaToken = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, {
+            action: "login",
+          });
+        } catch (recaptchaError) {
+          console.error("reCAPTCHA error:", recaptchaError);
+          // Continue without token if error occurs
+        }
+      }
+
+      await login(email, password, recaptchaToken);
       success("Welcome back! You've been logged in successfully.");
     } catch (err: any) {
       error(err.message || "Login failed. Please check your credentials.");
@@ -49,8 +95,15 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <>
+      {recaptchaEnabled && RECAPTCHA_SITE_KEY && (
+        <Script
+          src={`https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`}
+          strategy="lazyOnload"
+        />
+      )}
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Sign in to your account
@@ -159,6 +212,7 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+    </>
   );
 }
 

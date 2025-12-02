@@ -88,15 +88,14 @@ export async function GET(request: NextRequest) {
             },
           },
           items: {
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  name: true,
-                  sku: true,
-                  images: true,
-                },
-              },
+            select: {
+              id: true,
+              productId: true,
+              productName: true,
+              sku: true,
+              quantity: true,
+              unitPrice: true,
+              totalPrice: true,
             },
           },
         },
@@ -107,10 +106,33 @@ export async function GET(request: NextRequest) {
       prisma.ecommerceOrder.count({ where }),
     ]);
 
+    // Fetch products separately to handle deleted products gracefully
+    const productIds = [...new Set(
+      ecommerceOrders.flatMap(order => 
+        order.items.map(item => item.productId).filter(Boolean)
+      )
+    )];
+    const existingProducts = productIds.length > 0
+      ? await prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, name: true, sku: true, images: true },
+        })
+      : [];
+    const productMap = new Map(existingProducts.map(p => [p.id, p]));
+
+    // Enrich order items with product data
+    const enrichedOrders = ecommerceOrders.map(order => ({
+      ...order,
+      items: order.items.map(item => ({
+        ...item,
+        product: item.productId ? productMap.get(item.productId) || null : null,
+      })),
+    }));
+
     // Fetch linked invoices and sales orders for these orders
     // Note: EcommerceOrder.orderNumber is actually the invoice number (set during checkout)
-    const orderNumbers = ecommerceOrders.map(o => o.orderNumber).filter(Boolean);
-    const customerEmails = ecommerceOrders.map(o => o.customerEmail).filter(Boolean) as string[];
+    const orderNumbers = enrichedOrders.map(o => o.orderNumber).filter(Boolean);
+    const customerEmails = enrichedOrders.map(o => o.customerEmail).filter(Boolean) as string[];
     
     let linkedInvoices: any[] = [];
     let linkedSalesOrders: any[] = [];
@@ -210,7 +232,7 @@ export async function GET(request: NextRequest) {
         invoiceMap.set(inv.number, inv);
       } else {
         // Fallback: match by email and creation time
-        const matchingOrder = ecommerceOrders.find(
+        const matchingOrder = enrichedOrders.find(
           o => o.customerEmail === inv.lead?.email &&
           Math.abs(new Date(inv.createdAt).getTime() - new Date(o.createdAt).getTime()) < 60000
         );
@@ -230,14 +252,14 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    const data = ecommerceOrders.map((order) => {
+    const data = enrichedOrders.map((order) => {
       // Check if there's a linked invoice for this order
       const linkedInvoice = invoiceMap.get(order.orderNumber) || 
         linkedInvoices.find(inv => 
           inv.lead?.email === order.customerEmail && 
           Math.abs(new Date(inv.createdAt).getTime() - new Date(order.createdAt).getTime()) < 60000 // Created within 1 minute
         );
-      const items = order.items.map((item) => {
+      const items = order.items.map((item: any) => {
         let productImages: string[] = [];
         if (item.product?.images) {
           try {
@@ -258,8 +280,8 @@ export async function GET(request: NextRequest) {
         return {
           id: item.id,
           productId: item.productId,
-          productName: item.productName || item.product?.name || "",
-          productSku: item.sku || item.product?.sku || "",
+          productName: item.productName || item.product?.name || "Product Deleted",
+          productSku: item.sku || item.product?.sku || item.productId || "N/A",
           quantity: item.quantity,
           unitPrice: Number(item.unitPrice),
           tax: 0, // EcommerceOrderItem doesn't have tax field

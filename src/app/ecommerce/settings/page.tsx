@@ -53,6 +53,7 @@ interface EcommerceSettings {
   requireAccountCreation: boolean;
   allowGuestCheckout: boolean;
   requireEmailVerification: boolean;
+  enableRecaptcha: boolean;
   
   // Storefront Display
   productsPerPage: number;
@@ -540,6 +541,24 @@ export default function EcommerceSettingsPage() {
                     onChange={(e) => updateFormData("requireEmailVerification", e.target.checked)}
                     className="h-5 w-5"
                   />
+                </div>
+
+                <div className="border-t pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>Enable Google reCAPTCHA</Label>
+                      <p className="text-sm text-gray-500">Enable Google reCAPTCHA v3 for customer login and signup to prevent spam and bot attacks</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Make sure to add your reCAPTCHA keys in environment variables: NEXT_PUBLIC_GOOGLE_RECAPTCHA_SITE_KEY and GOOGLE_RECAPTCHA_SECRET_KEY
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={formData.enableRecaptcha || false}
+                      onChange={(e) => updateFormData("enableRecaptcha", e.target.checked)}
+                      className="h-5 w-5"
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>

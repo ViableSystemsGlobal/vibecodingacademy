@@ -375,6 +375,7 @@ model Account {
   defaultBillingAddressId  String?
   defaultShippingAddressId String?
   owner                    User          @relation(fields: [ownerId], references: [id])
+  customers                Customer[]
   addresses                Address[]
   backorders               Backorder[]
   contacts                 Contact[]
@@ -2254,13 +2255,16 @@ model Customer {
   phoneVerifiedAt DateTime?
   isActive        Boolean           @default(true)
   lastLoginAt     DateTime?
+  accountId       String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
+  account         Account?          @relation(fields: [accountId], references: [id], onDelete: SetNull)
   abandonedCarts  AbandonedCart[]
   addresses       CustomerAddress[]
   orders          EcommerceOrder[]
 
   @@index([email])
+  @@index([accountId])
   @@map("customers")
 }
 

@@ -3,13 +3,23 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { sign } from 'jsonwebtoken';
 import { cookies } from 'next/headers';
+import { verifyRecaptcha } from '@/lib/recaptcha';
 
 const JWT_SECRET = process.env.NEXTAUTH_SECRET || 'adpools-secret-key-2024-production-change-me';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password } = body;
+    const { email, password, recaptchaToken } = body;
+
+    // Verify reCAPTCHA (only if enabled in settings)
+    const isValidRecaptcha = await verifyRecaptcha(recaptchaToken || '');
+    if (!isValidRecaptcha) {
+      return NextResponse.json(
+        { error: 'reCAPTCHA verification failed. Please try again.' },
+        { status: 400 }
+      );
+    }
 
     // Validate required fields
     if (!email || !password) {
