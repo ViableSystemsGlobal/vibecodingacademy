@@ -58,16 +58,64 @@ export async function generateMetadata(): Promise<Metadata> {
   const canonicalUrl = seo?.canonicalUrl?.trim();
   const twitterHandle = seo?.twitterHandle?.trim();
 
+  // Get company logo as fallback for OG image
+  let companyLogo: string | null = null;
+  try {
+    const companyLogoSetting = await prisma.systemSettings.findUnique({
+      where: { key: "company_logo" },
+    });
+    if (companyLogoSetting?.value) {
+      companyLogo = companyLogoSetting.value;
+    }
+  } catch (error) {
+    console.error("Error fetching company logo for OG image:", error);
+  }
+
+  // Determine base URL - prioritize canonical URL, then environment variables
+  const getBaseUrl = () => {
+    if (canonicalUrl) {
+      try {
+        const url = new URL(canonicalUrl);
+        return `${url.protocol}//${url.host}`;
+      } catch {
+        // Invalid URL, continue to fallbacks
+      }
+    }
+    
+    // Try environment variables
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+      return process.env.NEXT_PUBLIC_APP_URL;
+    }
+    if (process.env.NEXTAUTH_URL) {
+      return process.env.NEXTAUTH_URL;
+    }
+    
+    // Fallback for production - use store domain for shop
+    if (process.env.NODE_ENV === 'production') {
+      // Check if we're in shop mode
+      if (process.env.NEXT_PUBLIC_APP_MODE === 'shop') {
+        return 'https://store.thepoolshop.africa';
+      }
+      // Default to store domain for better social sharing
+      return 'https://store.thepoolshop.africa';
+    }
+    
+    return 'http://localhost:3000';
+  };
+
+  const baseUrl = getBaseUrl();
+
   // Convert relative OG image URL to absolute URL for social sharing
+  // Use OG image if set, otherwise fallback to company logo
+  const imageToUse = ogImageRaw || companyLogo;
   let ogImage: string | undefined;
-  if (ogImageRaw) {
-    if (ogImageRaw.startsWith('http://') || ogImageRaw.startsWith('https://')) {
+  if (imageToUse) {
+    if (imageToUse.startsWith('http://') || imageToUse.startsWith('https://')) {
       // Already absolute
-      ogImage = ogImageRaw;
+      ogImage = imageToUse;
     } else {
       // Convert relative to absolute
-      const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      ogImage = `${baseUrl}${ogImageRaw.startsWith('/') ? ogImageRaw : `/${ogImageRaw}`}`;
+      ogImage = `${baseUrl}${imageToUse.startsWith('/') ? imageToUse : `/${imageToUse}`}`;
     }
   }
 
@@ -83,12 +131,17 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       title: ogTitle,
       description: ogDescription,
-      url: canonicalUrl || undefined,
+      url: canonicalUrl || baseUrl,
+      siteName: companyName || DEFAULT_APP_NAME,
       type: "website",
+      locale: "en_US",
       images: ogImage
         ? [
             {
               url: ogImage,
+              width: 1200,
+              height: 630,
+              alt: ogTitle,
             },
           ]
         : undefined,
