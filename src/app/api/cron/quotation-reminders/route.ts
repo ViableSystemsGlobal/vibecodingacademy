@@ -80,7 +80,6 @@ export async function POST(request: NextRequest) {
           select: {
             name: true,
             contacts: {
-              where: { isPrimary: true },
               take: 1,
               select: {
                 email: true,
