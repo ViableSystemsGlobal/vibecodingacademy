@@ -91,8 +91,13 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error uploading branding asset:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        success: false,
+        error: 'Failed to upload file',
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+      },
       { status: 500 }
     );
   }

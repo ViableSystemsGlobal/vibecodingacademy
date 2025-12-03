@@ -189,8 +189,10 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ user: updatedUser });
   } catch (error) {
     console.error('Error updating profile:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Full error details:', error);
     return NextResponse.json(
-      { error: "Failed to update profile" },
+      { error: "Failed to update profile", details: process.env.NODE_ENV === 'development' ? errorMessage : undefined },
       { status: 500 }
     );
   }

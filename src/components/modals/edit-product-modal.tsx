@@ -299,12 +299,23 @@ export function EditProductModal({ isOpen, onClose, onSuccess, product }: EditPr
           body: formData,
         });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to upload image');
+        // Check content type before parsing
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          throw new Error(`Server returned invalid response: ${response.status} ${response.statusText}`);
         }
 
         const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || result.message || 'Failed to upload image');
+        }
+
+        if (!result.url) {
+          throw new Error('Invalid response: missing image URL');
+        }
+
         return result.url;
       });
 

@@ -76,10 +76,17 @@ export function BulkImageUploadModal({ isOpen, onClose, onSuccess }: BulkImageUp
         body: formData,
       });
 
+      // Check content type before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`Server returned invalid response: ${response.status} ${response.statusText}`);
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to upload images');
+        throw new Error(data.error || data.message || 'Failed to upload images');
       }
 
       setUploadResult(data.results);

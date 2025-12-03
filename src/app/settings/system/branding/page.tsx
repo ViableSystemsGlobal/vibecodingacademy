@@ -221,28 +221,52 @@ export default function BrandingSettingsPage() {
         body: formData,
       });
 
+      // Check content type before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('Non-JSON response:', text.substring(0, 200));
+        error(`Failed to upload ${field}: Server returned invalid response`);
+        return;
+      }
+
       if (response.ok) {
-        const data = await response.json();
-        setSettings(prev => ({
-          ...prev,
-          [field]: data.url
-        }));
-        const fieldNames: Record<string, string> = {
-          companyLogo: 'Company logo',
-          favicon: 'Favicon',
-          pdfHeaderImage: 'PDF header image',
-          pdfFooterImage: 'PDF footer image',
-          chatButtonImage: 'Chat button image',
-          heroVideo: 'Hero video',
-          footerLogo: 'Footer logo'
-        };
-        success(`${fieldNames[field]} uploaded successfully!`);
+        try {
+          const data = await response.json();
+          if (data.url) {
+            setSettings(prev => ({
+              ...prev,
+              [field]: data.url
+            }));
+            const fieldNames: Record<string, string> = {
+              companyLogo: 'Company logo',
+              favicon: 'Favicon',
+              pdfHeaderImage: 'PDF header image',
+              pdfFooterImage: 'PDF footer image',
+              chatButtonImage: 'Chat button image',
+              heroVideo: 'Hero video',
+              footerLogo: 'Footer logo'
+            };
+            success(`${fieldNames[field]} uploaded successfully!`);
+          } else {
+            error(`Failed to upload ${field}: Invalid response from server`);
+          }
+        } catch (parseError) {
+          console.error('JSON parse error:', parseError);
+          error(`Failed to upload ${field}: Invalid response format`);
+        }
       } else {
-        error(`Failed to upload ${field}`);
+        // Try to parse error response
+        try {
+          const errorData = await response.json();
+          error(errorData.error || errorData.message || `Failed to upload ${field}`);
+        } catch {
+          error(`Failed to upload ${field}: ${response.status} ${response.statusText}`);
+        }
       }
     } catch (err) {
       console.error(`Error uploading ${field}:`, err);
-      error(`Failed to upload ${field}`);
+      error(`Failed to upload ${field}: ${err instanceof Error ? err.message : 'Network error'}`);
     }
   };
 
