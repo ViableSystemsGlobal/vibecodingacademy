@@ -42,11 +42,11 @@ RUN apt-get update && apt-get install -y \
 COPY backend/package*.json ./
 COPY backend/tsconfig.json ./
 
+# Install Prisma CLI globally first (needed for postinstall if any)
+RUN npm install -g prisma@^5.7.1
+
 # Install production dependencies only
 RUN npm ci --only=production
-
-# Install Prisma CLI globally for migrations (needed in production)
-RUN npm install -g prisma@^5.7.1
 
 # Copy built files and Prisma
 COPY --from=builder /app/dist ./dist
