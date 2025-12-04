@@ -1,5 +1,5 @@
 import prisma from '../config/database';
-import { RegistrationSource, PaymentStatus } from '@prisma/client';
+import { RegistrationSource, PaymentStatus, AttendanceStatus } from '@prisma/client';
 import { notificationService } from './notification.service';
 import { authService } from './auth.service';
 import { config } from '../config/env';
@@ -146,8 +146,8 @@ export class RegistrationService {
             studentData.name,
             classItem.title,
             classItem.startDatetime,
-            classItem.meetingLink,
-            parentData.parentPhone || parent?.phone || undefined
+            classItem.meetingLink || undefined,
+            (parentData.parentPhone || parent?.phone) || undefined
           );
         } else {
           await notificationService.sendBootcampRegistrationPending(
@@ -256,7 +256,7 @@ export class RegistrationService {
 
   async update(id: string, data: {
     paymentStatus?: PaymentStatus;
-    attendanceStatus?: string;
+    attendanceStatus?: AttendanceStatus;
   }) {
     return prisma.registration.update({
       where: { id },
@@ -264,13 +264,13 @@ export class RegistrationService {
     });
   }
 
-  async bulkUpdateAttendance(updates: Array<{ id: string; attendanceStatus: string }>) {
+  async bulkUpdateAttendance(updates: Array<{ id: string; attendanceStatus: AttendanceStatus }>) {
     // Use transaction to update all registrations
     return prisma.$transaction(
       updates.map((update) =>
         prisma.registration.update({
           where: { id: update.id },
-          data: { attendanceStatus: update.attendanceStatus as any },
+          data: { attendanceStatus: update.attendanceStatus },
         })
       )
     );

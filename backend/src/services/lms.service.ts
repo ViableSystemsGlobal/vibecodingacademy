@@ -1,5 +1,5 @@
 import prisma from '../config/database';
-import { CourseStatus, LessonProgressStatus } from '@prisma/client';
+import { CourseStatus, LessonProgressStatus, CourseLevel } from '@prisma/client';
 
 export class LmsService {
   // Admin methods
@@ -77,6 +77,7 @@ export class LmsService {
     return prisma.course.create({
       data: {
         ...data,
+        level: data.level as CourseLevel,
         status: data.status || CourseStatus.DRAFT,
       },
     });

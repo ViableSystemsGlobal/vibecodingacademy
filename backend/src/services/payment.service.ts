@@ -302,30 +302,36 @@ export class PaymentService {
   async updatePaymentStatus(registrationId: string, status: PaymentStatus, amountCents?: number) {
     const registration = await prisma.registration.findUnique({
       where: { id: registrationId },
+      include: { class: true },
     });
 
     if (!registration) {
       throw new Error('Registration not found');
     }
 
-    // Update or create payment record
-    const payment = await prisma.payment.upsert({
-      where: {
-        registrationId,
-      },
-      update: {
-        status,
-        paidAt: status === PaymentStatus.PAID ? new Date() : null,
-      },
-      create: {
-        registrationId,
-        amountCents: amountCents || registration.class.priceCents,
-        currency: 'GHS',
-        provider: PaymentProvider.MANUAL,
-        status,
-        paidAt: status === PaymentStatus.PAID ? new Date() : null,
-      },
+    // Find existing payment or create new one
+    const existingPayment = await prisma.payment.findFirst({
+      where: { registrationId },
     });
+
+    const payment = existingPayment
+      ? await prisma.payment.update({
+          where: { id: existingPayment.id },
+          data: {
+            status,
+            paidAt: status === PaymentStatus.PAID ? new Date() : null,
+          },
+        })
+      : await prisma.payment.create({
+          data: {
+            registrationId,
+            amountCents: amountCents || registration.class.priceCents,
+            currency: 'GHS',
+            provider: PaymentProvider.MANUAL,
+            status,
+            paidAt: status === PaymentStatus.PAID ? new Date() : null,
+          },
+        });
 
     // Update registration payment status
     await prisma.registration.update({

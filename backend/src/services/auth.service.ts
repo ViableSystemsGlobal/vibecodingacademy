@@ -200,12 +200,12 @@ export class AuthService {
     const payload = { id: userId, email, role };
 
     const token = jwt.sign(payload, config.jwt.secret, {
-      expiresIn: config.jwt.expiresIn,
-    });
+      expiresIn: config.jwt.expiresIn || '15m',
+    } as jwt.SignOptions);
 
     const refreshToken = jwt.sign(payload, config.jwt.refreshSecret, {
-      expiresIn: config.jwt.refreshExpiresIn,
-    });
+      expiresIn: config.jwt.refreshExpiresIn || '7d',
+    } as jwt.SignOptions);
 
     return { token, refreshToken };
   }

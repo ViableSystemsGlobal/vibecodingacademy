@@ -46,13 +46,8 @@ export class PaymentController {
       // Initialize Paystack payment
       const result = await paymentService.createPaymentFromAttempt(attempt);
 
-      // Update attempt with payment URL and reference
-      await paymentAttemptService.updatePaymentAttemptStatus(
-        paymentAttemptId,
-        attempt.status,
-        result.payment.providerReference || undefined,
-        result.authorizationUrl
-      );
+      // Update attempt with payment URL and reference (already done in createPaymentFromAttempt)
+      // The result contains authorizationUrl and reference
 
       res.json({
         success: true,

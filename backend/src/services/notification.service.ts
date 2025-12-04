@@ -454,8 +454,8 @@ export class NotificationService {
     meetingLink?: string,
     reminderType: '24h' | '1h' = '24h'
   ) {
+    const templateKey = reminderType === '24h' ? 'class_reminder_24h' : 'class_reminder_1h';
     try {
-      const templateKey = reminderType === '24h' ? 'class_reminder_24h' : 'class_reminder_1h';
       const template = await prisma.emailTemplate.findUnique({
         where: { key: templateKey },
       });

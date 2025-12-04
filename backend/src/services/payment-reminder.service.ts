@@ -186,9 +186,6 @@ export class PaymentReminderService {
             type: 'BOOTCAMP',
           },
         },
-        _sum: {
-          // We need to get the class price, so we'll do a separate query
-        },
       }),
       prisma.registration.groupBy({
         by: ['classId'],
