@@ -1,6 +1,11 @@
-FROM node:18-alpine AS builder
+FROM node:18-slim AS builder
 
 WORKDIR /app
+
+# Install build dependencies for Prisma
+RUN apt-get update && apt-get install -y \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy package files (from backend directory if build context is root)
 COPY backend/package*.json ./
@@ -19,12 +24,14 @@ RUN npx prisma generate
 RUN npm run build
 
 # Production stage
-FROM node:18-alpine
+FROM node:18-slim
 
 WORKDIR /app
 
-# Install OpenSSL for Prisma (required for Prisma query engine)
-RUN apk add --no-cache openssl1.1-compat
+# Install runtime dependencies for Prisma (OpenSSL is included in Debian)
+RUN apt-get update && apt-get install -y \
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY backend/package*.json ./
