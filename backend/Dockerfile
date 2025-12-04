@@ -17,6 +17,9 @@ RUN npm ci
 # Copy source code (from backend directory)
 COPY backend/ .
 
+# Verify migrations are copied (for debugging)
+RUN ls -la prisma/migrations/ || echo "Migrations directory not found"
+
 # Generate Prisma client
 RUN npx prisma generate
 
