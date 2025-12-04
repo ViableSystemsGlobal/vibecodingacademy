@@ -1,0 +1,423 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Module 1: Authentication & Users
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(PARENT)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  parent         Parent?
+  passwordResets PasswordReset[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  PARENT
+  INSTRUCTOR
+}
+
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_resets")
+}
+
+// Module 2: Parents & Students
+model Parent {
+  id             String   @id @default(uuid())
+  userId         String   @unique @map("user_id")
+  phone          String?
+  whatsappNumber String?  @map("whatsapp_number")
+  city           String?
+  country        String?
+  howHeard       String?  @map("how_heard")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  students      Student[]
+  registrations Registration[]
+
+  @@map("parents")
+}
+
+model Student {
+  id        String   @id @default(uuid())
+  parentId  String   @map("parent_id")
+  name      String
+  age       Int?
+  school    String?
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  parent         Parent                  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  registrations  Registration[]
+  lessonProgress StudentLessonProgress[]
+
+  @@map("students")
+}
+
+// Module 3: Classes & Schedule Management
+model Class {
+  id              String      @id @default(uuid())
+  title           String
+  description     String?
+  type            ClassType
+  ageGroup        String?     @map("age_group")
+  startDatetime   DateTime    @map("start_datetime")
+  endDatetime     DateTime?   @map("end_datetime")
+  durationMinutes Int?        @map("duration_minutes")
+  capacity        Int
+  priceCents      Int         @default(0) @map("price_cents")
+  currency        String      @default("GHS")
+  meetingLink     String?     @map("meeting_link")
+  status          ClassStatus @default(DRAFT)
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  registrations   Registration[]
+  paymentAttempts PaymentAttempt[]
+
+  @@map("classes")
+}
+
+enum ClassType {
+  FREE
+  BOOTCAMP
+}
+
+enum ClassStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// Module 4: Public Sales Landing & CMS
+model CmsBlock {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  content   Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("cms_blocks")
+}
+
+// Module 5: Registration & Enrolment
+model Registration {
+  id                 String             @id @default(uuid())
+  classId            String             @map("class_id")
+  parentId           String             @map("parent_id")
+  studentId          String             @map("student_id")
+  registrationSource RegistrationSource @default(LANDING_PAGE) @map("registration_source")
+  paymentStatus      PaymentStatus      @default(PENDING) @map("payment_status")
+  attendanceStatus   AttendanceStatus   @default(UNKNOWN) @map("attendance_status")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  // Relations
+  class    Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  parent   Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  student  Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@map("registrations")
+}
+
+enum RegistrationSource {
+  LANDING_PAGE
+  MANUAL_ADMIN
+}
+
+enum PaymentStatus {
+  NA
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum AttendanceStatus {
+  UNKNOWN
+  ATTENDED
+  ABSENT
+}
+
+// Module 6: Payments
+model Payment {
+  id                String          @id @default(uuid())
+  registrationId    String          @map("registration_id")
+  amountCents       Int             @map("amount_cents")
+  currency          String          @default("GHS")
+  provider          PaymentProvider
+  providerReference String?         @map("provider_reference")
+  status            PaymentStatus
+  paidAt            DateTime?       @map("paid_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+// Payment Attempts / Abandoned Carts
+model PaymentAttempt {
+  id                String               @id @default(uuid())
+  classId           String               @map("class_id")
+  parentName        String               @map("parent_name")
+  parentEmail       String               @map("parent_email")
+  parentPhone       String?              @map("parent_phone")
+  parentCity        String?              @map("parent_city")
+  studentsData      Json                 @map("students_data") // Array of {name, age, school}
+  amountCents       Int                  @map("amount_cents")
+  currency          String               @default("GHS")
+  provider          PaymentProvider
+  providerReference String?              @map("provider_reference")
+  status            PaymentAttemptStatus @default(PENDING)
+  paymentUrl        String?              @map("payment_url")
+  expiresAt         DateTime?            @map("expires_at")
+  completedAt       DateTime?            @map("completed_at")
+  notes             String? // Admin notes for follow-up
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  // Relations
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@map("payment_attempts")
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentProvider {
+  MANUAL
+  STRIPE
+  PAYSTACK
+  FLUTTERWAVE
+}
+
+// Module 7: Notifications
+model EmailTemplate {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  subject   String
+  htmlBody  String   @map("html_body")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("email_templates")
+}
+
+model SmsTemplate {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  content   String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("sms_templates")
+}
+
+model NotificationLog {
+  id           String             @id @default(uuid())
+  type         NotificationType
+  toAddress    String             @map("to_address")
+  templateKey  String?            @map("template_key")
+  payloadJson  Json?              @map("payload_json")
+  status       NotificationStatus
+  errorMessage String?            @map("error_message")
+  sentAt       DateTime?          @map("sent_at")
+  createdAt    DateTime           @default(now()) @map("created_at")
+
+  @@map("notification_logs")
+}
+
+enum NotificationType {
+  EMAIL
+  SMS
+}
+
+enum NotificationStatus {
+  SUCCESS
+  FAILED
+}
+
+// Module 10: LMS Engine
+model Course {
+  id                String       @id @default(uuid())
+  title             String
+  slug              String       @unique
+  description       String?
+  level             CourseLevel
+  recommendedAgeMin Int?         @map("recommended_age_min")
+  recommendedAgeMax Int?         @map("recommended_age_max")
+  status            CourseStatus @default(DRAFT)
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  modules     CourseModule[]
+  accessRules CourseAccessRule[]
+
+  @@map("courses")
+}
+
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model CourseModule {
+  id         String   @id @default(uuid())
+  courseId   String   @map("course_id")
+  title      String
+  orderIndex Int      @default(0) @map("order_index")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons Lesson[]
+
+  @@map("course_modules")
+}
+
+model Lesson {
+  id          String   @id @default(uuid())
+  moduleId    String   @map("module_id")
+  title       String
+  videoUrl    String?  @map("video_url")
+  description String?
+  orderIndex  Int      @default(0) @map("order_index")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  module          CourseModule            @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  resources       LessonResource[]
+  studentProgress StudentLessonProgress[]
+
+  @@map("lessons")
+}
+
+model LessonResource {
+  id        String       @id @default(uuid())
+  lessonId  String       @map("lesson_id")
+  type      ResourceType
+  label     String
+  urlOrPath String       @map("url_or_path")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  // Relations
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@map("lesson_resources")
+}
+
+enum ResourceType {
+  LINK
+  FILE
+}
+
+model StudentLessonProgress {
+  id           String               @id @default(uuid())
+  studentId    String               @map("student_id")
+  lessonId     String               @map("lesson_id")
+  status       LessonProgressStatus @default(NOT_STARTED)
+  lastViewedAt DateTime?            @map("last_viewed_at")
+  completedAt  DateTime?            @map("completed_at")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lesson  Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, lessonId])
+  @@map("student_lesson_progress")
+}
+
+enum LessonProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+// Module 12: Course Access Rules
+model CourseAccessRule {
+  id              String         @id @default(uuid())
+  courseId        String         @map("course_id")
+  requiredType    AccessRuleType @map("required_type")
+  requiredClassId String?        @map("required_class_id")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@map("course_access_rules")
+}
+
+enum AccessRuleType {
+  ANY_REGISTRATION
+  PAID_BOOTCAMP
+  SPECIFIC_CLASS
+}
+
+// Module 13: Settings & Integrations
+model Setting {
+  id        String      @id @default(uuid())
+  key       String      @unique
+  value     String
+  type      SettingType
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+enum SettingType {
+  STRING
+  BOOL
+  NUMBER
+}
