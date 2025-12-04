@@ -23,6 +23,9 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# Install OpenSSL for Prisma (required for Prisma query engine)
+RUN apk add --no-cache openssl1.1-compat
+
 # Copy package files
 COPY backend/package*.json ./
 COPY backend/tsconfig.json ./
