@@ -40,10 +40,17 @@ COPY backend/tsconfig.json ./
 # Install production dependencies only
 RUN npm ci --only=production
 
+# Install Prisma CLI globally for migrations (needed in production)
+RUN npm install -g prisma@^5.7.1
+
 # Copy built files and Prisma
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/prisma ./prisma
+
+# Copy startup script
+COPY backend/start.sh ./start.sh
+RUN chmod +x ./start.sh
 
 # Create uploads directory
 RUN mkdir -p uploads
@@ -51,6 +58,6 @@ RUN mkdir -p uploads
 # Expose port
 EXPOSE 3005
 
-# Start server
-CMD ["node", "dist/server.js"]
+# Start server (runs migrations first)
+CMD ["./start.sh"]
 
