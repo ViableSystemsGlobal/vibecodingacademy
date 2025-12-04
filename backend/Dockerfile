@@ -18,7 +18,12 @@ RUN npm ci
 COPY backend/ .
 
 # Verify migrations are copied (for debugging)
-RUN ls -la prisma/migrations/ || echo "Migrations directory not found"
+RUN echo "Checking prisma directory structure:" && \
+    ls -la prisma/ && \
+    echo "Checking migrations:" && \
+    (ls -la prisma/migrations/ 2>/dev/null || echo "Migrations directory not found") && \
+    echo "Prisma files:" && \
+    ls -la prisma/*.prisma prisma/*.toml 2>/dev/null || echo "No prisma files found"
 
 # Generate Prisma client
 RUN npx prisma generate
