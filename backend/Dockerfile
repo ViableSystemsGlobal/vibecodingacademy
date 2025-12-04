@@ -2,15 +2,15 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-COPY tsconfig.json ./
+# Copy package files (from backend directory if build context is root)
+COPY backend/package*.json ./
+COPY backend/tsconfig.json ./
 
 # Install dependencies
 RUN npm ci
 
-# Copy source code
-COPY . .
+# Copy source code (from backend directory)
+COPY backend/ .
 
 # Generate Prisma client
 RUN npx prisma generate
@@ -24,8 +24,8 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
-COPY tsconfig.json ./
+COPY backend/package*.json ./
+COPY backend/tsconfig.json ./
 
 # Install production dependencies only
 RUN npm ci --only=production
@@ -35,8 +35,11 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/prisma ./prisma
 
+# Create uploads directory
+RUN mkdir -p uploads
+
 # Expose port
-EXPOSE 3001
+EXPOSE 3005
 
 # Start server
 CMD ["node", "dist/server.js"]
