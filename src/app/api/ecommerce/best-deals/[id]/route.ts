@@ -47,27 +47,22 @@ export async function PUT(
       );
     }
 
-    // Update using raw SQL since Prisma client may not have the fields yet
-    // SQLite uses INTEGER (0/1) for booleans
-    const updates: string[] = [];
-    const values: any[] = [];
+    // Update using Prisma (works for both SQLite and PostgreSQL)
+    const updateData: any = {};
     
     if (isBestDeal !== undefined) {
-      updates.push(`"isBestDeal" = ?`);
-      values.push(isBestDeal ? 1 : 0);
+      updateData.isBestDeal = isBestDeal;
     }
     
     if (bestDealPrice !== undefined) {
-      updates.push(`"bestDealPrice" = ?`);
-      values.push(bestDealPrice);
+      updateData.bestDealPrice = bestDealPrice;
     }
     
-    if (updates.length > 0) {
-      values.push(id);
-      await (prisma as any).$executeRawUnsafe(
-        `UPDATE products SET ${updates.join(', ')} WHERE id = ?`,
-        ...values
-      );
+    if (Object.keys(updateData).length > 0) {
+      await prisma.product.update({
+        where: { id },
+        data: updateData,
+      });
     }
     
     // Fetch the updated product
@@ -90,14 +85,7 @@ export async function PUT(
       );
     }
 
-    // Manually add isBestDeal and bestDealPrice to the response since Prisma client might not include them
-    const productWithBestDeal = {
-      ...product,
-      isBestDeal: isBestDeal !== undefined ? isBestDeal : (product as any).isBestDeal,
-      bestDealPrice: bestDealPrice !== undefined ? bestDealPrice : (product as any).bestDealPrice,
-    };
-
-    return NextResponse.json({ product: productWithBestDeal });
+    return NextResponse.json({ product });
   } catch (error: any) {
     console.error("Error updating best deal status:", error);
     const errorMessage = error?.message || "Failed to update product";
