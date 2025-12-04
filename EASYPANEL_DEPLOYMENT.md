@@ -74,8 +74,11 @@ If you prefer a managed service (DigitalOcean, AWS RDS, etc.):
    - **Repository:** `ViableSystemsGlobal/vibecodingacademy`
    - **Branch:** `main`
    - **Build Pack:** `Docker` or `Dockerfile`
-   - **Dockerfile Path:** `backend/Dockerfile`
-   - **Root Directory:** `backend` (if needed)
+   - **Dockerfile Path:** `backend/Dockerfile` ⚠️ **IMPORTANT: Specify this path!**
+   - **Root Directory:** Leave empty or set to root `/`
+   - **Build Context:** Root directory (where docker-compose.yml is)
+   
+   **Note:** If EasyPanel doesn't support subdirectory Dockerfiles, use `Dockerfile.backend` from root (we've created this for compatibility)
 
 3. **Environment Variables**
    Add these in EasyPanel's environment variables section:
@@ -157,8 +160,11 @@ If you prefer a managed service (DigitalOcean, AWS RDS, etc.):
    - **Repository:** `ViableSystemsGlobal/vibecodingacademy`
    - **Branch:** `main`
    - **Build Pack:** `Docker` or `Dockerfile`
-   - **Dockerfile Path:** `frontend/Dockerfile`
-   - **Root Directory:** `frontend` (if needed)
+   - **Dockerfile Path:** `frontend/Dockerfile` ⚠️ **IMPORTANT: Specify this path!**
+   - **Root Directory:** Leave empty or set to root `/`
+   - **Build Context:** Root directory (where docker-compose.yml is)
+   
+   **Note:** If EasyPanel doesn't support subdirectory Dockerfiles, use `Dockerfile.frontend` from root (we've created this for compatibility)
 
 3. **Environment Variables**
    ```env
