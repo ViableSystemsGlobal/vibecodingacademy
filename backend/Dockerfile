@@ -46,6 +46,7 @@ RUN npm ci --only=production
 # Copy built files and Prisma
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+# Copy entire prisma directory including migrations
 COPY --from=builder /app/prisma ./prisma
 
 # Copy startup script
