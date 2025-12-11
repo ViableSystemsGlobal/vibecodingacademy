@@ -99,9 +99,6 @@ export default function PaymentAttemptsPage() {
     onError: (error: any) => {
       toast.error(error.message || 'Failed to cancel attempt');
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['payment-attempts'] });
-    },
   });
 
   const getStatusBadge = (status: string) => {
