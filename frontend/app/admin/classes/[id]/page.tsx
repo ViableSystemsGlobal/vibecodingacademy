@@ -101,6 +101,39 @@ export default function ClassDetailPage() {
           <Button variant="outline" onClick={() => router.push(`/admin/classes/${classId}/edit`)}>
             Edit
           </Button>
+          {classData.status === 'ARCHIVED' ? (
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  await apiClient.put(`/admin/classes/${classId}`, { status: 'PUBLISHED' });
+                  toast.success('Class unarchived successfully');
+                  router.refresh();
+                } catch (error: any) {
+                  toast.error(error.message || 'Failed to unarchive class');
+                }
+              }}
+            >
+              Unarchive
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={async () => {
+                if (confirm('Archive this class? It will no longer appear in public registration.')) {
+                  try {
+                    await apiClient.put(`/admin/classes/${classId}`, { status: 'ARCHIVED' });
+                    toast.success('Class archived successfully');
+                    router.refresh();
+                  } catch (error: any) {
+                    toast.error(error.message || 'Failed to archive class');
+                  }
+                }
+              }}
+            >
+              Archive
+            </Button>
+          )}
           <Button
             variant="destructive"
             onClick={() => {
