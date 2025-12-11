@@ -116,7 +116,11 @@ export class PaymentService {
     console.log(`[Payment Verification] Verifying payment with reference: ${reference}`);
     
     const paystackResponse = await paystackService.verifyTransaction(reference);
-    console.log(`[Payment Verification] Paystack response status: ${paystackResponse.status}, reference: ${paystackResponse.data?.reference}`);
+    // Paystack returns: { status: true, data: { status: 'success', ... } }
+    // Top level status (boolean) = API call success, data.status (string) = payment success
+    const isSuccess = paystackResponse.status === true && paystackResponse.data?.status === 'success';
+    
+    console.log(`[Payment Verification] Paystack response - top level status: ${paystackResponse.status}, data.status: ${paystackResponse.data?.status}, isSuccess: ${isSuccess}, reference: ${paystackResponse.data?.reference}`);
 
     // First check if this is a payment attempt (new flow)
     // Try to find by providerReference first
@@ -160,7 +164,7 @@ export class PaymentService {
 
     if (paymentAttempt) {
       // This is a payment attempt - handle accordingly
-      if (paystackResponse.status === 'success') {
+      if (isSuccess) {
         // Complete the payment attempt and create registration
         const result = await paymentAttemptService.completePaymentAttempt(
           paymentAttempt.id,
@@ -257,7 +261,10 @@ export class PaymentService {
   }
 
   private async handleLegacyPaymentVerification(payment: any, paystackResponse: any) {
-    if (paystackResponse.status === 'success') {
+    // Paystack returns: { status: true, data: { status: 'success', ... } }
+    const isSuccess = paystackResponse.status === true && paystackResponse.data?.status === 'success';
+    
+    if (isSuccess) {
       // Update payment status
       await prisma.payment.update({
         where: { id: payment.id },
