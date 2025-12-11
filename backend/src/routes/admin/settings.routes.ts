@@ -188,9 +188,26 @@ router.post('/upload-logo', upload.single('logo'), async (req, res) => {
     // Generate the URL for the uploaded file
     const fileUrl = `/uploads/${req.file.filename}`;
     
-    // Use the backend's configured URL to ensure correct port (3005)
-    // This avoids port mismatches when the request comes from the frontend
-    const backendUrl = `http://localhost:${config.port}`;
+    // Construct backend URL - use API domain in production, localhost in development
+    let backendUrl: string;
+    if (config.nodeEnv === 'production' && config.frontendUrl && !config.frontendUrl.includes('localhost')) {
+      // Extract domain from FRONTEND_URL and use api subdomain
+      const frontendDomain = config.frontendUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      if (frontendDomain.includes('vibecoding.africa')) {
+        backendUrl = `https://api.vibecoding.africa`;
+      } else {
+        // Fallback: use request host
+        const protocol = req.protocol || 'https';
+        const host = req.get('host') || `api.${frontendDomain}`;
+        backendUrl = `${protocol}://${host}`;
+      }
+    } else {
+      // Development: use request host or localhost
+      const protocol = req.protocol || 'http';
+      const host = req.get('host') || `localhost:${config.port}`;
+      backendUrl = `${protocol}://${host}`;
+    }
+    
     const fullUrl = `${backendUrl}${fileUrl}`;
 
     // Save the logo URL to settings

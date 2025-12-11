@@ -191,6 +191,14 @@ export class PaymentService {
             },
           });
           payments.push(payment);
+          
+          // Update registration payment status to PAID
+          await prisma.registration.update({
+            where: { id: registration.id },
+            data: {
+              paymentStatus: 'PAID',
+            },
+          });
         }
 
         // Send confirmation notification for all students
