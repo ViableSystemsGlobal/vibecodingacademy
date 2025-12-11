@@ -6,6 +6,11 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Accept build-time environment variables
+# EasyPanel should pass these automatically, but we declare them explicitly
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
 # Copy package files (from frontend directory)
 COPY frontend/package*.json ./
 COPY frontend/tsconfig.json ./
@@ -22,6 +27,9 @@ COPY frontend/ .
 
 # Create public directory if it doesn't exist (Next.js requires it)
 RUN mkdir -p public
+
+# Debug: Print the API URL being used (helps troubleshoot)
+RUN echo "Building with NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}"
 
 # Build Next.js app
 RUN npm run build
