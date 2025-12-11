@@ -33,9 +33,11 @@ export default function Home() {
     children: [{ name: '', age: '', school: '' }],
   });
 
-  const { data, isLoading } = useQuery<LandingData>({
+  const { data, isLoading, error } = useQuery<LandingData>({
     queryKey: ['landing'],
     queryFn: () => apiClient.get<LandingData>('/public/landing'),
+    retry: 2,
+    retryDelay: 1000,
   });
 
   const { data: freeClassesResponse } = useQuery<any>({
@@ -126,10 +128,39 @@ export default function Home() {
     );
   }
 
+  if (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to load page data';
+    const isNetworkError = errorMessage.includes('Network Error') || errorMessage.includes('Failed to fetch') || errorMessage.includes('ECONNREFUSED');
+    
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-400 via-orange-500 to-orange-600">
+        <div className="text-white text-center px-4 max-w-2xl">
+          <div className="text-2xl font-bold mb-4">Error loading page data</div>
+          {isNetworkError && (
+            <div className="text-lg mb-4">
+              <p className="mb-2">Unable to connect to the API server.</p>
+              <p className="text-sm opacity-90">
+                API URL: {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005'}
+              </p>
+              <p className="text-sm opacity-90 mt-2">
+                Please ensure the backend API is running and accessible.
+              </p>
+            </div>
+          )}
+          {!isNetworkError && (
+            <div className="text-lg">
+              <p className="text-sm opacity-90">{errorMessage}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (!data) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-400 via-orange-500 to-orange-600">
-        <div className="text-white text-xl">Error loading page data</div>
+        <div className="text-white text-xl">Loading...</div>
       </div>
     );
   }
