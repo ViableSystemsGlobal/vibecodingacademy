@@ -180,7 +180,7 @@ export default function CourseViewPage() {
                   <div>
                     <h3 className="font-semibold mb-2">Resources</h3>
                     <div className="space-y-2">
-                      {lesson.resources.map((resource) => (
+                      {lesson.resources.map((resource: { id: string; type: string; label: string; urlOrPath: string }) => (
                         <a
                           key={resource.id}
                           href={resource.urlOrPath}
