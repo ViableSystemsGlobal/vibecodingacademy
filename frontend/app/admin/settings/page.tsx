@@ -30,6 +30,15 @@ export default function SettingsPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
 
+  // Helper function to safely convert settings value to string for input fields
+  const getSettingValue = (key: string, defaultValue: string = ''): string => {
+    const value = settings[key];
+    if (typeof value === 'string' || typeof value === 'number') {
+      return String(value);
+    }
+    return defaultValue;
+  };
+
   const { data, isLoading, refetch } = useQuery<AppSettings>({
     queryKey: ['admin-settings'],
     queryFn: async () => {
@@ -327,7 +336,7 @@ export default function SettingsPage() {
                   <Label htmlFor="site_name">Site Name</Label>
                   <Input
                     id="site_name"
-                    value={settings.site_name || ''}
+                    value={getSettingValue('site_name', '')}
                     onChange={(e) => handleSettingChange('site_name', e.target.value)}
                     placeholder="Vibe Coding Academy"
                   />
@@ -338,7 +347,7 @@ export default function SettingsPage() {
                   <Input
                     id="contact_email"
                     type="email"
-                    value={settings.contact_email || ''}
+                    value={getSettingValue('contact_email', '')}
                     onChange={(e) => handleSettingChange('contact_email', e.target.value)}
                     placeholder="info@vibecoding.com"
                   />
@@ -348,7 +357,7 @@ export default function SettingsPage() {
                   <Label htmlFor="contact_phone">Contact Phone</Label>
                   <Input
                     id="contact_phone"
-                    value={settings.contact_phone || ''}
+                    value={getSettingValue('contact_phone', '')}
                     onChange={(e) => handleSettingChange('contact_phone', e.target.value)}
                     placeholder="+233 XX XXX XXXX"
                   />
@@ -358,7 +367,7 @@ export default function SettingsPage() {
                   <Label htmlFor="timezone">Timezone</Label>
                   <Input
                     id="timezone"
-                    value={settings.timezone || 'Africa/Accra'}
+                    value={getSettingValue('timezone', 'Africa/Accra')}
                     onChange={(e) => handleSettingChange('timezone', e.target.value)}
                     placeholder="Africa/Accra"
                   />
@@ -462,7 +471,7 @@ export default function SettingsPage() {
                   <Input
                     id="paystack_public_key"
                     type="password"
-                    value={settings.paystack_public_key || ''}
+                    value={getSettingValue('paystack_public_key', '')}
                     onChange={(e) => handleSettingChange('paystack_public_key', e.target.value)}
                     placeholder="pk_test_..."
                   />
@@ -476,9 +485,9 @@ export default function SettingsPage() {
                   <Input
                     id="paystack_secret_key"
                     type="password"
-                    value={settings.paystack_secret_key || ''}
+                    value={getSettingValue('paystack_secret_key', '')}
                     onChange={(e) => handleSettingChange('paystack_secret_key', e.target.value)}
-                    placeholder={settings.paystack_secret_key ? '•••••••• (key is set)' : 'sk_test_...'}
+                    placeholder={getSettingValue('paystack_secret_key') ? '•••••••• (key is set)' : 'sk_test_...'}
                   />
                   <p className="text-xs text-muted-foreground">
                     {settings.paystack_secret_key ? 'Secret key is set. Leave empty to keep current key, or enter a new key to change it.' : 'Your Paystack secret key (starts with sk_test_ or sk_live_). Keep this secure!'}
@@ -490,7 +499,7 @@ export default function SettingsPage() {
                   <Input
                     id="paystack_webhook_secret"
                     type="password"
-                    value={settings.paystack_webhook_secret || ''}
+                    value={getSettingValue('paystack_webhook_secret', '')}
                     onChange={(e) => handleSettingChange('paystack_webhook_secret', e.target.value)}
                     placeholder="whsec_..."
                   />
@@ -503,7 +512,7 @@ export default function SettingsPage() {
                   <Label htmlFor="paystack_webhook_url">Webhook URL</Label>
                   <Input
                     id="paystack_webhook_url"
-                    value={settings.paystack_webhook_url || (typeof window !== 'undefined' ? `${window.location.origin.replace('3005', '3001')}/webhooks/paystack` : 'http://localhost:3001/webhooks/paystack')}
+                    value={getSettingValue('paystack_webhook_url', typeof window !== 'undefined' ? `${window.location.origin.replace('3005', '3001')}/webhooks/paystack` : 'http://localhost:3001/webhooks/paystack')}
                     onChange={(e) => handleSettingChange('paystack_webhook_url', e.target.value)}
                     readOnly
                     className="bg-gray-50 font-mono text-sm"
@@ -587,7 +596,7 @@ export default function SettingsPage() {
                   <Label htmlFor="smtp_host">SMTP Host</Label>
                   <Input
                     id="smtp_host"
-                    value={settings.smtp_host || ''}
+                    value={getSettingValue('smtp_host', '')}
                     onChange={(e) => handleSettingChange('smtp_host', e.target.value)}
                     placeholder="smtp.hostinger.com"
                   />
@@ -598,7 +607,7 @@ export default function SettingsPage() {
                   <Input
                     id="smtp_port"
                     type="number"
-                    value={settings.smtp_port || ''}
+                    value={getSettingValue('smtp_port', '')}
                     onChange={(e) => handleSettingChange('smtp_port', e.target.value)}
                     placeholder="465"
                   />
@@ -608,7 +617,7 @@ export default function SettingsPage() {
                   <Label htmlFor="smtp_user">SMTP Username</Label>
                   <Input
                     id="smtp_user"
-                    value={settings.smtp_user || ''}
+                    value={getSettingValue('smtp_user', '')}
                     onChange={(e) => handleSettingChange('smtp_user', e.target.value)}
                     placeholder="noreply@yourdomain.com"
                   />
@@ -619,7 +628,7 @@ export default function SettingsPage() {
                   <Input
                     id="smtp_from"
                     type="email"
-                    value={settings.smtp_from || ''}
+                    value={getSettingValue('smtp_from', '')}
                     onChange={(e) => handleSettingChange('smtp_from', e.target.value)}
                     placeholder="noreply@yourdomain.com"
                   />
@@ -631,9 +640,9 @@ export default function SettingsPage() {
                 <Input
                   id="smtp_pass"
                   type="password"
-                  value={settings.smtp_pass || ''}
+                  value={getSettingValue('smtp_pass', '')}
                   onChange={(e) => handleSettingChange('smtp_pass', e.target.value)}
-                  placeholder={settings.smtp_pass ? '•••••••• (password is set)' : 'Enter SMTP password'}
+                  placeholder={getSettingValue('smtp_pass') ? '•••••••• (password is set)' : 'Enter SMTP password'}
                 />
                 <p className="text-xs text-muted-foreground">
                   {settings.smtp_pass ? 'Password is set. Leave empty to keep current password, or enter a new password to change it.' : 'Your SMTP password (stored securely)'}
@@ -707,7 +716,7 @@ export default function SettingsPage() {
                   <Label htmlFor="deywuro_username">Deywuro Username</Label>
                   <Input
                     id="deywuro_username"
-                    value={settings.deywuro_username || ''}
+                    value={getSettingValue('deywuro_username', '')}
                     onChange={(e) => handleSettingChange('deywuro_username', e.target.value)}
                     placeholder="Your Deywuro username"
                   />
@@ -721,9 +730,9 @@ export default function SettingsPage() {
                   <Input
                     id="deywuro_password"
                     type="password"
-                    value={settings.deywuro_password || ''}
+                    value={getSettingValue('deywuro_password', '')}
                     onChange={(e) => handleSettingChange('deywuro_password', e.target.value)}
-                    placeholder={settings.deywuro_password ? '•••••••• (password is set)' : 'Your Deywuro password'}
+                    placeholder={getSettingValue('deywuro_password') ? '•••••••• (password is set)' : 'Your Deywuro password'}
                   />
                   <p className="text-xs text-muted-foreground">
                     {settings.deywuro_password ? 'Password is set. Leave empty to keep current password, or enter a new password to change it.' : 'Client deywuro password (provided by Npontu)'}
@@ -734,7 +743,7 @@ export default function SettingsPage() {
                   <Label htmlFor="deywuro_sender">Sender ID (Source)</Label>
                   <Input
                     id="deywuro_sender"
-                    value={settings.deywuro_sender || ''}
+                    value={getSettingValue('deywuro_sender', '')}
                     onChange={(e) => handleSettingChange('deywuro_sender', e.target.value)}
                     placeholder="VIBECODING"
                     maxLength={11}
