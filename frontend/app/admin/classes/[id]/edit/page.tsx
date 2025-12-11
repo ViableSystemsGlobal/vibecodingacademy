@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -75,29 +76,31 @@ export default function EditClassPage() {
   });
 
   // Populate form when data loads
-  if (classData && !watch('title')) {
-    const startDate = classData.startDatetime
-      ? new Date(classData.startDatetime).toISOString().slice(0, 16)
-      : '';
-    const endDate = classData.endDatetime
-      ? new Date(classData.endDatetime).toISOString().slice(0, 16)
-      : '';
+  useEffect(() => {
+    if (classData) {
+      const startDate = classData.startDatetime
+        ? new Date(classData.startDatetime).toISOString().slice(0, 16)
+        : '';
+      const endDate = classData.endDatetime
+        ? new Date(classData.endDatetime).toISOString().slice(0, 16)
+        : '';
 
-    reset({
-      title: classData.title,
-      description: classData.description || '',
-      type: classData.type as 'FREE' | 'BOOTCAMP',
-      ageGroup: classData.ageGroup || '',
-      startDatetime: startDate,
-      endDatetime: endDate || '',
-      durationMinutes: classData.durationMinutes || undefined,
-      capacity: classData.capacity,
-      priceCents: classData.priceCents,
-      currency: classData.currency,
-      meetingLink: classData.meetingLink || '',
-      status: classData.status as 'DRAFT' | 'PUBLISHED' | 'ARCHIVED',
-    });
-  }
+      reset({
+        title: classData.title,
+        description: classData.description || '',
+        type: classData.type as 'FREE' | 'BOOTCAMP',
+        ageGroup: classData.ageGroup || '',
+        startDatetime: startDate,
+        endDatetime: endDate || '',
+        durationMinutes: classData.durationMinutes || undefined,
+        capacity: classData.capacity,
+        priceCents: classData.priceCents,
+        currency: classData.currency,
+        meetingLink: classData.meetingLink || '',
+        status: classData.status as 'DRAFT' | 'PUBLISHED' | 'ARCHIVED',
+      });
+    }
+  }, [classData, reset]);
 
   const type = watch('type');
 
