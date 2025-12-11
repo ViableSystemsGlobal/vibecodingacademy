@@ -20,6 +20,9 @@ RUN npm ci
 # Copy source code (from frontend directory)
 COPY frontend/ .
 
+# Create public directory if it doesn't exist (Next.js requires it)
+RUN mkdir -p public
+
 # Build Next.js app
 RUN npm run build
 
@@ -38,8 +41,12 @@ RUN npm ci --only=production
 
 # Copy built files
 COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.js ./
+
+# Copy public directory from builder (we ensured it exists in builder stage)
+# Create it first in case COPY fails, then copy
+RUN mkdir -p ./public
+COPY --from=builder /app/public ./public
 
 # Expose port (Next.js default)
 EXPOSE 3000
