@@ -1,76 +1,48 @@
 # Root-level Dockerfile for EasyPanel
-# This builds the backend service
-# For frontend, use frontend/Dockerfile
+# This builds the FRONTEND service (Next.js)
+# For backend API, use backend/Dockerfile
 
-FROM node:18-slim AS builder
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies for Prisma
-RUN apt-get update && apt-get install -y \
-    openssl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy package files (from backend directory)
-COPY backend/package*.json ./
-COPY backend/tsconfig.json ./
+# Copy package files (from frontend directory)
+COPY frontend/package*.json ./
+COPY frontend/tsconfig.json ./
+COPY frontend/next.config.js ./
+COPY frontend/tailwind.config.ts ./
+COPY frontend/postcss.config.js ./
+COPY frontend/components.json ./
 
 # Install dependencies
 RUN npm ci
 
-# Copy source code (from backend directory)
-COPY backend/ .
+# Copy source code (from frontend directory)
+COPY frontend/ .
 
-# Verify migrations are copied (for debugging)
-RUN echo "Checking prisma directory structure:" && \
-    ls -la prisma/ && \
-    echo "Checking migrations:" && \
-    (ls -la prisma/migrations/ 2>/dev/null || echo "Migrations directory not found") && \
-    echo "Prisma files:" && \
-    ls -la prisma/*.prisma prisma/*.toml 2>/dev/null || echo "No prisma files found"
-
-# Generate Prisma client
-RUN npx prisma generate
-
-# Build TypeScript
+# Build Next.js app
 RUN npm run build
 
 # Production stage
-FROM node:18-slim
+FROM node:18-alpine
 
 WORKDIR /app
 
-# Install runtime dependencies for Prisma (OpenSSL is included in Debian)
-RUN apt-get update && apt-get install -y \
-    openssl \
-    && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production
 
 # Copy package files
-COPY backend/package*.json ./
-COPY backend/tsconfig.json ./
+COPY frontend/package*.json ./
 
-# Install Prisma CLI globally first (needed for postinstall if any)
-RUN npm install -g prisma@^5.7.1
-
-# Install production dependencies only
+# Install production dependencies
 RUN npm ci --only=production
 
-# Copy built files and Prisma
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-# Copy entire prisma directory including migrations
-# Use wildcard to handle optional files gracefully
-COPY --from=builder /app/prisma ./prisma
+# Copy built files
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/next.config.js ./
 
-# Copy startup script
-COPY backend/start.sh ./start.sh
-RUN chmod +x ./start.sh
+# Expose port (Next.js default)
+EXPOSE 3000
 
-# Create uploads directory
-RUN mkdir -p uploads
-
-# Expose port
-EXPOSE 3005
-
-# Start server (runs migrations first)
-CMD ["./start.sh"]
+# Start Next.js
+CMD ["npm", "start"]
