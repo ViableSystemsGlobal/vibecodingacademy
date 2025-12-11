@@ -282,7 +282,7 @@ export default function SettingsPage() {
                   <Input
                     id="logo_url"
                     type="url"
-                    value={settings.logo_url || ''}
+                    value={typeof settings.logo_url === 'string' ? settings.logo_url : ''}
                     onChange={(e) => handleSettingChange('logo_url', e.target.value)}
                     placeholder="https://example.com/logo.png"
                   />
@@ -291,7 +291,7 @@ export default function SettingsPage() {
                   </p>
                 </div>
 
-                {settings.logo_url && (
+                {settings.logo_url && typeof settings.logo_url === 'string' && (
                   <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
                     <p className="text-xs text-muted-foreground mb-2">Current Logo Preview:</p>
                     <div className="flex items-center justify-center min-h-[80px] bg-white rounded p-2">
