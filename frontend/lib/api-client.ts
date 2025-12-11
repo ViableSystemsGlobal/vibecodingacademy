@@ -2,6 +2,11 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005';
 
+// Log API URL in development (helps debug)
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  console.log('API Base URL:', API_BASE_URL);
+}
+
 export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
@@ -74,11 +79,29 @@ class ApiClient {
   }
 
   async get<T = any>(url: string, config?: any): Promise<T> {
-    const response = await this.client.get<ApiResponse<T>>(url, config);
-    if (response.data.success) {
-      return response.data.data as T;
+    try {
+      const response = await this.client.get<ApiResponse<T>>(url, config);
+      if (response.data.success) {
+        return response.data.data as T;
+      }
+      throw new Error(response.data.error?.message || 'Request failed');
+    } catch (error: any) {
+      // Enhanced error logging
+      if (error.response) {
+        // Server responded with error
+        const errorMessage = error.response.data?.error?.message || error.response.data?.message || error.message || 'Request failed';
+        console.error(`API Error [${error.response.status}]:`, errorMessage, 'URL:', `${API_BASE_URL}${url}`);
+        throw new Error(errorMessage);
+      } else if (error.request) {
+        // Request made but no response (network error)
+        console.error('Network Error: Unable to reach API at', `${API_BASE_URL}${url}`, error.message);
+        throw new Error(`Network Error: Unable to connect to API at ${API_BASE_URL}`);
+      } else {
+        // Something else happened
+        console.error('API Request Error:', error.message);
+        throw error;
+      }
     }
-    throw new Error(response.data.error?.message || 'Request failed');
   }
 
   async post<T = any>(url: string, data?: any, config?: any): Promise<T> {

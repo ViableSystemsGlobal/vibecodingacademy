@@ -130,26 +130,50 @@ export default function Home() {
 
   if (error) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to load page data';
-    const isNetworkError = errorMessage.includes('Network Error') || errorMessage.includes('Failed to fetch') || errorMessage.includes('ECONNREFUSED');
+    const isNetworkError = errorMessage.includes('Network Error') || 
+                          errorMessage.includes('Failed to fetch') || 
+                          errorMessage.includes('ECONNREFUSED') ||
+                          errorMessage.includes('Unable to connect');
+    
+    // Get API URL (works in browser)
+    const apiUrl = typeof window !== 'undefined' 
+      ? (window as any).__NEXT_DATA__?.env?.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005'
+      : process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005';
     
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-400 via-orange-500 to-orange-600">
         <div className="text-white text-center px-4 max-w-2xl">
           <div className="text-2xl font-bold mb-4">Error loading page data</div>
           {isNetworkError && (
-            <div className="text-lg mb-4">
+            <div className="text-lg mb-4 space-y-2">
               <p className="mb-2">Unable to connect to the API server.</p>
-              <p className="text-sm opacity-90">
-                API URL: {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3005'}
+              <div className="bg-black/20 p-3 rounded text-left text-sm">
+                <p className="font-semibold mb-1">Debugging Info:</p>
+                <p>API URL: <code className="bg-black/30 px-1 rounded">{apiUrl}</code></p>
+                <p>Endpoint: <code className="bg-black/30 px-1 rounded">{apiUrl}/public/landing</code></p>
+                <p className="mt-2 text-xs opacity-75">
+                  Check browser console (F12) for detailed error messages.
+                </p>
+              </div>
+              <p className="text-sm opacity-90 mt-4">
+                Possible causes:
               </p>
-              <p className="text-sm opacity-90 mt-2">
-                Please ensure the backend API is running and accessible.
-              </p>
+              <ul className="text-sm opacity-90 text-left list-disc list-inside mt-2">
+                <li>Backend API not accessible at {apiUrl}</li>
+                <li>CORS blocking requests from this domain</li>
+                <li>Frontend built with wrong API URL (needs rebuild)</li>
+              </ul>
             </div>
           )}
           {!isNetworkError && (
             <div className="text-lg">
-              <p className="text-sm opacity-90">{errorMessage}</p>
+              <p className="text-sm opacity-90 mb-2">Error: {errorMessage}</p>
+              <div className="bg-black/20 p-3 rounded text-left text-sm mt-2">
+                <p>API URL: <code className="bg-black/30 px-1 rounded">{apiUrl}</code></p>
+                <p className="mt-2 text-xs opacity-75">
+                  Check browser console (F12) for more details.
+                </p>
+              </div>
             </div>
           )}
         </div>
