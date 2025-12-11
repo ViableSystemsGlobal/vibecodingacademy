@@ -11,9 +11,10 @@ interface InitializeTransactionData {
 }
 
 interface VerifyTransactionResponse {
-  status: string;
+  status: boolean; // Paystack returns boolean at top level
+  message?: string;
   data: {
-    status: string;
+    status: string; // Payment status: 'success' | 'failed' | etc.
     reference: string;
     amount: number;
     customer: {
