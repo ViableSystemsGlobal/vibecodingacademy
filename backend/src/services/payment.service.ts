@@ -113,13 +113,50 @@ export class PaymentService {
   }
 
   async verifyPayment(reference: string) {
+    console.log(`[Payment Verification] Verifying payment with reference: ${reference}`);
+    
     const paystackResponse = await paystackService.verifyTransaction(reference);
+    console.log(`[Payment Verification] Paystack response status: ${paystackResponse.status}, reference: ${paystackResponse.data?.reference}`);
 
     // First check if this is a payment attempt (new flow)
-    const paymentAttempt = await prisma.paymentAttempt.findFirst({
+    // Try to find by providerReference first
+    let paymentAttempt = await prisma.paymentAttempt.findFirst({
       where: { providerReference: reference },
       include: { class: true },
     });
+
+    // If not found and reference starts with "ATTEMPT-", try to extract attempt ID
+    if (!paymentAttempt && reference.startsWith('ATTEMPT-')) {
+      console.log(`[Payment Verification] Reference starts with ATTEMPT-, extracting attempt ID...`);
+      const parts = reference.split('-');
+      if (parts.length >= 2) {
+        const attemptId = parts[1]; // Extract UUID from "ATTEMPT-{uuid}-{timestamp}"
+        console.log(`[Payment Verification] Extracted attempt ID: ${attemptId}`);
+        paymentAttempt = await prisma.paymentAttempt.findUnique({
+          where: { id: attemptId },
+          include: { class: true },
+        });
+        
+        if (paymentAttempt) {
+          console.log(`[Payment Verification] Found payment attempt by ID: ${paymentAttempt.id}`);
+          // Update providerReference if it's not set or different
+          if (!paymentAttempt.providerReference || paymentAttempt.providerReference !== reference) {
+            console.log(`[Payment Verification] Updating providerReference to: ${reference}`);
+            await paymentAttemptService.updatePaymentAttemptStatus(
+              paymentAttempt.id,
+              paymentAttempt.status,
+              reference
+            );
+          }
+        } else {
+          console.log(`[Payment Verification] Payment attempt not found with ID: ${attemptId}`);
+        }
+      }
+    } else if (paymentAttempt) {
+      console.log(`[Payment Verification] Found payment attempt by providerReference: ${paymentAttempt.id}`);
+    } else {
+      console.log(`[Payment Verification] No payment attempt found with reference: ${reference}`);
+    }
 
     if (paymentAttempt) {
       // This is a payment attempt - handle accordingly
@@ -181,31 +218,45 @@ export class PaymentService {
       }
     }
 
-    // Legacy flow - payment with existing registration
-    const payment = await prisma.payment.findFirst({
-      where: { providerReference: reference },
-      include: {
-        registration: {
-          include: {
-            class: true,
-            student: {
-              include: {
-                parent: {
-                  include: {
-                    user: true,
+    // If payment attempt was not found, this might be a legacy payment or invalid reference
+    if (!paymentAttempt) {
+      console.log(`[Payment Verification] No payment attempt found, checking legacy payments...`);
+      
+      // Legacy flow - payment with existing registration
+      const payment = await prisma.payment.findFirst({
+        where: { providerReference: reference },
+        include: {
+          registration: {
+            include: {
+              class: true,
+              student: {
+                include: {
+                  parent: {
+                    include: {
+                      user: true,
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-    });
+      });
 
-    if (!payment) {
-      throw new Error('Payment not found');
+      if (!payment) {
+        console.error(`[Payment Verification] Payment not found for reference: ${reference}`);
+        throw new Error(`Payment verification failed: Payment not found for reference ${reference}`);
+      }
+      
+      // Continue with legacy payment flow
+      return this.handleLegacyPaymentVerification(payment, paystackResponse);
     }
 
+    // This should never be reached
+    throw new Error('Payment verification failed: Unexpected error');
+  }
+
+  private async handleLegacyPaymentVerification(payment: any, paystackResponse: any) {
     if (paystackResponse.status === 'success') {
       // Update payment status
       await prisma.payment.update({
