@@ -2,7 +2,13 @@
 
 ## 🚨 Current Issue
 
-Hostinger is looking for `composer.json` and `composer.lock` because it's detecting your project as PHP, but this is a **Node.js project**.
+**IMPORTANT:** Hostinger's **managed hosting does NOT support Node.js**. The deployment system is hardcoded to look for PHP/Composer files because managed hosting can only run PHP applications.
+
+**You cannot deploy Node.js on Hostinger managed hosting.** You need to either:
+1. Upgrade to Hostinger VPS, OR
+2. Use alternative hosting (Vercel, Railway, etc.)
+
+See `HOSTINGER_NODEJS_NOT_SUPPORTED.md` for complete explanation and solutions.
 
 ## ✅ What I've Done
 
