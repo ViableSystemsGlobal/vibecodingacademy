@@ -1,10 +1,22 @@
-# ⚠️ Hostinger Managed Hosting Does NOT Support Node.js
+# Hostinger Node.js Support - Important Distinction
 
-## The Problem
+## ⚠️ Regular Managed Hosting vs Node.js Web Apps Hosting
 
-Hostinger's **managed hosting** (Web Hosting, WordPress Hosting, Cloud Hosting) **does NOT support Node.js applications**.
+**IMPORTANT UPDATE:** Hostinger DOES support Node.js, but through a **separate service**!
 
-The deployment system you're seeing is hardcoded to look for PHP/Composer files because it's designed only for PHP applications.
+### Regular Managed Hosting (What you're currently using)
+- **Does NOT support Node.js**
+- Only supports PHP/Composer
+- The deployment system you're seeing looks for `composer.json` because it's PHP-only
+
+### Node.js Web Apps Hosting (Separate Service) ✅
+- **DOES support Node.js!**
+- Fully managed Node.js hosting
+- Auto-detects Next.js, React, Vite, Vue.js, etc.
+- Deploy from GitHub
+- **Service URL:** https://www.hostinger.com/web-apps-hosting
+
+**See `HOSTINGER_NODEJS_HOSTING_SETUP.md` for complete setup guide!**
 
 ## Why This Happens
 

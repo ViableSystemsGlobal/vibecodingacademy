@@ -2,13 +2,19 @@
 
 ## 🚨 Current Issue
 
-**IMPORTANT:** Hostinger's **managed hosting does NOT support Node.js**. The deployment system is hardcoded to look for PHP/Composer files because managed hosting can only run PHP applications.
+Hostinger's **regular managed hosting** (the one you're currently using) looks for `composer.json` because it's designed for PHP.
 
-**You cannot deploy Node.js on Hostinger managed hosting.** You need to either:
-1. Upgrade to Hostinger VPS, OR
-2. Use alternative hosting (Vercel, Railway, etc.)
+**However, Hostinger DOES support Node.js** through their **Node.js web apps hosting** service!
 
-See `HOSTINGER_NODEJS_NOT_SUPPORTED.md` for complete explanation and solutions.
+## ✅ Solution: Use Node.js Web Apps Hosting
+
+Hostinger offers a separate service specifically for Node.js applications:
+- **Service:** [Node.js web apps hosting](https://www.hostinger.com/web-apps-hosting)
+- **Pricing:** $2.99/mo (5 apps) or $6.99/mo (10 apps)
+- **Features:** Auto-detects Next.js, React, Vite, etc.
+- **Deploy:** Connect GitHub, auto-builds and deploys
+
+**See `HOSTINGER_NODEJS_HOSTING_SETUP.md` for complete setup guide!**
 
 ## ✅ What I've Done
 
